@@ -146,12 +146,6 @@ if IMAGECODECS_AVAILABLE:
         # "jpegxl_lossy_decompression_3": Jpegxl(lossless=False, distance=1.0, decodingspeed=3),
         # "jpegxl_lossy_decompression_5": Jpegxl(lossless=False, distance=1.0, decodingspeed=5),
     })
-# for v in {
-#     "preset": {"preset": 9},
-#     "filters": {"filters": filters, "format": lzma.FORMAT_RAW},
-# }.values():
-#     compressors[k]append(LZMA(**v))
-
 
 # %% Group files based on their name
 
