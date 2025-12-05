@@ -2,6 +2,8 @@ from functools import partial
 from pathlib import Path
 from time import perf_counter
 
+from itertools import product, starmap
+
 import duckdb
 import polars as pl
 from broad_babel.data import get_table
@@ -57,6 +59,11 @@ progress_file = out_path.parent / "progress.txt"
 
 sample = 10  # No. of CRISPR and ORF to test
 seed = 1
+
+pull_plates = True
+plates_to_pull = ["JCPQC016", "BR00121438", "ACPJUM012", "110000293081"]
+
+
 
 # Pull JCP ids
 crispr = (
@@ -130,6 +137,20 @@ if not (meta_file).exists():
 else:
     metadata_all = pl.read_parquet(meta_file)
 
+
+
+if pull_plates:
+    print("Only pulling plates:", plates_to_pull)
+    metadata_all = []
+    for plate in plates_to_pull:
+        whole_plate = get_whole_plate_location_info(plate)
+
+        metadata_all.append(whole_plate)
+    
+    metadata_all = pl.concat(metadata_all)
+
+
+
 # Convert metadata to list of single-row DataFrames for parallel processing
 all_rows = [metadata_all.slice(i, 1) for i in range(len(metadata_all))]
 
@@ -138,14 +159,35 @@ def save_array(image, address: tuple[str]):
     # `address` is a tuple of (source, plate, well, channel, site)
     fullname = "__".join(address)
     pil_img = Image.fromarray(image)
+    # check if file exists to avoid re-downloading
+    if (out_path / f"{fullname}.tif").exists():
+        return 
     pil_img.save(out_path / f"{fullname}.tif")
+
+def check_all_exist(meta: pl.DataFrame, channel, site, correction) -> bool:
+    iterable = list(
+        starmap(
+            lambda *x: (*x[0], *x[1:]),
+            product(meta.rows(), channel, site, [correction]),
+        )
+    )
+    fails = 0
+    for address in iterable:
+        fullname = "__".join(address)
+        if not (out_path / f"{fullname}.tif").exists():
+             fails += 1
+    if fails == 0 or (fails == len(site)):
+        return True
+    return False
 
 
 def download_and_save_image(meta: pl.DataFrame, channel, site, correction):
     try:
         meta_nojcp = meta.select(pl.exclude("Metadata_JCP2022"))
+        if check_all_exist(meta_nojcp, channel, site, correction):
+            return True
         addresses, images = get_jump_image_batch(
-            meta_nojcp, channel=channels, site=sites, correction=correction
+            meta_nojcp, channel=channel, site=site, correction=correction
         )
         for address, image in zip(addresses, images):
             save_array(image, address)
@@ -153,16 +195,26 @@ def download_and_save_image(meta: pl.DataFrame, channel, site, correction):
     except:
         return False
 
+for x in tqdm(all_rows[:], total=len(all_rows)):
+
+    download_and_save_image(x, channel=channels, site=sites, correction=correction)
+
+        
+
+
 
 fh = open(progress_file, "w")
-results = Parallel(n_jobs=3)(
+results = Parallel(n_jobs=32)(
     delayed(
         partial(
             download_and_save_image, channel=channels, site=sites, correction=correction
         )
     )(x)
-    for x in tqdm(all_rows[:3], total=len(all_rows), file=fh)
+    for x in tqdm(all_rows[:], total=len(all_rows), file=fh)
 )
 fh.close()
 progress_file.unlink()
 
+# print the results
+n_success = sum(results)
+print(f"Successfully downloaded {n_success} out of {len(all_rows)} items.")

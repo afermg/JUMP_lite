@@ -102,6 +102,8 @@ def compress_tif(name, compressor, output_dir, groups, overwrite=False, n_jobs_i
 
 input_dir = Path("/work/datasets/jump_target2_4plate/raw")
 output_dir = input_dir.parent
+output_dir = Path("/work/datasets/jump_target2_4plate_full/")
+
 
 print("Input dir:", input_dir)
 print("Output dir:", output_dir)
@@ -115,10 +117,7 @@ filters = [
     dict(id=lzma.FILTER_LZMA2, preset=9),
 ]
 compressing_algs = {
-    # "lz4": {"clevel": 9}, # Too similar to lz4hc, but usually worse
-    # "lz4hc": {"clevel": 9},
-    "zstd": {"clevel": 9},
-    # "zlib": {"clevel": 9},
+    "zstd": {"clevel": 9}
 }
 compressors_blosc = {
     k: BloscCodec(cname=k, shuffle="bitshuffle", **v)
@@ -132,19 +131,10 @@ compressors = {
 # Add imagecodecs compressors if available
 if IMAGECODECS_AVAILABLE:
     compressors.update({
-        # "brotli": Brotli(level=11),
-        # "jpegxl_lossless": Jpegxl(lossless=True, level=9),
         "jpegxl_lossy_hq": Jpegxl(lossless=False, distance=1.0),
-        # "jpegxl_lossy_hmq": Jpegxl(lossless=False, distance=2.0),
         "jpegxl_lossy_mq": Jpegxl(lossless=False, distance=3.0),
-        # "jpegxl_lossy_mlq": Jpegxl(lossless=False, distance=4.0),
         "jpegxl_lossy_lq": Jpegxl(lossless=False, distance=5.0),
-        # "jpegxl_lossy_effort_1": Jpegxl(lossless=False, distance=1.0, effort=1),
-        "jpegxl_lossy_effort_3": Jpegxl(lossless=False, distance=1.0, effort=3),
-        # "jpegxl_lossy_effort_5": Jpegxl(lossless=False, distance=1.0, effort=5),
-        # "jpegxl_lossy_decompression_1": Jpegxl(lossless=False, distance=1.0, decodingspeed=1),
-        # "jpegxl_lossy_decompression_3": Jpegxl(lossless=False, distance=1.0, decodingspeed=3),
-        # "jpegxl_lossy_decompression_5": Jpegxl(lossless=False, distance=1.0, decodingspeed=5),
+        "jpegxl_lossy_effort_3": Jpegxl(lossless=False, distance=1.0, effort=3)
     })
 
 # %% Group files based on their name

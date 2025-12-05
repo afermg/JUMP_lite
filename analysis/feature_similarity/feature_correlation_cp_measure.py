@@ -34,7 +34,7 @@ def _():
     import pandas as pd
 
     import os
-    return Path, basic_cleanup, cs, duckdb, mo, np, pd, pl, warnings
+    return Path, basic_cleanup, cs, duckdb, mo, np, os, pd, pl, warnings
 
 
 @app.cell
@@ -119,7 +119,7 @@ def _(Path, basic_cleanup, cache_dir, cs, duckdb, pl, warnings, workspace_dir):
         # Filter empty dfs
         masks_dir = profiles_dir / ".." / "steps"
         distance ="cosine"
-    
+
         site_col = "site"
         db_file = Path(cache_dir) / (
             "_".join(profiles_dir.relative_to(workspace_dir).parts) + f"_{distance}" + ".db"
@@ -140,7 +140,7 @@ def _(Path, basic_cleanup, cache_dir, cs, duckdb, pl, warnings, workspace_dir):
         tp_name = "tp"
 
         overwrite_str = "TABLE IF NOT EXISTS"
-   
+
         with duckdb.connect(db_file) as con:
             raw = con.sql(
                 f"""
@@ -187,19 +187,38 @@ def _(profiles_dirs):
 
 
 @app.cell
-def _(get_features, profiles_dirs):
+def _(Path):
+    Path("analysis") 
+    return
+
+
+@app.cell
+def _(os):
+
+    print(os.getcwd())
+    return
+
+
+@app.cell
+def _(Path, get_features, profiles_dirs):
     features_per_compression = {}
     for path in profiles_dirs:
         _clean, _pivoted_pl, _ndropped = get_features(path)
 
-        features_per_compression[str(path).split("/")[-2]] = {"clean" : _clean.to_pandas(), "pivoted_pl": _pivoted_pl.to_pandas(), "ndropped": _ndropped}
+        _clean = _clean.to_pandas()
+        _clean[["Metadata_Source", 
+                  "Metadata_Batch",
+                  "Metadata_Plate",
+                  "Metadata_Well",
+                  "Metadata_Site"]] = _clean.site.str.split("__",  expand=True)
+        name = str(path).split("/")[-2]
+        _clean = _clean.rename(columns={"site" : "Metadata_id"})
+        features_per_compression[name] = {"clean" : _clean, "pivoted_pl": _pivoted_pl.to_pandas(), "ndropped": _ndropped}
+
+
+    
+        _clean.to_parquet(Path(f"analysis/feature_similarity/output/{name.split(".")[0]}.parquet"))
     return (features_per_compression,)
-
-
-@app.cell
-def _(features_per_compression):
-    features_per_compression["zstd.zarr"]["clean"]
-    return
 
 
 @app.cell
@@ -230,7 +249,7 @@ def _(features_per_compression, np):
         print("Nan dropped: ", merged_df_with_non_compressed_nan.shape)
 
         size_ = merged_df_with_non_compressed_nan.shape[0]
-    
+
         count=0
         for feature in [x for x in df_compression.columns if x != "site" and ((x+"_x" in merged_df_with_non_compressed_nan.columns) and (x+"_y" in merged_df_with_non_compressed_nan.columns))]:
 
@@ -242,8 +261,8 @@ def _(features_per_compression, np):
 
 
 
+    return df_compression, results
 
-    return key, results
 
 @app.cell
 def _(pd, results):
@@ -278,6 +297,12 @@ def _(df):
 @app.cell
 def _(df, sns):
     sns.boxplot(data=df , x = "key", y = "corr")#, log_scale=(False, True))
+    return
+
+
+@app.cell
+def _(df_compression):
+    df_compression
     return
 
 
