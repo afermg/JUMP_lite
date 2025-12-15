@@ -4,6 +4,8 @@ from time import perf_counter
 
 from itertools import product, starmap
 
+# %% 
+
 import duckdb
 import polars as pl
 from broad_babel.data import get_table
@@ -192,8 +194,10 @@ def download_and_save_image(meta: pl.DataFrame, channel, site, correction):
         for address, image in zip(addresses, images):
             save_array(image, address)
         return True
-    except:
-        return False
+    except (IOError, ValueError, ConnectionError) as e:
+        # Handle expected errors
+        print(f"Error processing {meta}: {e}")
+        return (meta, channel, site, correction)
 
 for x in tqdm(all_rows[:], total=len(all_rows)):
 
@@ -216,5 +220,9 @@ fh.close()
 progress_file.unlink()
 
 # print the results
-n_success = sum(results)
+n_success = sum(1 for r in results if r is True)
+n_failures = len(results) - n_success
+
 print(f"Successfully downloaded {n_success} out of {len(all_rows)} items.")
+if n_failures > 0:
+    print(f"Failed to download {n_failures} items.")

@@ -74,24 +74,35 @@
                 # Set up CUDA environment variables
                 export CUDA_PATH=${pkgs.cudaPackages.cudatoolkit}
 
-                # Find NVIDIA driver libraries
-                NVIDIA_DRIVER_LIB=$(find /nix/store -name "libcuda.so.1" 2>/dev/null | head -1 | xargs dirname)
+                # Cache the NVIDIA driver path
+                NVIDIA_CACHE=".nix-cache/nvidia-driver-path"
+                if [ ! -f "$NVIDIA_CACHE" ]; then
+                  mkdir -p .nix-cache
+                  find /nix/store -name "libcuda.so.1" 2>/dev/null | head -1 | xargs dirname > "$NVIDIA_CACHE"
+                fi
+                NVIDIA_DRIVER_LIB=$(cat "$NVIDIA_CACHE")
 
                 export LD_LIBRARY_PATH=${pkgs.cudaPackages.cudatoolkit}/lib:${pkgs.cudaPackages.cudnn}/lib:$NVIDIA_DRIVER_LIB:$NIX_LD_LIBRARY_PATH:$LD_LIBRARY_PATH
                 export EXTRA_LDFLAGS="-L${pkgs.cudaPackages.cudatoolkit}/lib"
                 export EXTRA_CCFLAGS="-I${pkgs.cudaPackages.cudatoolkit}/include"
 
-                # Create and activate venv
+                # Create venv if it doesn't exist
                 if [ ! -d .venv ]; then
                   ${pkgs.python312}/bin/python3.12 -m venv .venv
+                  source .venv/bin/activate
+                  uv sync --all-groups
+                  uv pip install torch torchvision torchmetrics --index-url https://download.pytorch.org/whl/cu121
+                  # Mark that we've installed
+                  touch .nix-cache/deps-installed
+                else
+                  source .venv/bin/activate
+                  # Only re-sync if pyproject.toml or uv.lock changed since last install
+                  if [ pyproject.toml -nt .nix-cache/deps-installed ] || [ uv.lock -nt .nix-cache/deps-installed ]; then
+                    echo "Dependencies changed, re-syncing..."
+                    uv sync --all-groups
+                    touch .nix-cache/deps-installed
+                  fi
                 fi
-                source .venv/bin/activate
-
-                # Now that venv is activated, sync dependencies
-                uv sync --all-groups
-
-                # Install PyTorch with CUDA support
-                uv pip install torch torchvision torchmetrics --index-url https://download.pytorch.org/whl/cu121
 
                 # Add PyTorch lib path
                 export LD_LIBRARY_PATH=.venv/lib/python3.12/site-packages/torch/lib:$LD_LIBRARY_PATH

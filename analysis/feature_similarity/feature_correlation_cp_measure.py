@@ -34,7 +34,7 @@ def _():
     import pandas as pd
 
     import os
-    return Path, basic_cleanup, cs, duckdb, mo, np, os, pd, pl, warnings
+    return Path, basic_cleanup, cs, duckdb, mo, np, os, pd, pl, plt, warnings
 
 
 @app.cell
@@ -76,20 +76,24 @@ def _(mo, workspace_dir):
 
 
 @app.cell
-def _(fb_results):
-    print(fb_results.value)
-    return
-
-
-@app.cell
 def _(Path, fb_results):
     assert len(fb_results.value), "Please select an assay."
     profiles_dir = fb_results.value[0].path
     if profiles_dir.name != "profiles":
         # Search for probile dir recursively
         top_level_dirs = list(profiles_dir.glob("*"))
-        profiles_dirs = [Path(next(x.rglob("profiles"))) for x in top_level_dirs]
-          # This will fail if folder is not found
+
+        profiles_dirs = []
+        for x in top_level_dirs:
+            found = next(x.rglob("profiles"), None)  # Returns None instead of raising StopIteration
+            if found:
+                profiles_dirs.append(Path(found))
+
+        if not profiles_dirs:
+            raise FileNotFoundError(f"No 'profiles' directories found in {profiles_dir}")
+
+
+        # This will fail if folder is not found
         print(f"Using profile {profiles_dirs}")
         print(top_level_dirs)
         #print(profiles_dir)
@@ -139,7 +143,7 @@ def _(Path, basic_cleanup, cache_dir, cs, duckdb, pl, warnings, workspace_dir):
         cc_metric = "Area"  # Feature to be used for cell count. Make sure this maps 1:1 with the segmentation masks.
         tp_name = "tp"
 
-        overwrite_str = "TABLE IF NOT EXISTS"
+        overwrite_str = "OR REPLACE TABLE"
 
         with duckdb.connect(db_file) as con:
             raw = con.sql(
@@ -216,9 +220,9 @@ def _(Path, get_features, profiles_dirs):
         features_per_compression[name] = {"clean" : _clean, "pivoted_pl": _pivoted_pl.to_pandas(), "ndropped": _ndropped}
 
 
-    
+
         _clean.to_parquet(Path(f"analysis/feature_similarity/output/{name.split(".")[0]}.parquet"))
-    return (features_per_compression,)
+    return features_per_compression, name
 
 
 @app.cell
@@ -240,13 +244,14 @@ def _(features_per_compression, np):
     for key in features_per_compression.keys():
         df_compression = features_per_compression[key]["pivoted_pl"].copy()
         print("original: ", key, df_compression.shape)
-        merged_df_with_non_compressed = uncompressed_df.merge(df_compression, on="site" )
+        merged_df_with_non_compressed = uncompressed_df.merge(df_compression, on="site" , how="inner", suffixes=("_x", "_y"))
 
         print("Merged: ", merged_df_with_non_compressed.shape)
-        merged_df_with_non_compressed_nan = merged_df_with_non_compressed.dropna(axis=1, thresh=1000)
+        merged_df_with_non_compressed_nan = merged_df_with_non_compressed.dropna(axis=1,  thresh=int((1.0-0.30)*merged_df_with_non_compressed.shape[0]))
+        print("After dropping: ", merged_df_with_non_compressed_nan.shape)
         merged_df_with_non_compressed_nan = merged_df_with_non_compressed_nan.dropna(axis=0)
 
-        print("Nan dropped: ", merged_df_with_non_compressed_nan.shape)
+        print("After nan dropped: ", merged_df_with_non_compressed_nan.shape)
 
         size_ = merged_df_with_non_compressed_nan.shape[0]
 
@@ -258,10 +263,7 @@ def _(features_per_compression, np):
             results.append([key, feature, corr[0,1], size_])
             count+=1
         print(count)
-
-
-
-    return df_compression, results
+    return (results,)
 
 
 @app.cell
@@ -295,14 +297,142 @@ def _(df):
 
 
 @app.cell
-def _(df, sns):
-    sns.boxplot(data=df , x = "key", y = "corr")#, log_scale=(False, True))
+def _(df):
+    df.groupby("key")["corr"].median()
     return
 
 
 @app.cell
-def _(df_compression):
-    df_compression
+def _(df, plt, sns):
+    # Make a violinplot 
+    plt.figure(figsize=(10, 6)) 
+
+    sns.boxenplot(data=df , x = "key", y = "corr", order=["jpegxl_lossy_mq.zarr",
+                                                        "jpegxl_lossy_effort_3.zarr",
+                                                        "jpegxl_lossy_hq.zarr",
+                                                        "zstd.zarr"]  )
+    plt.title("Distribution of Feature Correlations Across Compression Methods")
+    plt.xlabel("Compression strategy")
+    plt.ylabel("Feature Correlation Coefficient")
+    plt.tight_layout()
+    plt.show()
+    return
+
+
+@app.cell
+def _(df):
+    df[["compartment", "mode", "feature"]] = df.feature.str.split("/", expand=True)#[0].value_counts()
+    return
+
+
+@app.cell
+def _(df, plt, sns):
+    _perf = df[df.key == "jpegxl_lossy_effort_3.zarr"].groupby(["feature", "compartment"], as_index=False)["corr"].mean()
+    # Make a heatmap of correlations
+    _pivot_df = _perf.pivot(index="feature", columns="compartment", values="corr")
+    plt.figure(figsize=(30, 60))
+    sns.heatmap(_pivot_df, cmap="viridis", cbar_kws={'label': 'Correlation Coefficient'}, vmin=0, vmax=1)
+    plt.title("Feature Correlation Across Compression Methods")
+    plt.xlabel("Compartment")
+    plt.ylabel("Feature")
+    plt.tight_layout()
+    plt.show()
+    return
+
+
+@app.cell
+def _(df, plt, sns):
+    _perf = df.groupby(["feature", "key"], as_index=False)["corr"].median()
+    # Make a heatmap of correlations
+    _order=["jpegxl_lossy_mq.zarr",
+            "jpegxl_lossy_effort_3.zarr",
+            "jpegxl_lossy_hq.zarr",
+            "zstd.zarr"]
+
+    _pivot_df = _perf.pivot(index="feature", columns="key", values="corr").reindex(columns=_order)
+    plt.figure(figsize=(30, 60))
+    sns.heatmap(_pivot_df, cmap="viridis", cbar_kws={'label': 'Correlation Coefficient'}, vmin=0, vmax=1)
+    plt.title("Feature Correlation Across Compression Methods")
+    plt.xlabel("Compression strategy")
+    plt.ylabel("Feature")
+    plt.tight_layout()
+    plt.show()
+    return
+
+
+@app.cell
+def _(df, plt, sns):
+    _perf = df.groupby(["compartment", "key"], as_index=False)["corr"].median()
+    # Make a heatmap of correlations
+    _order=["jpegxl_lossy_mq.zarr",
+            "jpegxl_lossy_effort_3.zarr",
+            "jpegxl_lossy_hq.zarr",
+            "zstd.zarr"]
+
+    _pivot_df = _perf.pivot(index="compartment", columns="key", values="corr").reindex(columns=_order)
+    plt.figure(figsize=(5, 10))
+    sns.heatmap(_pivot_df, cmap="viridis", cbar_kws={'label': 'Correlation Coefficient'}, vmin=0, vmax=1, annot=True)
+    plt.title("Feature Correlation Across Compression Methods")
+    plt.xlabel("Compartment")
+    plt.ylabel("Feature")
+    plt.tight_layout()
+    plt.show()
+    return
+
+
+@app.cell
+def _(features_per_compression, name):
+    features_per_compression[name]["pivoted_pl"].describe()
+    return
+
+
+@app.cell
+def _(features_per_compression, name):
+    features_per_compression[name]["pivoted_pl"].isna().mean().sort_values(ascending=False).hist(bins=100)
+    return
+
+
+@app.cell
+def _(features_per_compression, name):
+    df_subset = features_per_compression[name]["pivoted_pl"]
+    return (df_subset,)
+
+
+@app.cell
+def _(df_subset):
+    threshold = int((1.0-0.30)*df_subset.shape[0])
+    print(threshold)
+    df_subset_drop_na = df_subset.dropna(axis='columns', thresh=threshold)
+    return (df_subset_drop_na,)
+
+
+@app.cell
+def _(df_subset_drop_na):
+    df_subset_drop_na.shape
+    return
+
+
+@app.cell
+def _(df_subset_drop_na):
+    df_subset_drop_na.isna().mean().sort_values(ascending=False).hist(bins=100)
+    return
+
+
+@app.cell
+def _(df_subset_drop_na):
+    df_subset_drop_na.shape
+    return
+
+
+@app.cell
+def _(df_subset_drop_na):
+    df_subset_drop_na.isna().sum(axis=1).value_counts()
+    return
+
+
+@app.cell
+def _(df_subset_drop_na):
+    df_subset_drop_na.isna().mean(axis=1).sort_values(ascending=False).hist(bins=100)
     return
 
 

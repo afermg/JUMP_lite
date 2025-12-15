@@ -53,11 +53,6 @@ def _(metadata_target2, plate_map):
 
 
 @app.cell
-def _():
-    return
-
-
-@app.cell
 def _(plate_map_annotated):
     plate_map_annotated
     return
@@ -65,8 +60,12 @@ def _(plate_map_annotated):
 
 @app.cell
 def _(pd):
+    # clean_zarr = pd.read_parquet("analysis/feature_similarity/output/jpegxl_lossy_effort_3.parquet")
+    # clean_zarr = clean_zarr.drop(columns="nr")
+
     clean_zarr = pd.read_parquet("analysis/feature_similarity/output/zstd.parquet")
     clean_zarr = clean_zarr.drop(columns="nr")
+
     return (clean_zarr,)
 
 
@@ -110,6 +109,27 @@ def _():
     # negative pairs are replicates of different treatments
     neg_diffby = ["Metadata_pert_iname", "Metadata_negcon"]
     return neg_diffby, neg_sameby, pos_diffby, pos_sameby
+
+
+@app.cell
+def _(df):
+    df[["Metadata_Source", 
+                  "Metadata_Batch",
+                  "Metadata_Plate",
+                  "Metadata_Site",
+                "Metadata_pert_iname", 
+                "Metadata_pert_type", 
+               "Metadata_target_list",
+               "Metadata_control_type",
+               "Metadata_Well"]].isna().mean()
+    return
+
+
+@app.cell
+def _(df):
+    df["Metadata_target_list"] = df["Metadata_target_list"].fillna("unknown")
+    df["Metadata_control_type"] = df["Metadata_control_type"].fillna("trt")
+    return
 
 
 @app.cell
@@ -203,10 +223,16 @@ def _(active_ratio_ap, activity_ap, np, plt):
 @app.cell
 def _(activity_ap, map, np, pos_sameby):
     activity_map = map.mean_average_precision(
-        activity_ap, pos_sameby, null_size=10000, threshold=0.05, seed=0
+        activity_ap, pos_sameby, null_size=10_000, threshold=0.05, seed=0
     )
     activity_map["-log10(p-value)"] = -activity_map["corrected_p_value"].apply(np.log10)
-    activity_map.head(10)
+    activity_map
+    return (activity_map,)
+
+
+@app.cell
+def _(activity_map):
+    activity_map.below_corrected_p.mean()
     return
 
 
