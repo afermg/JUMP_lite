@@ -35,6 +35,7 @@
           pkgs.stdenv.cc.cc
           pkgs.libGL
           pkgs.glib
+          pkgs.just
           # CUDA packages
           pkgs.cudaPackages.cudatoolkit
           pkgs.cudaPackages.cudnn
