@@ -1,0 +1,89 @@
+# Hydra Pipeline Configuration
+# This is the base configuration for Hydra sweeps
+
+input:
+  path: "data/features/zstd_raw_features.parquet"
+
+output:
+  path: "data/features/processed.parquet"
+  compression: "zstd"
+
+# Optional: override input file via command line
+input_override: null
+
+steps:
+  # Step 1: Clean NaN columns and rows
+  - name: clean_nans
+    enabled: true
+    params:
+      na_cutoff: 0.30
+
+  # Step 2: Merge with metadata
+  - name: merge_metadata
+    enabled: true
+    params:
+      metadata_dir: "analysis/feature_similarity/input"
+
+  # Step 3: Filter low variance and outlier features
+  - name: filter_features
+    enabled: true
+    params:
+      operations:
+        - name: "variance_threshold"
+          freq_cut: 0.05
+          unique_cut: 0.01
+          var_threshold: 0.01
+        - name: "drop_outliers"
+          outlier_cutoff: 50
+
+  # Step 4: Prune correlated features
+  - name: prune_correlated
+    enabled: true
+    params:
+      threshold: 0.9
+
+  # Step 5: Normalize - choose ONE method
+  - name: normalize_standard
+    enabled: true
+    params:
+      method: "standardize"
+      batch_col: "Metadata_Plate"
+      fit_on_controls: true
+      control_key: "negcon"
+      control_col: "Metadata_control_type"
+
+  - name: normalize_tvn
+    enabled: false
+    params:
+      batch_col: "Metadata_Plate"
+      alpha: 0.5
+      epsilon: 0.001
+
+  - name: normalize_spherize
+    enabled: false
+    params:
+      batch_col: "Metadata_Plate"
+      method: "ZCA-cor"
+      epsilon: 0.000001
+
+  # Step 6: Aggregate to well level (moved to before evaluation)
+  - name: aggregate_wells
+    enabled: true
+    params:
+      strata: ["Metadata_Plate", "Metadata_Well"]
+      method: "median"
+
+  # Step 7: Evaluate metrics
+  - name: evaluate_metrics
+    enabled: true
+    params:
+      output_dir: "data/features/results"
+      n_top_compounds: 20
+
+# Hydra settings
+hydra:
+  run:
+    dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  sweep:
+    dir: outputs/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    subdir: ${hydra.job.num}
