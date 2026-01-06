@@ -38,6 +38,12 @@ images/
 results/
 work/
 analysis/feature_similarity/output/
+.claude/
+.nix-cache/
+analysis/feature_similarity/input/
+data/
+src/norm/data/features/
+src/norm/outputs/
 
 # Jupyter Notebook
 .ipynb_checkpoints
