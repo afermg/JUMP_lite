@@ -12,6 +12,7 @@ corr_thresh: 0.9
 var_thresh: 0.01
 outlier_cut: 50
 norm_method: standardize
+use_tvn: false
 
 # Override the specific step parameter using the variables
 steps:
@@ -51,7 +52,12 @@ steps:
       control_col: "Metadata_control_type"
 
   - name: normalize_tvn
-    enabled: false
+    enabled: ${use_tvn}
+    params:
+      fit_on_controls: true 
+      epsilon: 0.000001
+      control_key: "negcon"
+      control_col: "Metadata_control_type"
 
   - name: normalize_spherize
     enabled: false

@@ -2,7 +2,9 @@
 # This is the base configuration for Hydra sweeps
 
 input:
-  path: "data/features/zstd_raw_features.parquet"
+  #path: "data/features/zstd_raw_features.parquet"
+  path: "/home/jfredinh/projects/JUMP_core/analysis/feature_similarity/output/zstd_raw_features.parquet"
+  # /home/jfredinh/projects/JUMP_core/analysis/feature_similarity/output/zstd_raw_features.parquet
 
 output:
   path: "data/features/processed.parquet"
@@ -53,11 +55,12 @@ steps:
       control_col: "Metadata_control_type"
 
   - name: normalize_tvn
-    enabled: false
+    enabled: true
     params:
       batch_col: "Metadata_Plate"
+      fit_on_controls: true 
       alpha: 0.5
-      epsilon: 0.001
+      epsilon: 0.00001
 
   - name: normalize_spherize
     enabled: false

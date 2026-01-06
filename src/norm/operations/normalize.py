@@ -123,7 +123,7 @@ class TVN:
 
         if len(X) < 2:
             raise ValueError("TVN requires at least 2 samples")
-
+        
         # Center data
         self.mean_ = X.mean(axis=0)
         X_centered = X - self.mean_
@@ -131,7 +131,10 @@ class TVN:
         # Check std
         stds = np.sort(np.std(X_centered, axis=0))[:5]
         print("Feature stddev before TVN:", stds)
-
+        print("Feature shape:", X_centered.shape)
+        print("Max and Min pre mean feature stddev:", np.max(X), np.min(X))
+        print("Max and Min feature stddev:", np.max(X_centered), np.min(X_centered))
+        
         # Compute covariance
         cov = np.cov(X_centered.T)
 

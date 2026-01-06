@@ -78,12 +78,75 @@ def calculate_phenotypic_activity(
     }
 
 
+def filter_targets_by_compound_count(
+    df_consensus,
+    min_compounds_per_target: int = 3,
+    exclude_unknown: bool = True,
+):
+    """
+    Filter targets based on minimum number of compounds.
+
+    Args:
+        df_consensus: DataFrame with Metadata_target column (list of targets per compound)
+        min_compounds_per_target: Minimum compounds required per target (default: 2)
+        exclude_unknown: Whether to exclude "unknown" targets (default: True)
+
+    Returns:
+        Filtered df_consensus DataFrame
+    """
+    # Filter out negative controls
+    df_consensus = df_consensus[df_consensus["Metadata_negcon"] == False].copy()
+
+    # Explode targets to count compounds per target
+    df_exploded = df_consensus.explode("Metadata_target")
+
+    # Filter out "unknown" targets if requested
+    if exclude_unknown:
+        df_exploded = df_exploded[df_exploded["Metadata_target"] != "unknown"].copy()
+
+    # Count unique compounds per target
+    target_counts = df_exploded.groupby("Metadata_target")["Metadata_pert_iname"].nunique()
+    target_counts = target_counts.sort_values(ascending=False)
+
+    # Report how many targets would remain at different thresholds
+    print(f"  Target filtering statistics:")
+    for threshold in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]:
+        n_targets = (target_counts >= threshold).sum()
+        print(f"    min_compounds={threshold}: {n_targets} targets")
+
+    # Apply the chosen threshold
+    valid_targets = target_counts[target_counts >= min_compounds_per_target].index.tolist()
+
+    print(f"  Using min_compounds_per_target={min_compounds_per_target}: {len(valid_targets)} targets")
+
+    # Filter df_consensus to only include compounds with valid targets
+    def has_valid_target(target_list):
+        """Check if any target in the list is valid."""
+        if not isinstance(target_list, list):
+            return False
+        return any(t in valid_targets for t in target_list)
+
+    df_consensus = df_consensus[
+        df_consensus["Metadata_target"].apply(has_valid_target)
+    ].copy()
+
+    # Update Metadata_target to only include valid targets
+    df_consensus["Metadata_target"] = df_consensus["Metadata_target"].apply(
+        lambda targets: [t for t in targets if t in valid_targets] if isinstance(targets, list) else []
+    )
+
+    print(f"  Compounds remaining after filtering: {len(df_consensus)}")
+
+    return df_consensus
+
+
 def calculate_phenotypic_consistency(
     df: pl.DataFrame,
     features: list[str],
     null_size: int = 10_000,
     p_threshold: float = 0.05,
     seed: int = 0,
+    min_compounds_per_target: int = 3,
 ) -> dict:
     """
     Calculate Phenotypic Consistency (target-level retrieval).
@@ -96,6 +159,7 @@ def calculate_phenotypic_consistency(
         null_size: Size of null distribution
         p_threshold: Significance threshold
         seed: Random seed
+        min_compounds_per_target: Minimum compounds required per target (default: 2)
 
     Returns:
         Dictionary with:
@@ -117,6 +181,11 @@ def calculate_phenotypic_consistency(
     )
     df_consensus["Metadata_target"] = df_consensus["Metadata_target_list"].str.split(
         "|"
+    )
+
+    # Filter targets by minimum compound count
+    df_consensus = filter_targets_by_compound_count(
+        df_consensus, min_compounds_per_target=min_compounds_per_target
     )
 
     metadata = df_consensus.filter(regex="^Metadata")

@@ -126,7 +126,7 @@ def normalize_standard(df, config):
         df, numeric_features,
         method=config.get("method", "standardize"),
         batch_col=config.get("batch_col", "Metadata_Plate"),
-        fit_on_controls=config.get("fit_on_controls", True),
+        fit_on_controls=config.get("fit_on_controls", False),
         control_key=config.get("control_key", "negcon"),
         control_col=config.get("control_col", "Metadata_control_type"),
     )
@@ -149,6 +149,7 @@ def normalize_tvn(df, config):
         df, numeric_features,
         method="tvn",
         batch_col=config.get("batch_col", "Metadata_Plate"),
+        fit_on_controls=config.get("fit_on_controls", False),
         tvn_alpha=config.get("alpha", 0.5),
         tvn_epsilon=config.get("epsilon", 1e-3),
     )
@@ -402,9 +403,10 @@ def generate_output_name(config):
         elif step_name == "merge_metadata":
             parts.append("meta")
 
-    # Join parts with underscores
+    # Join parts with double underscores (parameter separator)
+    # Single underscores used within parameter values
     if parts:
-        return "_".join(parts)
+        return "__".join(parts)
     else:
         return "default"
 
