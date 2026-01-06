@@ -37,6 +37,7 @@ images/
 *.zarr/
 results/
 work/
+analysis/feature_similarity/output/
 
 # Jupyter Notebook
 .ipynb_checkpoints
