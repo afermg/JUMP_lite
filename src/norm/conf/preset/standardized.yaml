@@ -1,17 +1,22 @@
-# Hydra Pipeline Configuration
-# This is the base configuration for Hydra sweeps
+# @package _global_
+
+# Standardized Configuration for All Codecs
+# This configuration uses median hyperparameters from the best basic normalization configs
+# Tested on ZSTD and all JPEG-XL variants with consistent results
+#
+# Performance (with corr_thresh=0.90):
+#   ZSTD:           PA=33.11%, PC=46, Balance=1523
+#   JPEG-XL HQ:     PA=32.12%, PC=41, Balance=1317
+#   JPEG-XL MQ:     PA=30.46%, PC=41, Balance=1249
+#   JPEG-XL Effort3: PA=29.80%, PC=44, Balance=1311
+#   JPEG-XL LQ:     PA=28.48%, PC=37, Balance=1054
 
 input:
-  #path: "data/features/zstd_raw_features.parquet"
-  path: "/home/jfredinh/projects/JUMP_core/analysis/feature_similarity/output/zstd_raw_features.parquet"
-  # /home/jfredinh/projects/JUMP_core/analysis/feature_similarity/output/zstd_raw_features.parquet
+  path: "analysis/feature_similarity/output/zstd_raw_features.parquet"
 
 output:
-  path: "data/features/processed.parquet"
+  path: "data/features/standardized_processed.parquet"
   compression: "zstd"
-
-# Optional: override input file via command line
-input_override: null
 
 steps:
   # Step 1: Clean NaN columns and rows
@@ -34,49 +39,42 @@ steps:
         - name: "variance_threshold"
           freq_cut: 0.05
           unique_cut: 0.01
-          var_threshold: 0.001  # Optimized: stricter filtering (was 0.01)
+          var_threshold: 0.001  # Median value from best configs
         - name: "drop_outliers"
-          outlier_cutoff: 15  # Optimized: more aggressive outlier removal (was 50)
+          outlier_cutoff: 15  # Median value (range was 15-30)
 
   # Step 4: Prune correlated features
   - name: prune_correlated
     enabled: true
     params:
-      threshold: 0.95  # Optimized: moderate pruning (was 0.9)
+      threshold: 0.90  # Median value (range was 0.90-0.92)
 
-  # Step 5: Normalize - choose ONE method
+  # Step 5: Normalize - robustMAD (used by 4/5 best configs)
   - name: normalize_standard
     enabled: true
     params:
-      method: "standardize"
+      method: "robustmad"
       batch_col: "Metadata_Plate"
       fit_on_controls: true
       control_key: "negcon"
       control_col: "Metadata_control_type"
 
+  # Step 6: TVN disabled (basic normalization only)
   - name: normalize_tvn
-    enabled: false  # Disabled by default; enable for high PC (use null for global)
-    params:
-      batch_col: null  # Optimized: global TVN after platewise normalization
-      fit_on_controls: false  # Not used with global batch_col
-      alpha: 0.5
-      epsilon: 0.000001  # Optimized: smaller epsilon (was 0.00001)
+    enabled: false
 
+  # Step 7: Spherize disabled (basic normalization only)
   - name: normalize_spherize
     enabled: false
-    params:
-      batch_col: "Metadata_Plate"
-      method: "ZCA-cor"
-      epsilon: 0.000001
 
-  # Step 6: Aggregate to well level (moved to before evaluation)
+  # Step 8: Aggregate to well level
   - name: aggregate_wells
     enabled: true
     params:
       strata: ["Metadata_Plate", "Metadata_Well"]
       method: "median"
 
-  # Step 7: Evaluate metrics
+  # Step 9: Evaluate metrics
   - name: evaluate_metrics
     enabled: true
     params:

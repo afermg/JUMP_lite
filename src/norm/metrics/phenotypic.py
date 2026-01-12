@@ -159,7 +159,7 @@ def calculate_phenotypic_consistency(
         null_size: Size of null distribution
         p_threshold: Significance threshold
         seed: Random seed
-        min_compounds_per_target: Minimum compounds required per target (default: 2)
+        min_compounds_per_target: Minimum compounds required per target (default: 3)
 
     Returns:
         Dictionary with:

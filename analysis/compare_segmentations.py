@@ -172,9 +172,100 @@ def process_file_pair(args):
     return compare_masks(gt_path, pred_path, method)
 
 
-def visualize_worst_sample(df: pd.DataFrame, root: Path, gt_method: str, methods: List[str], output_prefix: str):
+def load_original_image(root: Path, method: str, source_id: str, mask_file: str, channels: List[int] = [0, 1, 2]) -> np.ndarray:
     """
-    Find the sample with the lowest mean IoU and create a visualization comparing all methods.
+    Load the original image corresponding to a mask file.
+    Returns a 3-channel RGB representation using specified channels.
+    """
+    # Try to find the original image in the load step
+    # Mask files are typically in: method/steps/source_id/segment_cell/mask.npz
+    # Original images might be in: method/steps/source_id/load/*.npy or similar
+
+    # Get the base name without extension
+    base_name = Path(mask_file).stem
+
+    # Search in common locations
+    possible_dirs = [
+        root / method / "steps" / source_id / "load",
+        root / method / "steps" / source_id,
+        root / method / "steps" / source_id / "images"
+    ]
+
+    for search_dir in possible_dirs:
+        if not search_dir.exists():
+            continue
+
+        # Try various extensions
+        for ext in ['.npy', '.npz', '.tif', '.tiff', '.png']:
+            img_path = search_dir / f"{base_name}{ext}"
+            if img_path.exists():
+                try:
+                    if ext == '.npy':
+                        img = np.load(img_path)
+                    elif ext == '.npz':
+                        data = np.load(img_path)
+                        # Try common keys
+                        for key in ['image', 'data', 'arr_0']:
+                            if key in data:
+                                img = data[key]
+                                break
+                        else:
+                            img = data[list(data.keys())[0]]
+                    else:
+                        # Use matplotlib for image formats
+                        img = plt.imread(img_path)
+
+                    # Handle different image shapes
+                    if img.ndim == 2:
+                        # Grayscale - replicate to 3 channels
+                        return np.stack([img, img, img], axis=-1)
+                    elif img.ndim == 3:
+                        # Multi-channel image
+                        if img.shape[-1] <= 3:
+                            # Already RGB or fewer channels
+                            if img.shape[-1] == 3:
+                                return img
+                            else:
+                                # Pad to 3 channels
+                                padded = np.zeros((*img.shape[:2], 3))
+                                padded[..., :img.shape[-1]] = img
+                                return padded
+                        else:
+                            # More than 3 channels - select specified channels
+                            selected = np.stack([img[..., ch] if ch < img.shape[-1] else np.zeros(img.shape[:2])
+                                               for ch in channels], axis=-1)
+                            # Normalize to 0-1 range
+                            for i in range(3):
+                                ch_data = selected[..., i]
+                                ch_min, ch_max = ch_data.min(), ch_data.max()
+                                if ch_max > ch_min:
+                                    selected[..., i] = (ch_data - ch_min) / (ch_max - ch_min)
+                            return selected
+                    elif img.ndim == 4:
+                        # Batch dimension - take first image
+                        img = img[0]
+                        if img.shape[-1] >= 3:
+                            selected = np.stack([img[..., ch] if ch < img.shape[-1] else np.zeros(img.shape[:2])
+                                               for ch in channels], axis=-1)
+                            for i in range(3):
+                                ch_data = selected[..., i]
+                                ch_min, ch_max = ch_data.min(), ch_data.max()
+                                if ch_max > ch_min:
+                                    selected[..., i] = (ch_data - ch_min) / (ch_max - ch_min)
+                            return selected
+                except Exception as e:
+                    warnings.warn(f"Failed to load image from {img_path}: {e}")
+                    continue
+
+    # If no image found, return a placeholder
+    warnings.warn(f"Could not find original image for {mask_file} in {source_id}")
+    return None
+
+
+def visualize_samples(df: pd.DataFrame, root: Path, gt_method: str, methods: List[str], output_prefix: str):
+    """
+    Find the best, median, and worst samples and create a visualization comparing all methods.
+    Each row shows: original image (3 channels as RGB), ground truth, and method comparisons.
     """
     # Group by file and source_id, compute mean IoU across all methods
     file_metrics = df.groupby(['source_id', 'file'])['iou'].agg(['mean', 'std']).reset_index()
@@ -184,74 +275,102 @@ def visualize_worst_sample(df: pd.DataFrame, root: Path, gt_method: str, methods
         print("No files to visualize")
         return
 
-    # Get the worst sample
-    worst = file_metrics.iloc[0]
-    worst_source_id = worst['source_id']
-    worst_file = worst['file']
-    worst_mean_iou = worst['mean']
+    # Get best, median, and worst samples
+    n_samples = len(file_metrics)
+    worst_idx = 0
+    median_idx = n_samples // 2
+    best_idx = n_samples - 1
+
+    samples = {
+        'worst': file_metrics.iloc[worst_idx],
+        'median': file_metrics.iloc[median_idx],
+        'best': file_metrics.iloc[best_idx]
+    }
 
     print(f"\n{'='*80}")
-    print(f"Worst performing sample:")
-    print(f"  Source ID: {worst_source_id}")
-    print(f"  File: {worst_file}")
-    print(f"  Mean IoU: {worst_mean_iou:.4f}")
+    print("Sample statistics:")
+    for sample_name, sample_data in samples.items():
+        print(f"  {sample_name.capitalize()}: Source={sample_data['source_id']}, "
+              f"File={sample_data['file']}, Mean IoU={sample_data['mean']:.4f}")
     print(f"{'='*80}\n")
 
-    # Load ground truth mask
-    gt_path = root / gt_method / "steps" / worst_source_id / "segment_cell" / worst_file
-    if not gt_path.exists():
-        print(f"Ground truth file not found: {gt_path}")
-        return
+    # Create figure with 3 rows (worst, median, best) and columns for: original, GT, methods
+    n_methods = len(methods)
+    n_cols = 2 + n_methods  # original + GT + methods
+    fig, axes = plt.subplots(3, n_cols, figsize=(4 * n_cols, 12))
 
-    gt_mask = load_mask(gt_path)
+    # Process each sample type
+    for row_idx, (sample_name, sample_data) in enumerate([('worst', samples['worst']),
+                                                           ('median', samples['median']),
+                                                           ('best', samples['best'])]):
+        source_id = sample_data['source_id']
+        file_name = sample_data['file']
+        mean_iou = sample_data['mean']
 
-    # Load method masks and their IoU scores
-    method_masks = {}
-    method_ious = {}
-    for method in methods:
-        method_path = root / method / "steps" / worst_source_id / "segment_cell" / worst_file
-        if method_path.exists():
-            method_masks[method] = load_mask(method_path)
-            # Get the IoU for this specific file
-            iou_row = df[(df['method'] == method) &
-                        (df['source_id'] == worst_source_id) &
-                        (df['file'] == worst_file)]
-            if len(iou_row) > 0:
-                method_ious[method] = iou_row['iou'].values[0]
+        # Load ground truth mask
+        gt_path = root / gt_method / "steps" / source_id / "segment_cell" / file_name
+        if not gt_path.exists():
+            print(f"Ground truth file not found: {gt_path}")
+            continue
+
+        gt_mask = load_mask(gt_path)
+
+        # Load original image
+        original_img = load_original_image(root, gt_method, source_id, file_name)
+
+        # Column 0: Original image
+        if original_img is not None:
+            axes[row_idx, 0].imshow(original_img)
+            axes[row_idx, 0].set_title('Original Image', fontsize=10, fontweight='bold')
+        else:
+            axes[row_idx, 0].text(0.5, 0.5, 'Image not found', ha='center', va='center')
+            axes[row_idx, 0].set_title('Original Image', fontsize=10, fontweight='bold')
+        axes[row_idx, 0].axis('off')
+
+        # Column 1: Ground truth
+        axes[row_idx, 1].imshow(gt_mask, cmap='gray')
+        axes[row_idx, 1].set_title(f'Ground Truth\n{gt_method}', fontsize=10, fontweight='bold')
+        axes[row_idx, 1].axis('off')
+
+        # Remaining columns: Method comparisons
+        for method_idx, method in enumerate(methods):
+            col_idx = 2 + method_idx
+            method_path = root / method / "steps" / source_id / "segment_cell" / file_name
+
+            if method_path.exists():
+                method_mask = load_mask(method_path)
+
+                # Get IoU for this specific file
+                iou_row = df[(df['method'] == method) &
+                           (df['source_id'] == source_id) &
+                           (df['file'] == file_name)]
+                iou_score = iou_row['iou'].values[0] if len(iou_row) > 0 else np.nan
+
+                # Create RGB overlay showing agreement/disagreement
+                overlay = np.zeros((*gt_mask.shape, 3))
+
+                # Green: True positives (both GT and method agree on foreground)
+                overlay[gt_mask & method_mask] = [0, 1, 0]
+
+                # Red: False positives (method says foreground, GT says background)
+                overlay[~gt_mask & method_mask] = [1, 0, 0]
+
+                # Blue: False negatives (GT says foreground, method says background)
+                overlay[gt_mask & ~method_mask] = [0, 0, 1]
+
+                axes[row_idx, col_idx].imshow(overlay)
+                method_display = method.replace('.zarr', '').replace('jpegxl_lossy_', '')
+                axes[row_idx, col_idx].set_title(f'{method_display}\nIoU: {iou_score:.4f}', fontsize=10)
+                axes[row_idx, col_idx].axis('off')
             else:
-                method_ious[method] = np.nan
+                axes[row_idx, col_idx].text(0.5, 0.5, 'Not found', ha='center', va='center')
+                axes[row_idx, col_idx].axis('off')
 
-    # Create figure
-    n_methods = len(method_masks)
-    fig, axes = plt.subplots(1, n_methods + 1, figsize=(4 * (n_methods + 1), 4))
-
-    if n_methods == 0:
-        axes = [axes]
-
-    # Plot ground truth
-    axes[0].imshow(gt_mask, cmap='gray')
-    axes[0].set_title(f'Ground Truth\n{gt_method}', fontsize=10, fontweight='bold')
-    axes[0].axis('off')
-
-    # Plot method masks with overlay
-    for idx, (method, mask) in enumerate(method_masks.items(), start=1):
-        # Create RGB overlay showing agreement/disagreement
-        overlay = np.zeros((*gt_mask.shape, 3))
-
-        # Green: True positives (both GT and method agree on foreground)
-        overlay[gt_mask & mask] = [0, 1, 0]
-
-        # Red: False positives (method says foreground, GT says background)
-        overlay[~gt_mask & mask] = [1, 0, 0]
-
-        # Blue: False negatives (GT says foreground, method says background)
-        overlay[gt_mask & ~mask] = [0, 0, 1]
-
-        axes[idx].imshow(overlay)
-        iou_score = method_ious.get(method, np.nan)
-        method_name = method.replace('.zarr', '').replace('jpegxl_lossy_', '')
-        axes[idx].set_title(f'{method_name}\nIoU: {iou_score:.4f}', fontsize=10)
-        axes[idx].axis('off')
+        # Add row label
+        axes[row_idx, 0].text(-0.1, 0.5, f'{sample_name.upper()}\nMean IoU: {mean_iou:.4f}',
+                              transform=axes[row_idx, 0].transAxes,
+                              fontsize=12, fontweight='bold', va='center', ha='right',
+                              rotation=90)
 
     # Add legend
     legend_elements = [
@@ -260,16 +379,16 @@ def visualize_worst_sample(df: pd.DataFrame, root: Path, gt_method: str, methods
         mpatches.Patch(color='blue', label='False Negative')
     ]
     fig.legend(handles=legend_elements, loc='lower center', ncol=3,
-               bbox_to_anchor=(0.5, -0.05), fontsize=10)
+               bbox_to_anchor=(0.5, -0.02), fontsize=11)
 
-    plt.suptitle(f'Worst Performing Sample (Mean IoU: {worst_mean_iou:.4f})\n{worst_file}',
-                 fontsize=12, fontweight='bold', y=1.02)
+    plt.suptitle('Segmentation Comparison: Best, Median, and Worst Samples',
+                 fontsize=14, fontweight='bold', y=0.995)
     plt.tight_layout()
 
     # Save figure
-    output_path = f"{output_prefix}_worst_sample.png"
+    output_path = f"{output_prefix}_samples.png"
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
-    print(f"Worst sample visualization saved to: {output_path}")
+    print(f"Sample visualization saved to: {output_path}")
     plt.close()
 
 
@@ -309,7 +428,7 @@ def main():
             continue
 
         # Prepare arguments for parallel processing
-        task_args = [(gt, pred, method) for gt, pred in matches]
+        task_args = [(gt, pred, method) for gt, pred in matches][:100]
 
         # Process in parallel
         with ProcessPoolExecutor(max_workers=args.workers) as executor:
@@ -387,8 +506,8 @@ def main():
 
     print("="*80)
 
-    # Visualize the worst performing sample
-    visualize_worst_sample(df, root, args.ground_truth, args.methods, args.output)
+    # Visualize the best, median, and worst performing samples
+    visualize_samples(df, root, args.ground_truth, args.methods, args.output)
 
 
 if __name__ == "__main__":
