@@ -88,7 +88,7 @@ def create_correlation_plot(correlations, output_path):
     ax.set_xlim(min_size * 0.7, max_size * 1.3)
 
     # Set y-axis to start from reasonable minimum (0.8 to 1.0)
-    ax.set_ylim(0.80, 1.02)
+    ax.set_ylim(0.0, 1.02)
 
     # Add title
     plt.title('Feature Correlation vs File Size for Different Codecs',

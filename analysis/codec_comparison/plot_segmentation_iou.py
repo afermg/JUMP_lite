@@ -106,7 +106,7 @@ def create_iou_plot(iou_values, output_path):
     ax.set_xlim(min_size * 0.7, max_size * 1.3)
 
     # Set y-axis range (IoU typically 0.9 to 1.0 for good segmentation)
-    ax.set_ylim(0.90, 1.02)
+    ax.set_ylim(0.0, 1.02)
 
     # Add title
     plt.title('Segmentation IoU vs File Size for Different Codecs',
