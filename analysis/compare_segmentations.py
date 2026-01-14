@@ -132,7 +132,7 @@ def compare_masks(gt_path: Path, pred_path: Path, method: str) -> Dict:
         return None
 
 
-def find_mask_files(root: Path, method: str) -> List[Path]:
+def find_mask_files(root: Path, method: str, segment_step: str = "segment_cell") -> List[Path]:
     """Find all .npz mask files for a given method."""
     method_path = root / method / "steps"
     if not method_path.exists():
@@ -141,7 +141,7 @@ def find_mask_files(root: Path, method: str) -> List[Path]:
     mask_files = []
     for source_dir in method_path.iterdir():
         if source_dir.is_dir():
-            segment_dir = source_dir / "segment_cell"
+            segment_dir = source_dir / segment_step
             if segment_dir.exists():
                 mask_files.extend(segment_dir.glob("*.npz"))
 
@@ -177,10 +177,37 @@ def load_original_image(root: Path, method: str, source_id: str, mask_file: str,
     Load the original image corresponding to a mask file.
     Returns a 3-channel RGB representation using specified channels.
     """
-    # Try to find the original image in the load step
-    # Mask files are typically in: method/steps/source_id/segment_cell/mask.npz
-    # Original images might be in: method/steps/source_id/load/*.npy or similar
+    # Try to load from the source Zarr archive first
+    zarr_source_path = Path("/work/datasets/jump_target2_4plate/zstd.zarr") / source_id
 
+    if zarr_source_path.exists():
+        try:
+            import zarr
+            # Load the Zarr array
+            store = zarr.open(str(zarr_source_path), mode='r')
+            img = store[:]
+
+            # img shape is [channels, height, width] for Zarr v3
+            if img.ndim == 3 and img.shape[0] < img.shape[1]:
+                # Select specified channels and create RGB (as float array)
+                selected = np.zeros((*img.shape[1:], 3), dtype=np.float64)
+
+                for i, ch in enumerate(channels):
+                    if ch < img.shape[0]:
+                        ch_data = img[ch].astype(np.float64)
+                        # Use 1st and 99th percentiles for better contrast
+                        ch_min = np.percentile(ch_data, 1)
+                        ch_max = np.percentile(ch_data, 99)
+                        if ch_max > ch_min:
+                            # Clip values to percentile range then normalize
+                            ch_clipped = np.clip(ch_data, ch_min, ch_max)
+                            selected[..., i] = (ch_clipped - ch_min) / (ch_max - ch_min)
+
+                return selected
+        except Exception as e:
+            warnings.warn(f"Failed to load Zarr image from {zarr_source_path}: {e}")
+
+    # Fallback: Try to find the original image in pipeline output directories
     # Get the base name without extension
     base_name = Path(mask_file).stem
 
@@ -262,7 +289,7 @@ def load_original_image(root: Path, method: str, source_id: str, mask_file: str,
     return None
 
 
-def visualize_samples(df: pd.DataFrame, root: Path, gt_method: str, methods: List[str], output_prefix: str):
+def visualize_samples(df: pd.DataFrame, root: Path, gt_method: str, methods: List[str], output_prefix: str, segment_step: str = "segment_cell"):
     """
     Find the best, median, and worst samples and create a visualization comparing all methods.
     Each row shows: original image (3 channels as RGB), ground truth, and method comparisons.
@@ -308,7 +335,7 @@ def visualize_samples(df: pd.DataFrame, root: Path, gt_method: str, methods: Lis
         mean_iou = sample_data['mean']
 
         # Load ground truth mask
-        gt_path = root / gt_method / "steps" / source_id / "segment_cell" / file_name
+        gt_path = root / gt_method / "steps" / source_id / segment_step / file_name
         if not gt_path.exists():
             print(f"Ground truth file not found: {gt_path}")
             continue
@@ -335,7 +362,7 @@ def visualize_samples(df: pd.DataFrame, root: Path, gt_method: str, methods: Lis
         # Remaining columns: Method comparisons
         for method_idx, method in enumerate(methods):
             col_idx = 2 + method_idx
-            method_path = root / method / "steps" / source_id / "segment_cell" / file_name
+            method_path = root / method / "steps" / source_id / segment_step / file_name
 
             if method_path.exists():
                 method_mask = load_mask(method_path)
@@ -399,6 +426,7 @@ def main():
     parser.add_argument("--methods", nargs='+', required=True, help="List of methods to compare against ground truth")
     parser.add_argument("--output", type=str, default="segmentation_comparison", help="Output file prefix")
     parser.add_argument("--workers", type=int, default=4, help="Number of parallel workers")
+    parser.add_argument("--segment-step", type=str, default="segment_cell", help="Segmentation step name (e.g., segment_cell, segment_nuclei)")
 
     args = parser.parse_args()
 
@@ -407,7 +435,8 @@ def main():
         raise ValueError(f"Root directory does not exist: {root}")
 
     print(f"Loading ground truth from: {args.ground_truth}")
-    gt_files = find_mask_files(root, args.ground_truth)
+    print(f"Segmentation step: {args.segment_step}")
+    gt_files = find_mask_files(root, args.ground_truth, args.segment_step)
     print(f"Found {len(gt_files)} ground truth mask files")
 
     if len(gt_files) == 0:
@@ -417,7 +446,7 @@ def main():
 
     for method in args.methods:
         print(f"\nProcessing method: {method}")
-        method_files = find_mask_files(root, method)
+        method_files = find_mask_files(root, method, args.segment_step)
         print(f"Found {len(method_files)} mask files for {method}")
 
         matches = match_files(gt_files, method_files)
@@ -428,7 +457,7 @@ def main():
             continue
 
         # Prepare arguments for parallel processing
-        task_args = [(gt, pred, method) for gt, pred in matches][:100]
+        task_args = [(gt, pred, method) for gt, pred in matches][:]
 
         # Process in parallel
         with ProcessPoolExecutor(max_workers=args.workers) as executor:
@@ -507,7 +536,7 @@ def main():
     print("="*80)
 
     # Visualize the best, median, and worst performing samples
-    visualize_samples(df, root, args.ground_truth, args.methods, args.output)
+    visualize_samples(df, root, args.ground_truth, args.methods, args.output, args.segment_step)
 
 
 if __name__ == "__main__":
