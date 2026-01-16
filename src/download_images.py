@@ -1,11 +1,13 @@
 from functools import partial
 from pathlib import Path
 from time import perf_counter
+import os
 
 from itertools import product, starmap
 
 # %% 
 
+# os.environ["POLARS_MAX_THREADS"] = "1"
 import duckdb
 import polars as pl
 from broad_babel.data import get_table
@@ -14,6 +16,25 @@ from jump_portrait.fetch import get_item_location_metadata, get_jump_image_batch
 from PIL import Image
 from pooch import retrieve
 from tqdm import tqdm
+
+
+# arguments force_rebuild to rebuild the metadata file
+import argparse
+parser = argparse.ArgumentParser()
+parser.add_argument("--force-rebuild", action="store_true", help="Force rebuild of metadata file")
+args = parser.parse_args()
+force_rebuild = args.force_rebuild
+
+
+# sample = 1000  # No. of CRISPR, ORF and Compounds to test
+seed = 1
+
+pull_plates = False
+plates_to_pull = ["JCPQC016", "BR00121438", "ACPJUM012", "110000293081"]
+
+write_progress_to_file = True  # Set to True to write tqdm progress to file instead of terminal
+
+
 
 
 def get_whole_plate_location_info(
@@ -59,14 +80,6 @@ out_path.mkdir(parents=True, exist_ok=True)
 meta_file = out_path.parent / "metadata.parquet"
 progress_file = out_path.parent / "progress.txt"
 
-sample = 10  # No. of CRISPR and ORF to test
-seed = 1
-
-pull_plates = True
-plates_to_pull = ["JCPQC016", "BR00121438", "ACPJUM012", "110000293081"]
-
-
-
 # Pull JCP ids
 crispr = (
     pl.scan_csv(
@@ -78,7 +91,8 @@ crispr = (
     .select(pl.col("Metadata_JCP2022"))
     .collect()
     .to_series()
-    .sample(sample, seed=seed)
+    .unique()
+    #.sample(sample, seed=seed)
 )
 orf = (
     pl.scan_csv(
@@ -90,31 +104,42 @@ orf = (
     .select(pl.col("Metadata_JCP2022"))
     .collect()
     .to_series()
-    # .sample(sample, seed=seed)
+    .unique()
+    #.sample(sample, seed=seed)
 )
+
+# Previous file location
+# "../metadata/repurposed_compounds.tsv", separator="\t",
+# With larger subset of compounds
+# /work/datasets/jump_core/annotations/inchikey_to_jcp2022_mapping_combined.csv, separator=","
+
 
 compound_selection = (
     pl.scan_csv(
-        "../metadata/repurposed_compounds.tsv",
-        separator="\t",
+        "/work/datasets/jump_core/annotations/inchikey_to_jcp2022_mapping_combined.csv",
+        separator=",",
     )
     .select(pl.col("Metadata_JCP2022"))
     .collect()
     .to_series()
     .unique()
+    #.sample(sample, seed=seed)
 )
 
-import pdb 
-pdb.set_trace()
+
+# Drop any negative controls if present in list
+controls = ["JCP2022_999999","JCP2022_033924","JCP2022_037716","JCP2022_025848","JCP2022_046054","JCP2022_035095","JCP2022_064022","JCP2022_050797","JCP2022_012818","JCP2022_085227","JCP2022_800001","JCP2022_800002","JCP2022_805264","JCP2022_915128"]
+compound_selection = compound_selection.filter(~compound_selection.is_in(controls))
+
 
 # %%
 
 channels = ["DNA", "AGP", "Mito", "RNA", "ER"]
-sites = [str(i) for i in range(1, 7)]  # 1->6
+sites = [str(i) for i in range(1, 5)]  # 1->4
 correction = "Orig"
 
 # Do not pull the mapper unless explicitly told to
-if not (meta_file).exists():
+if not (meta_file).exists() or force_rebuild:
     # %% Download metadata tables
     print("Downloading gene metadata")
     gene_list = (*crispr, *orf)
@@ -128,8 +153,12 @@ if not (meta_file).exists():
     compound_selection = get_metadata_batch(compound_selection)
 
     # Add whole plates if necessary
-    whole_plate = get_whole_plate_location_info("110000293081")
-    compound_rows = pl.concat((whole_plate, compound_selection)).unique()
+    if pull_plates:
+        whole_plate = get_whole_plate_location_info("110000293081")
+        compound_rows = pl.concat((whole_plate, compound_selection)).unique()
+    else:
+        compound_rows = compound_selection
+        
     print(
         f"Done downloading compound metadata in {int(perf_counter() - t_start)} seconds"
     )
@@ -141,7 +170,6 @@ if not (meta_file).exists():
 
 else:
     metadata_all = pl.read_parquet(meta_file)
-
 
 
 if pull_plates:
@@ -187,10 +215,10 @@ def check_all_exist(meta: pl.DataFrame, channel, site, correction) -> bool:
 
 
 def download_and_save_image(meta: pl.DataFrame, channel, site, correction):
+    meta_nojcp = meta.select(pl.exclude("Metadata_JCP2022"))
+    if check_all_exist(meta_nojcp, channel, site, correction):
+        return True
     try:
-        meta_nojcp = meta.select(pl.exclude("Metadata_JCP2022"))
-        if check_all_exist(meta_nojcp, channel, site, correction):
-            return True
         addresses, images = get_jump_image_batch(
             meta_nojcp, channel=channel, site=site, correction=correction
         )
@@ -202,25 +230,35 @@ def download_and_save_image(meta: pl.DataFrame, channel, site, correction):
         print(f"Error processing {meta}: {e}")
         return (meta, channel, site, correction)
 
-for x in tqdm(all_rows[:], total=len(all_rows)):
+# for x in tqdm(all_rows[:], total=len(all_rows)):
 
-    download_and_save_image(x, channel=channels, site=sites, correction=correction)
+#     download_and_save_image(x, channel=channels, site=sites, correction=correction)
 
-        
+# os.environ["POLARS_MAX_THREADS"] = "1"
 
+print(f"Preparing to download {len(all_rows)} wells with {len(channels)} channels and {len(sites)} sites each. Total images: {len(all_rows)*len(channels)*len(sites)}")
 
-
-fh = open(progress_file, "w")
-results = Parallel(n_jobs=32)(
-    delayed(
-        partial(
-            download_and_save_image, channel=channels, site=sites, correction=correction
-        )
-    )(x)
-    for x in tqdm(all_rows[:], total=len(all_rows), file=fh)
-)
-fh.close()
-progress_file.unlink()
+if write_progress_to_file:
+    fh = open(progress_file, "w")
+    results = Parallel(n_jobs=32)(
+        delayed(
+            partial(
+                download_and_save_image, channel=channels, site=sites, correction=correction
+            )
+        )(x)
+        for x in tqdm(all_rows[:], total=len(all_rows), file=fh)
+    )
+    fh.close()
+    progress_file.unlink()
+else:
+    results = Parallel(n_jobs=32)(
+        delayed(
+            partial(
+                download_and_save_image, channel=channels, site=sites, correction=correction
+            )
+        )(x)
+        for x in tqdm(all_rows[:], total=len(all_rows))
+    )
 
 # print the results
 n_success = sum(1 for r in results if r is True)

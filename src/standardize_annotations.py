@@ -23,7 +23,7 @@ def load_inchikey_to_jumpid_mapping(db_path: str = "/work/datasets/jump_core/ann
         WHERE Metadata_InChIKey IS NOT NULL
     """).df()
     con.close()
-    return df
+    return df.dropna()
 
 
 def translate_inchikey_to_jumpid(
@@ -41,27 +41,36 @@ def translate_inchikey_to_jumpid(
                                 (first part before hyphen). If False, match on full InChIKey.
 
     Returns:
-        DataFrame with columns: Metadata_InChIKey, Metadata_JCP2022
-        If match_connectivity_only=True, may return multiple JCP2022 IDs per input InChIKey
+        DataFrame with columns: Metadata_InChIKey, InChIKey_Connectivity, Metadata_JCP2022
+        If match_connectivity_only=True, deduplicates based on connectivity layer before mapping
     """
     mapping = load_inchikey_to_jumpid_mapping(db_path)
     input_df = pd.DataFrame({"Metadata_InChIKey": inchikeys})
 
+    # Always extract connectivity layer
+    input_df["InChIKey_Connectivity"] = input_df["Metadata_InChIKey"].str.split("-").str[0]
+
     if match_connectivity_only:
-        # Extract connectivity layer (first part before hyphen)
-        input_df["InChIKey_Connectivity"] = input_df["Metadata_InChIKey"].str.split("-").str[0]
+        # Remove duplicates based on connectivity layer before merging
+        input_df = input_df.drop_duplicates(subset="InChIKey_Connectivity")
+
+        # Extract connectivity layer from mapping
         mapping["InChIKey_Connectivity"] = mapping["Metadata_InChIKey"].str.split("-").str[0]
 
-        # Merge on connectivity layer
+        # Keep all unique JCP2022 IDs per connectivity (one connectivity may map to multiple JCP IDs)
+        mapping = mapping[["InChIKey_Connectivity", "Metadata_JCP2022"]].drop_duplicates()
+
+        # Merge on connectivity layer - will create multiple rows if multiple JCP2022 IDs exist
         result = input_df.merge(
-            mapping[["InChIKey_Connectivity", "Metadata_JCP2022"]],
+            mapping,
             on="InChIKey_Connectivity",
             how="left"
         )
-        result = result[["Metadata_InChIKey", "Metadata_JCP2022"]]
+        result = result[["Metadata_InChIKey", "InChIKey_Connectivity", "Metadata_JCP2022"]]
     else:
         # Merge on full InChIKey
         result = input_df.merge(mapping, on="Metadata_InChIKey", how="left")
+        result = result[["Metadata_InChIKey", "InChIKey_Connectivity", "Metadata_JCP2022"]]
 
     return result
 
@@ -136,5 +145,15 @@ if __name__ == "__main__":
         combined_mapping = pd.concat([result_cc, result_cg]).drop_duplicates().reset_index(drop=True)
         print(f"Total unique InChIKeys mapped to JCP2022 IDs (combined): {len(combined_mapping)}")
         
+        # Dropping inchikeys that have the same connectivity layer
+        combined_mapping = combined_mapping.drop_duplicates(subset="Metadata_JCP2022").reset_index(drop=True)
+        print(f"Total unique Metadata_JCP2022: {len(combined_mapping)}")
+        
+        
+        # Dropping inchikeys that have the same connectivity layer
+        # combined_mapping = combined_mapping.drop_duplicates(subset="InChIKey_Connectivity").reset_index(drop=True)
+        # print(f"Total unique InChIKeys mapped to JCP2022 IDs (combined after dropping connectivity duplicates): {len(combined_mapping)}")
+        
         # Save combined mapping to CSV
         combined_mapping.to_csv("/work/datasets/jump_core/annotations/inchikey_to_jcp2022_mapping_combined.csv", index=False)
+        print("Combined mapping saved.")
