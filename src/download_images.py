@@ -104,6 +104,9 @@ compound_selection = (
     .unique()
 )
 
+import pdb 
+pdb.set_trace()
+
 # %%
 
 channels = ["DNA", "AGP", "Mito", "RNA", "ER"]

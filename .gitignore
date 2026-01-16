@@ -44,6 +44,8 @@ analysis/feature_similarity/input/
 data/
 src/norm/data/features/
 src/norm/outputs/
+analysis/codec_comparison/output
+outputs/
 
 # Jupyter Notebook
 .ipynb_checkpoints
@@ -55,6 +57,7 @@ src/norm/outputs/
 *.swp
 *.swo
 *~
+JUMP_core.code-workspace
 
 # OS
 .DS_Store
