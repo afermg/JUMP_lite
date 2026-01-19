@@ -215,10 +215,10 @@ def check_all_exist(meta: pl.DataFrame, channel, site, correction) -> bool:
 
 
 def download_and_save_image(meta: pl.DataFrame, channel, site, correction):
-    meta_nojcp = meta.select(pl.exclude("Metadata_JCP2022"))
-    if check_all_exist(meta_nojcp, channel, site, correction):
-        return True
     try:
+        meta_nojcp = meta.select(pl.exclude("Metadata_JCP2022"))
+        if check_all_exist(meta_nojcp, channel, site, correction):
+            return True
         addresses, images = get_jump_image_batch(
             meta_nojcp, channel=channel, site=site, correction=correction
         )
