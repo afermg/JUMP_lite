@@ -46,6 +46,10 @@ src/norm/data/features/
 src/norm/outputs/
 analysis/codec_comparison/output
 outputs/
+output/
+metadata_analysis_results/
+plots_summary/
+
 
 # Jupyter Notebook
 .ipynb_checkpoints
@@ -62,3 +66,4 @@ JUMP_core.code-workspace
 # OS
 .DS_Store
 Thumbs.db
+
