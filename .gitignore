@@ -25,6 +25,7 @@ wheels/
 venv/
 ENV/
 env/
+pixi.lock
 
 # Nix
 .direnv/
@@ -49,6 +50,7 @@ outputs/
 output/
 metadata_analysis_results/
 plots_summary/
+docs/
 
 
 # Jupyter Notebook
