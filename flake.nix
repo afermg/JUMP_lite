@@ -65,6 +65,7 @@
                 uv
                 pkgs.gcc
                 claude-code
+                pkgs.pixi
               ]
               ++ libList;
               shellHook = ''
