@@ -123,7 +123,7 @@ if __name__ == "__main__":
         
         unique_inchikeys = df["inchikey"].dropna().unique()
         
-        print(f"Total unique InChIKeys in MOTIVE compound-gene database: {len(unique_inchikeys)}")
+        print(f"Total unique InChiKeys in MOTIVE compound-gene database: {len(unique_inchikeys)}")
         
         # Translate all unique InChIKeys to JCP2022 IDs
         result = translate_inchikey_to_jumpid(unique_inchikeys)
