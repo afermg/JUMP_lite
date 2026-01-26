@@ -71,7 +71,7 @@ def create_standardized_plot(data, output_path):
     # PC axis (right)
     ax2 = ax1.twinx()
     color_pc = 'tab:orange'
-    ax2.set_ylabel('Profile Consistency (# targets)', color=color_pc, fontsize=13, fontweight='bold')
+    ax2.set_ylabel('Profile Consistency (%)', color=color_pc, fontsize=13, fontweight='bold')
     line2 = ax2.plot(sizes_sorted, pc_sorted, 's-', color=color_pc, linewidth=2.5,
                      markersize=12, label='PC', markeredgewidth=2, markeredgecolor='white')
     ax2.tick_params(axis='y', labelcolor=color_pc, labelsize=11)
@@ -216,14 +216,14 @@ def main():
     print("=" * 80)
     print(f"Configuration: order1 + robustMAD + outlier=15 + var=0.001\n")
 
-    print(f"{'Codec':<20} {'PA (%)':<10} {'PC':<8} {'Balance':<10} {'Corr':<8} {'File Size'}")
+    print(f"{'Codec':<20} {'PA (%)':<10} {'PC (%)':<10} {'Balance':<10} {'Corr':<8} {'File Size'}")
     print("-" * 80)
 
     for codec in sorted(standardized_results.keys(),
                        key=lambda x: size_percentages[x], reverse=True):
         data = standardized_results[codec]
-        print(f"{codec:<20} {data['pa']:>6.2f}%    {data['pc']:>4}     "
-              f"{data['balance']:>6}      {data['corr']:<6}  {size_percentages[codec]:>5.1f}%")
+        print(f"{codec:<20} {data['pa']:>6.2f}%    {data['pc']:>6.2f}%    "
+              f"{data['balance']:>6.2f}    {data['corr']:<6}  {size_percentages[codec]:>5.1f}%")
 
     print("\nCreating plots...")
     create_standardized_plot(

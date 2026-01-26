@@ -84,7 +84,7 @@ def create_pa_pc_plot(data, title, output_path):
     # Create second y-axis for PC
     ax2 = ax1.twinx()
     color_pc = 'tab:orange'
-    ax2.set_ylabel('Profile Consistency - PC (# targets)', color=color_pc,
+    ax2.set_ylabel('Profile Consistency - PC (%)', color=color_pc,
                    fontsize=13, fontweight='bold')
     line2 = ax2.plot(sizes_sorted, pcs_sorted, 's-', color=color_pc, linewidth=2.5,
                      markersize=10, label='PC', markeredgewidth=2, markeredgecolor='white')
@@ -92,7 +92,7 @@ def create_pa_pc_plot(data, title, output_path):
 
     # Add PC value labels
     for i, (x, y) in enumerate(zip(sizes_sorted, pcs_sorted)):
-        ax2.annotate(f'{y}', (x, y), textcoords="offset points",
+        ax2.annotate(f'{y:.1f}%', (x, y), textcoords="offset points",
                     xytext=(0, -20), ha='center', fontsize=9, color=color_pc,
                     fontweight='bold', bbox=dict(boxstyle='round,pad=0.3',
                     facecolor='white', edgecolor=color_pc, alpha=0.8))
@@ -121,7 +121,7 @@ def create_pa_pc_plot(data, title, output_path):
 
     # Add legend
     lines = line1 + line2
-    labels = ['PA (%)', 'PC (# targets)']
+    labels = ['PA (%)', 'PC (%)']
     ax1.legend(lines, labels, loc='best', fontsize=11, framealpha=0.9)
 
     # Adjust layout
