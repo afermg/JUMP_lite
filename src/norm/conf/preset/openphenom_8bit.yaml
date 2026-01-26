@@ -1,0 +1,94 @@
+# @package _global_
+
+# Openphenom_8bit-optimized Configuration
+# Best settings from TVN/Spherize sweep
+
+input:
+  path: INPUT_FILE.parquet
+output:
+  path: data/features/OUTPUT.parquet
+  compression: zstd
+steps:
+- enabled: true
+  name: clean_nans
+  params:
+    na_cutoff: 0.3
+- enabled: false
+  name: sample_norm
+  params:
+    norm: l2
+- enabled: true
+  name: merge_metadata
+  params:
+    metadata_dir: analysis/feature_similarity/input
+- enabled: true
+  name: filter_features
+  params:
+    operations:
+    - freq_cut: 0.05
+      name: variance_threshold
+      unique_cut: 0.01
+      var_threshold: 0.001
+    - name: drop_outliers
+      outlier_cutoff: 500
+- enabled: true
+  name: prune_correlated
+  params:
+    method: pearson
+    threshold: 0.95
+- enabled: true
+  name: normalize_standard
+  params:
+    batch_col: Metadata_Plate
+    control_col: Metadata_control_type
+    control_key: negcon
+    fit_on_controls: false
+    method: robustmad
+- enabled: true
+  name: normalize_tvn
+  params:
+    alpha: 0.3
+    batch_col: Metadata_Plate
+    control_col: Metadata_control_type
+    control_key: negcon
+    epsilon: 1.0
+    fit_on_controls: false
+- enabled: true
+  name: normalize_spherize
+  params:
+    batch_col: ''
+    control_col: Metadata_control_type
+    control_key: negcon
+    epsilon: 1.0e-06
+    fit_on_controls: true
+    method: ZCA
+- enabled: false
+  name: normalize_harmony
+  params:
+    batch_col: Metadata_Plate
+    n_clusters: null
+    n_pcs: 50
+    sigma: 0.1
+    theta: 1.0
+- enabled: false
+  name: normalize_combat
+  params:
+    batch_col: Metadata_Plate
+    par_prior: true
+- enabled: true
+  name: aggregate_wells
+  params:
+    method: mean
+    strata:
+    - Metadata_Plate
+    - Metadata_Well
+- enabled: true
+  name: evaluate_metrics
+  params:
+    skip_visualization: false
+hydra:
+  run:
+    dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  sweep:
+    dir: outputs/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    subdir: ${hydra.job.num}
