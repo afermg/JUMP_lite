@@ -24,6 +24,9 @@ def variance_threshold(
     Returns:
         List of features to keep
     """
+    if not features or len(df) == 0:
+        return features
+
     X = df.select(features).to_numpy()
     n_samples = len(X)
 
@@ -145,17 +148,24 @@ def drop_na_columns(
     """
     n_samples = len(df)
     keep_features = []
-
+    dropped_features = []
+    
+    
+    
+    # import pdb; pdb.set_trace()
     for feat in features:
         # Count both null and infinite values
         n_null = df[feat].null_count()
+        n_nan = df[feat].is_nan().sum()
         n_inf = df[feat].is_infinite().sum()
-        n_invalid = n_null + n_inf
-
+        n_invalid = n_null + n_nan + n_inf
+        
         if n_invalid / n_samples <= na_cutoff:
             keep_features.append(feat)
+        else:
+            dropped_features.append(feat)
 
-    return keep_features
+    return keep_features, dropped_features
 
 
 def drop_outliers(
@@ -172,6 +182,9 @@ def drop_outliers(
     Returns:
         List of features to keep
     """
+    if not features or len(df) == 0:
+        return features
+
     X = df.select(features).to_numpy()
 
     # Z-normalize features using NaN-safe operations
@@ -303,6 +316,11 @@ def select_features(
         if verbose:
             n_dropped = len(current_features) - len(new_features)
             print(f"  {name}: dropped {n_dropped} features ({len(new_features)} remaining)")
+
+        # Safeguard: if operation would remove all features, skip it
+        if len(new_features) == 0 and len(current_features) > 0:
+            print(f"  WARNING: {name} would remove all features, skipping this filter")
+            continue
 
         current_features = new_features
 

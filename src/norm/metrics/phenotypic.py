@@ -80,7 +80,8 @@ def calculate_phenotypic_activity(
 
 def filter_targets_by_compound_count(
     df_consensus,
-    min_compounds_per_target: int = 3,
+    min_compounds_per_target: int = 2,
+    max_targets_per_compound: int = 50,
     exclude_unknown: bool = True,
 ):
     """
@@ -88,7 +89,9 @@ def filter_targets_by_compound_count(
 
     Args:
         df_consensus: DataFrame with Metadata_target column (list of targets per compound)
-        min_compounds_per_target: Minimum compounds required per target (default: 2)
+        min_compounds_per_target: Minimum compounds required per target (default: 3)
+        max_targets_per_compound: Maximum targets per compound to include (default: 10)
+            Filters out promiscuous compounds that hit many targets
         exclude_unknown: Whether to exclude "unknown" targets (default: True)
 
     Returns:
@@ -96,6 +99,16 @@ def filter_targets_by_compound_count(
     """
     # Filter out negative controls
     df_consensus = df_consensus[df_consensus["Metadata_negcon"] == False].copy()
+
+    # Filter out promiscuous compounds (too many targets)
+    if max_targets_per_compound is not None:
+        target_counts_per_compound = df_consensus["Metadata_target"].apply(
+            lambda x: len(x) if isinstance(x, list) else 0
+        )
+        n_promiscuous = (target_counts_per_compound > max_targets_per_compound).sum()
+        if n_promiscuous > 0:
+            print(f"  Filtering out {n_promiscuous} promiscuous compounds (>{max_targets_per_compound} targets)")
+        df_consensus = df_consensus[target_counts_per_compound <= max_targets_per_compound].copy()
 
     # Explode targets to count compounds per target
     df_exploded = df_consensus.explode("Metadata_target")
@@ -107,12 +120,6 @@ def filter_targets_by_compound_count(
     # Count unique compounds per target
     target_counts = df_exploded.groupby("Metadata_target")["Metadata_pert_iname"].nunique()
     target_counts = target_counts.sort_values(ascending=False)
-
-    # Report how many targets would remain at different thresholds
-    print(f"  Target filtering statistics:")
-    for threshold in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]:
-        n_targets = (target_counts >= threshold).sum()
-        print(f"    min_compounds={threshold}: {n_targets} targets")
 
     # Apply the chosen threshold
     valid_targets = target_counts[target_counts >= min_compounds_per_target].index.tolist()
@@ -146,7 +153,8 @@ def calculate_phenotypic_consistency(
     null_size: int = 10_000,
     p_threshold: float = 0.05,
     seed: int = 0,
-    min_compounds_per_target: int = 3,
+    min_compounds_per_target: int = 2,
+    max_targets_per_compound: int = 50,
 ) -> dict:
     """
     Calculate Phenotypic Consistency (target-level retrieval).
@@ -160,10 +168,13 @@ def calculate_phenotypic_consistency(
         p_threshold: Significance threshold
         seed: Random seed
         min_compounds_per_target: Minimum compounds required per target (default: 3)
+        max_targets_per_compound: Maximum targets per compound (default: 10)
+            Filters out promiscuous compounds
 
     Returns:
         Dictionary with:
         - target_consistency: Per-target consistency DataFrame
+        - pct_targets_active: % of targets below corrected p-value
         - n_targets_active: Number of significant targets
         - n_targets_total: Total number of targets
     """
@@ -182,11 +193,22 @@ def calculate_phenotypic_consistency(
     df_consensus["Metadata_target"] = df_consensus["Metadata_target_list"].str.split(
         "|"
     )
-
-    # Filter targets by minimum compound count
+    # Filter targets by minimum compound count and promiscuous compounds
     df_consensus = filter_targets_by_compound_count(
-        df_consensus, min_compounds_per_target=min_compounds_per_target
+        df_consensus,
+        min_compounds_per_target=min_compounds_per_target,
+        max_targets_per_compound=max_targets_per_compound
     )
+
+    # Check if we have enough data to compute PC
+    if len(df_consensus) < 2:
+        print(f"  Warning: Not enough compounds ({len(df_consensus)}) for PC calculation")
+        return {
+            "target_consistency": None,
+            "pct_targets_active": 0.0,
+            "n_targets_active": 0,
+            "n_targets_total": 0,
+        }
 
     metadata = df_consensus.filter(regex="^Metadata")
     profiles = df_consensus[features].values
@@ -220,9 +242,11 @@ def calculate_phenotypic_consistency(
 
         n_targets_active = target_map["below_corrected_p"].sum()
         n_targets_total = len(target_map)
+        pct_targets_active = (n_targets_active / n_targets_total * 100) if n_targets_total > 0 else 0.0
 
         return {
             "target_consistency": target_map,
+            "pct_targets_active": float(pct_targets_active),
             "n_targets_active": int(n_targets_active),
             "n_targets_total": int(n_targets_total),
         }
@@ -230,6 +254,7 @@ def calculate_phenotypic_consistency(
         print(f"Warning: Target consistency failed: {e}")
         return {
             "target_consistency": None,
+            "pct_targets_active": 0.0,
             "n_targets_active": 0,
             "n_targets_total": 0,
         }
