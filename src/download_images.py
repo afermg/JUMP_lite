@@ -3,25 +3,31 @@ from pathlib import Path
 from time import perf_counter
 import os
 
+os.environ["LOKY_MAX_CPU_COUNT"] = "32"
+
 from itertools import product, starmap
 
-# %% 
+# %%
 
 # os.environ["POLARS_MAX_THREADS"] = "1"
 import duckdb
 import polars as pl
 from broad_babel.data import get_table
-from joblib import Parallel, delayed
+from joblib import Parallel, delayed, parallel_config
 from jump_portrait.fetch import get_item_location_metadata, get_jump_image_batch
 from PIL import Image
 from pooch import retrieve
 from tqdm import tqdm
 
 
-# arguments force_rebuild to rebuild the metadata file
+# Command line arguments
 import argparse
-parser = argparse.ArgumentParser()
+parser = argparse.ArgumentParser(description="Download JUMP images from metadata")
 parser.add_argument("--force-rebuild", action="store_true", help="Force rebuild of metadata file")
+parser.add_argument("--metadata", type=str, default=None,
+                    help="Path to input metadata parquet file (skips metadata building)")
+parser.add_argument("--output", type=str, default="/work/datasets/jump_core/raw",
+                    help="Output directory for downloaded images")
 args = parser.parse_args()
 force_rebuild = args.force_rebuild
 
@@ -32,7 +38,7 @@ seed = 1
 pull_plates = False
 plates_to_pull = ["JCPQC016", "BR00121438", "ACPJUM012", "110000293081"]
 
-write_progress_to_file = True  # Set to True to write tqdm progress to file instead of terminal
+write_progress_to_file = False  # Set to True to write tqdm progress to file instead of terminal
 
 
 
@@ -66,7 +72,7 @@ def get_metadata_batch(
     """
     Pull metadata tables using as many processes as possible. Maps JCP id -> address (source, plate, well, sites)
     """
-    metadata = Parallel(n_jobs=-1)(
+    metadata = Parallel(n_jobs=1, prefer="threads")(
         delayed(partial(get_item_location_metadata, input_column="JCP2022"))(x)
         for x in perturbations
     )
@@ -74,10 +80,10 @@ def get_metadata_batch(
     return [x.select((*cols, "Metadata_JCP2022")) for x in metadata]
 
 
-out_path = Path("/work/datasets/jump_core/raw")
+out_path = Path(args.output)
 out_path.mkdir(parents=True, exist_ok=True)
 
-meta_file = out_path.parent / "metadata.parquet"
+meta_file = Path(args.metadata) if args.metadata else out_path.parent / "metadata.parquet"
 progress_file = out_path.parent / "progress.txt"
 
 # Pull JCP ids
@@ -138,9 +144,14 @@ channels = ["DNA", "AGP", "Mito", "RNA", "ER"]
 sites = [str(i) for i in range(1, 5)]  # 1->4
 correction = "Orig"
 
-# Do not pull the mapper unless explicitly told to
-if not (meta_file).exists() or force_rebuild:
-    # %% Download metadata tables
+# Load or build metadata
+if args.metadata:
+    # Use provided metadata file directly
+    print(f"Loading metadata from: {meta_file}")
+    metadata_all = pl.read_parquet(meta_file)
+    print(f"Loaded {len(metadata_all):,} rows from metadata file")
+elif not (meta_file).exists() or force_rebuild:
+    # Build metadata from scratch
     print("Downloading gene metadata")
     gene_list = (*crispr, *orf)
     t_start = perf_counter()
@@ -158,7 +169,7 @@ if not (meta_file).exists() or force_rebuild:
         compound_rows = pl.concat((whole_plate, compound_selection)).unique()
     else:
         compound_rows = compound_selection
-        
+
     print(
         f"Done downloading compound metadata in {int(perf_counter() - t_start)} seconds"
     )
@@ -219,9 +230,10 @@ def download_and_save_image(meta: pl.DataFrame, channel, site, correction):
         meta_nojcp = meta.select(pl.exclude("Metadata_JCP2022"))
         if check_all_exist(meta_nojcp, channel, site, correction):
             return True
-        addresses, images = get_jump_image_batch(
-            meta_nojcp, channel=channel, site=site, correction=correction
-        )
+        with parallel_config(n_jobs=32):
+            addresses, images = get_jump_image_batch(
+                meta_nojcp, channel=channel, site=site, correction=correction
+            )
         for address, image in zip(addresses, images):
             save_array(image, address)
         return True
@@ -240,7 +252,7 @@ print(f"Preparing to download {len(all_rows)} wells with {len(channels)} channel
 
 if write_progress_to_file:
     fh = open(progress_file, "w")
-    results = Parallel(n_jobs=32)(
+    results = Parallel(n_jobs=1, prefer="threads", timeout=120)(
         delayed(
             partial(
                 download_and_save_image, channel=channels, site=sites, correction=correction
@@ -251,7 +263,7 @@ if write_progress_to_file:
     fh.close()
     progress_file.unlink()
 else:
-    results = Parallel(n_jobs=32)(
+    results = Parallel(n_jobs=8, prefer="threads", timeout=120)(
         delayed(
             partial(
                 download_and_save_image, channel=channels, site=sites, correction=correction
