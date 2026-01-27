@@ -509,7 +509,7 @@ def normalize_profiles_extended(
     if batch_col and batch_col in df.columns:
         normalized_dfs = []
 
-        for batch in df[batch_col].unique().to_list():
+        for batch in sorted(df[batch_col].unique().to_list()):
             batch_mask = df[batch_col] == batch
             batch_df = df.filter(batch_mask)
 
