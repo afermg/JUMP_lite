@@ -400,7 +400,7 @@ def evaluate_all(
         print(f"  Batch ERROR: {e}")
 
     # Add TVN ill-conditioning state to results
-    from .core import get_tvn_state
+    from norm_2.core import get_tvn_state
     tvn_ill_conditioned, tvn_max_condition_number = get_tvn_state()
     results["tvn_ill_conditioned"] = tvn_ill_conditioned
     results["tvn_max_condition_number"] = float(tvn_max_condition_number) if tvn_max_condition_number > 0 else None
@@ -415,7 +415,7 @@ def evaluate_all(
     # Visualization
     if not skip_visualization and output_dir is not None:
         try:
-            from .visualization import plot_dimensionality_reduction_extended
+            from norm_2.visualization import plot_dimensionality_reduction_extended
 
             print("  Creating visualization...")
             plot_path = output_dir / "dimreduction.png"

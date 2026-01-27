@@ -15,7 +15,9 @@ Design follows:
 
 from __future__ import annotations
 
+import sys
 import warnings
+from pathlib import Path
 from typing import Literal
 
 import numpy as np
@@ -24,7 +26,12 @@ from scipy.linalg import fractional_matrix_power
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import RobustScaler, StandardScaler
 
-from .io import get_numeric_features, infer_columns
+# Handle both relative and absolute imports
+try:
+    from .io import get_numeric_features, infer_columns
+except ImportError:
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    from norm_2.io import get_numeric_features, infer_columns
 
 
 # =============================================================================

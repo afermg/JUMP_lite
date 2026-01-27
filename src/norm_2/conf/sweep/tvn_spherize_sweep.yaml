@@ -13,8 +13,11 @@
 # 3. Combinations of TVN + Spherize
 # 4. Base normalization methods
 
+# Input override (set via command line)
+input_override: null
+
 defaults:
-  - /preset/embeddings
+  - /preset/dinov2_490
 
 # Default sweep parameters
 corr_thresh: 0.95

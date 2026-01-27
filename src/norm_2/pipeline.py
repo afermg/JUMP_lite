@@ -15,12 +15,15 @@ import sys
 from pathlib import Path
 from typing import Any
 
+# Add src to path so imports work when running as script
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 import numpy as np
 import polars as pl
 import yaml
 from omegaconf import DictConfig, OmegaConf
 
-from .core import (
+from norm_2.core import (
     aggregate,
     correlation_threshold,
     drop_na_columns,
@@ -29,8 +32,8 @@ from .core import (
     sample_normalize as core_sample_normalize,
     variance_threshold,
 )
-from .io import get_numeric_features, infer_columns, load_metadata, load_profiles, save_profiles
-from .metrics import evaluate_all
+from norm_2.io import get_numeric_features, infer_columns, load_metadata, load_profiles, save_profiles
+from norm_2.metrics import evaluate_all
 
 
 # =============================================================================
@@ -326,8 +329,18 @@ def normalize_pca(df: pl.DataFrame, config: dict) -> pl.DataFrame:
         X_fit = X
         print(f"  Fitting on all {X_fit.shape[0]} samples")
 
+    # Check if we have enough features/samples for the requested components
+    max_components = min(X_fit.shape[0], X_fit.shape[1])
+    if n_components >= max_components:
+        print(f"  WARNING: n_components={n_components} >= max possible={max_components}")
+        if max_components <= 1:
+            print(f"  SKIPPING PCA: insufficient features/samples (max_components={max_components})")
+            return df
+        n_components = max_components - 1  # Leave at least 1 degree of freedom
+        print(f"  Reducing to n_components={n_components}")
+
     # Fit PCA
-    from .core import PCATransform
+    from norm_2.core import PCATransform
 
     pca = PCATransform(n_components=n_components, whiten=whiten)
     pca.fit(X_fit)
@@ -541,7 +554,7 @@ def run_pipeline(
         raise ValueError("Either config_path or hydra_config must be provided")
 
     # Reset TVN ill-conditioning state at start of each pipeline run
-    from .core import reset_tvn_state
+    from norm_2.core import reset_tvn_state
     reset_tvn_state()
 
     # Handle batch_method parameter

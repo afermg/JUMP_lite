@@ -389,6 +389,16 @@ def normalize_pca(df, config):
         X_fit = X
         print(f"  Fitting on all {X_fit.shape[0]} samples")
 
+    # Check if we have enough features/samples for the requested components
+    max_components = min(X_fit.shape[0], X_fit.shape[1])
+    if n_components >= max_components:
+        print(f"  WARNING: n_components={n_components} >= max possible={max_components}")
+        if max_components <= 1:
+            print(f"  SKIPPING PCA: insufficient features/samples (max_components={max_components})")
+            return df
+        n_components = max_components - 1  # Leave at least 1 degree of freedom
+        print(f"  Reducing to n_components={n_components}")
+
     # Fit PCA
     pca = PCA(n_components=n_components, whiten=whiten)
     pca.fit(X_fit)

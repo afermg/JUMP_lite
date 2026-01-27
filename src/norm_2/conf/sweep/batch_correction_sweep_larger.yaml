@@ -26,8 +26,11 @@
 #     hydra.launcher.n_jobs=32 +sweep=batch_correction_sweep \
 #     input_override=./path/to/features.parquet
 
+# Input override (set via command line)
+input_override: null
+
 defaults:
-  - /preset/embeddings
+  - /preset/dinov2_490
 
 # Enable batch correction validation (error if multiple methods enabled)
 validate_batch_correction: true

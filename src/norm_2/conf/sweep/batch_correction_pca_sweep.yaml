@@ -34,7 +34,10 @@
 #     input_override=./path/to/features.parquet
 
 defaults:
-  - /preset/embeddings
+  - /preset/dinov2_490
+
+# Input override (set via command line)
+input_override: null
 
 # Enable batch correction validation (error if multiple methods enabled)
 validate_batch_correction: true

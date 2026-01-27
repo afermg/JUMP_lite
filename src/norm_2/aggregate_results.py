@@ -12,13 +12,16 @@ import seaborn as sns
 import re
 import yaml
 
+# Add src to path so imports work when running as script
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 # Suppress seaborn heatmap warnings for edge cases
 warnings.filterwarnings('ignore', message='.*identical.*xlims.*')
 warnings.filterwarnings('ignore', message='.*identical.*ylims.*')
 
-# Import from norm_2 (relative imports)
-from .io import infer_columns
-from .visualization import plot_dimensionality_reduction_extended
+# Import from norm_2
+from norm_2.io import infer_columns
+from norm_2.visualization import plot_dimensionality_reduction_extended
 
 
 def generate_visualization_for_result(result_dir: Path, skip_umap: bool = False) -> bool:
