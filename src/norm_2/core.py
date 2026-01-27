@@ -28,6 +28,35 @@ from .io import get_numeric_features, infer_columns
 
 
 # =============================================================================
+# TVN State Tracking (module-level for pipeline-wide tracking)
+# =============================================================================
+
+_tvn_ill_conditioned = False
+_tvn_max_condition_number = 0.0
+
+
+def reset_tvn_state():
+    """Reset TVN ill-conditioning tracking state. Call at start of pipeline."""
+    global _tvn_ill_conditioned, _tvn_max_condition_number
+    _tvn_ill_conditioned = False
+    _tvn_max_condition_number = 0.0
+
+
+def get_tvn_state():
+    """Get TVN ill-conditioning state. Returns (ill_conditioned, max_condition_number)."""
+    return _tvn_ill_conditioned, _tvn_max_condition_number
+
+
+def update_tvn_state(ill_conditioned: bool, condition_number: float):
+    """Update global TVN state if ill-conditioned."""
+    global _tvn_ill_conditioned, _tvn_max_condition_number
+    if ill_conditioned:
+        _tvn_ill_conditioned = True
+    if condition_number > _tvn_max_condition_number:
+        _tvn_max_condition_number = condition_number
+
+
+# =============================================================================
 # Transformer Classes
 # =============================================================================
 
@@ -143,6 +172,8 @@ class TVN:
         self.epsilon = epsilon
         self.mean_: np.ndarray | None = None
         self.cov_alpha_: np.ndarray | None = None
+        self.ill_conditioned_: bool = False  # Track if matrix was ill-conditioned
+        self.condition_number_: float | None = None  # Store condition number for reporting
 
     def fit(self, X: np.ndarray) -> "TVN":
         if len(X) < 2:
@@ -164,10 +195,15 @@ class TVN:
 
         # Check condition number and apply adaptive regularization
         cond_number = np.linalg.cond(cov)
+        self.condition_number_ = cond_number  # Store for reporting
         regularization = self.epsilon
 
         if cond_number > 1e10:
+            self.ill_conditioned_ = True  # Flag for reporting
             regularization = max(self.epsilon, cond_number / 1e8)
+
+            # Update global state for pipeline-wide tracking
+            update_tvn_state(True, cond_number)
 
             if not hasattr(TVN, '_warned_ill_conditioned'):
                 TVN._warned_ill_conditioned = True
@@ -194,6 +230,9 @@ class TVN:
                 if issues:
                     msg += "\n  Potential causes: " + ", ".join(issues)
                 warnings.warn(msg, UserWarning)
+        else:
+            # Update global state even if not ill-conditioned (to track max)
+            update_tvn_state(False, cond_number)
 
         # Fractional matrix power with regularization
         self.cov_alpha_ = fractional_matrix_power(

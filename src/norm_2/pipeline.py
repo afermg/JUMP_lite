@@ -300,6 +300,59 @@ def normalize_spherize(df: pl.DataFrame, config: dict) -> pl.DataFrame:
     return df
 
 
+def normalize_pca(df: pl.DataFrame, config: dict) -> pl.DataFrame:
+    """Reduce dimensionality using PCA before whitening operations (EFAAR-style)."""
+    print("\n=== Step: Normalize (PCA) ===")
+    features, _ = infer_columns(df, ["Metadata_"])
+    features = get_numeric_features(df, features)
+
+    n_components = config.get("n_components", 128)
+    whiten = config.get("whiten", False)
+    fit_on_controls = config.get("fit_on_controls", True)
+    control_col = config.get("control_col", "Metadata_control_type")
+    control_key = config.get("control_key", "negcon")
+
+    print(f"  n_components: {n_components}, whiten: {whiten}, fit_on_controls: {fit_on_controls}")
+    print(f"  Input features: {len(features)}")
+
+    X = df.select(features).to_numpy()
+
+    # Fit on controls or all samples
+    if fit_on_controls:
+        control_mask = (df[control_col] == control_key).to_numpy()
+        X_fit = X[control_mask]
+        print(f"  Fitting on {X_fit.shape[0]} control samples")
+    else:
+        X_fit = X
+        print(f"  Fitting on all {X_fit.shape[0]} samples")
+
+    # Fit PCA
+    from .core import PCATransform
+
+    pca = PCATransform(n_components=n_components, whiten=whiten)
+    pca.fit(X_fit)
+
+    # Transform all samples
+    X_transformed = pca.transform(X)
+
+    # Create new feature names
+    n_out = X_transformed.shape[1]
+    new_features = [f"PC_{i+1}" for i in range(n_out)]
+    explained_var = sum(pca.pca_.explained_variance_ratio_) * 100
+    print(f"  Output features: {n_out} (explained variance: {explained_var:.1f}%)")
+
+    # Build output DataFrame: keep metadata, replace features with PCs
+    metadata_cols = [c for c in df.columns if c not in features]
+    result = df.select(metadata_cols)
+
+    # Add PC columns
+    for i, feat_name in enumerate(new_features):
+        result = result.with_columns(pl.Series(name=feat_name, values=X_transformed[:, i]))
+
+    print(f"  Result: {result.shape}")
+    return result
+
+
 def _skip_harmony(df: pl.DataFrame, config: dict) -> pl.DataFrame:
     """Stub for Harmony - skipped in norm_2."""
     print("\n=== Step: Normalize (Harmony) - SKIPPED ===")
@@ -381,6 +434,7 @@ STEPS = {
     "aggregate_wells": aggregate_wells,
     "sample_norm": sample_norm,
     "normalize_standard": normalize_standard,
+    "normalize_pca": normalize_pca,
     "normalize_tvn": normalize_tvn,
     "normalize_spherize": normalize_spherize,
     "normalize_harmony": _skip_harmony,
@@ -419,6 +473,10 @@ def generate_output_name(config: dict) -> str:
             if not params.get("fit_on_controls", True):
                 name_parts.append("all")
             parts.append("_".join(name_parts))
+
+        elif step_name == "normalize_pca":
+            n_comp = params.get("n_components", 128)
+            parts.append(f"pca{n_comp}")
 
         elif step_name == "normalize_tvn":
             alpha = params.get("alpha", 0.5)
@@ -481,6 +539,10 @@ def run_pipeline(
             config = yaml.safe_load(f)
     else:
         raise ValueError("Either config_path or hydra_config must be provided")
+
+    # Reset TVN ill-conditioning state at start of each pipeline run
+    from .core import reset_tvn_state
+    reset_tvn_state()
 
     # Handle batch_method parameter
     batch_method = config.get("batch_method")

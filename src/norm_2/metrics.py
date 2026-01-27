@@ -399,6 +399,14 @@ def evaluate_all(
     except Exception as e:
         print(f"  Batch ERROR: {e}")
 
+    # Add TVN ill-conditioning state to results
+    from .core import get_tvn_state
+    tvn_ill_conditioned, tvn_max_condition_number = get_tvn_state()
+    results["tvn_ill_conditioned"] = tvn_ill_conditioned
+    results["tvn_max_condition_number"] = float(tvn_max_condition_number) if tvn_max_condition_number > 0 else None
+    if tvn_ill_conditioned:
+        print(f"  WARNING: TVN encountered ill-conditioned matrix (condition number: {tvn_max_condition_number:.2e})")
+
     # Save metrics
     if output_dir is not None:
         with open(output_dir / "metrics.json", "w") as f:

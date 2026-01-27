@@ -45,6 +45,13 @@ from .core import (
     basic_cleanup,
 )
 
+# TVN state tracking
+from .core import (
+    reset_tvn_state,
+    get_tvn_state,
+    update_tvn_state,
+)
+
 # Feature selection functions
 from .core import (
     variance_threshold,
@@ -95,6 +102,10 @@ __all__ = [
     "select_features",
     "aggregate",
     "basic_cleanup",
+    # TVN state tracking
+    "reset_tvn_state",
+    "get_tvn_state",
+    "update_tvn_state",
     # Feature selection
     "variance_threshold",
     "correlation_threshold",

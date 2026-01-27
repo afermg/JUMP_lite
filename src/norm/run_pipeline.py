@@ -351,6 +351,69 @@ def normalize_spherize(df, config):
     return df
 
 
+def normalize_pca(df, config):
+    """Reduce dimensionality using PCA before whitening operations (EFAAR-style).
+
+    This step applies PCA to reduce feature dimensionality, which can improve
+    numerical stability for downstream whitening operations like TVN and Spherize.
+    """
+    from sklearn.decomposition import PCA
+    import numpy as np
+
+    print("\n=== Step: Normalize (PCA) ===")
+    features, metadata = infer_columns(df, ["Metadata_"])
+
+    numeric_features = [
+        f for f in features
+        if df[f].dtype in (pl.Float32, pl.Float64, pl.Int8, pl.Int16, pl.Int32,
+                           pl.Int64, pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64)
+    ]
+
+    n_components = config.get("n_components", 128)
+    whiten = config.get("whiten", False)
+    fit_on_controls = config.get("fit_on_controls", True)
+    control_key = config.get("control_key", "negcon")
+    control_col = config.get("control_col", "Metadata_control_type")
+
+    print(f"  n_components: {n_components}, whiten: {whiten}, fit_on_controls: {fit_on_controls}")
+    print(f"  Input features: {len(numeric_features)}")
+
+    X = df.select(numeric_features).to_numpy()
+
+    # Fit on controls or all samples
+    if fit_on_controls and control_col in df.columns:
+        control_mask = (df[control_col] == control_key).to_numpy()
+        X_fit = X[control_mask]
+        print(f"  Fitting on {X_fit.shape[0]} control samples")
+    else:
+        X_fit = X
+        print(f"  Fitting on all {X_fit.shape[0]} samples")
+
+    # Fit PCA
+    pca = PCA(n_components=n_components, whiten=whiten)
+    pca.fit(X_fit)
+
+    # Transform all samples
+    X_transformed = pca.transform(X)
+
+    # Create new feature names
+    n_out = X_transformed.shape[1]
+    new_features = [f"PC_{i+1}" for i in range(n_out)]
+    explained_var = sum(pca.explained_variance_ratio_) * 100
+    print(f"  Output features: {n_out} (explained variance: {explained_var:.1f}%)")
+
+    # Build output DataFrame: keep metadata, replace features with PCs
+    metadata_cols = [c for c in df.columns if c not in numeric_features]
+    result = df.select(metadata_cols)
+
+    # Add PC columns
+    for i, feat_name in enumerate(new_features):
+        result = result.with_columns(pl.Series(name=feat_name, values=X_transformed[:, i]))
+
+    print(f"  Result: {result.shape}")
+    return result
+
+
 def normalize_harmony(df, config):
     """Normalize using Harmony batch correction (GPU-accelerated via rapids_singlecell).
 
@@ -539,6 +602,14 @@ def evaluate_metrics(df, config):
     except Exception as e:
         print(f"  Batch ERROR: {e}")
 
+    # Add TVN ill-conditioning state to results
+    from norm.operations.normalize import get_tvn_state
+    tvn_ill_conditioned, tvn_max_condition_number = get_tvn_state()
+    results["tvn_ill_conditioned"] = tvn_ill_conditioned
+    results["tvn_max_condition_number"] = float(tvn_max_condition_number) if tvn_max_condition_number > 0 else None
+    if tvn_ill_conditioned:
+        print(f"  WARNING: TVN encountered ill-conditioned matrix (condition number: {tvn_max_condition_number:.2e})")
+
     # Save metrics
     with open(output_dir / "metrics.json", "w") as f:
         json.dump(results, f, indent=2)
@@ -596,6 +667,7 @@ STEPS = {
     "aggregate_wells": aggregate_wells,
     "sample_norm": sample_norm,
     "normalize_standard": normalize_standard,
+    "normalize_pca": normalize_pca,
     "normalize_tvn": normalize_tvn,
     "normalize_spherize": normalize_spherize,
     "normalize_harmony": normalize_harmony,
@@ -799,6 +871,14 @@ def generate_output_name(config):
                 name_parts.append("all")
             parts.append("_".join(name_parts))
 
+        elif step_name == "normalize_pca":
+            n_comp = params.get("n_components", 128)
+            fit_ctrl = params.get("fit_on_controls", True)
+            name_parts = [f"pca{n_comp}"]
+            if not fit_ctrl:
+                name_parts.append("all")
+            parts.append("_".join(name_parts))
+
         elif step_name == "normalize_tvn":
             alpha = params.get("alpha", 0.5)
             epsilon = params.get("epsilon", 1.0)
@@ -965,6 +1045,10 @@ def run_pipeline(config_path=None, input_override=None, hydra_config=None):
         if is_redundant:
             print(f"SKIPPING redundant config: {reason}")
             return float('inf')  # Return sentinel for Optuna compatibility
+
+    # Reset TVN ill-conditioning state at start of each pipeline run
+    from norm.operations.normalize import reset_tvn_state
+    reset_tvn_state()
 
     # Use input override if provided (command line > config file > default)
     if input_override:

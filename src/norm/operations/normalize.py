@@ -155,6 +155,8 @@ class TVN:
         self.epsilon = epsilon
         self.mean_ = None
         self.cov_alpha_ = None
+        self.ill_conditioned_ = False  # Track if matrix was ill-conditioned
+        self.condition_number_ = None  # Store condition number for reporting
 
     def fit(self, X: np.ndarray) -> "TVN":
         import warnings
@@ -178,9 +180,11 @@ class TVN:
 
         # Check condition number and apply adaptive regularization
         cond_number = np.linalg.cond(cov)
+        self.condition_number_ = cond_number  # Store for reporting
         regularization = self.epsilon
 
         if cond_number > 1e10:
+            self.ill_conditioned_ = True  # Flag for reporting
             # Adaptive regularization based on condition number
             regularization = max(self.epsilon, cond_number / 1e8)
 
@@ -401,6 +405,23 @@ class ComBat:
         return corrected.values.T
 
 
+# Module-level state to track TVN ill-conditioning across pipeline run
+_tvn_ill_conditioned = False
+_tvn_max_condition_number = 0.0
+
+
+def reset_tvn_state():
+    """Reset TVN ill-conditioning tracking state. Call at start of pipeline."""
+    global _tvn_ill_conditioned, _tvn_max_condition_number
+    _tvn_ill_conditioned = False
+    _tvn_max_condition_number = 0.0
+
+
+def get_tvn_state():
+    """Get TVN ill-conditioning state. Returns (ill_conditioned, max_condition_number)."""
+    return _tvn_ill_conditioned, _tvn_max_condition_number
+
+
 def normalize_profiles_extended(
     df: pl.DataFrame,
     features: list[str],
@@ -480,7 +501,17 @@ def normalize_profiles_extended(
 
     # Helper functions for creating scalers with parameters
     def create_tvn():
-        return TVN(alpha=tvn_alpha, epsilon=tvn_epsilon)
+        tvn = TVN(alpha=tvn_alpha, epsilon=tvn_epsilon)
+        return tvn
+
+    def update_tvn_state(scaler):
+        """Update global TVN state if scaler is TVN and was ill-conditioned."""
+        global _tvn_ill_conditioned, _tvn_max_condition_number
+        if isinstance(scaler, TVN) and scaler.condition_number_ is not None:
+            if scaler.ill_conditioned_:
+                _tvn_ill_conditioned = True
+            if scaler.condition_number_ > _tvn_max_condition_number:
+                _tvn_max_condition_number = scaler.condition_number_
 
     def create_robustmad():
         return RobustMAD(epsilon=epsilon)
@@ -526,10 +557,12 @@ def normalize_profiles_extended(
                     )
                 scaler = scaler_class()
                 scaler.fit(X_fit)
+                update_tvn_state(scaler)  # Track TVN ill-conditioning
                 X_norm = scaler.transform(X)
             else:
                 scaler = scaler_class()
                 X_norm = scaler.fit_transform(X)
+                update_tvn_state(scaler)  # Track TVN ill-conditioning
 
             batch_df = batch_df.with_columns(
                 [pl.Series(name=feat, values=X_norm[:, i]) for i, feat in enumerate(features)]
@@ -550,10 +583,12 @@ def normalize_profiles_extended(
                 )
             scaler = scaler_class()
             scaler.fit(X_fit)
+            update_tvn_state(scaler)  # Track TVN ill-conditioning
             X_norm = scaler.transform(X)
         else:
             scaler = scaler_class()
             X_norm = scaler.fit_transform(X)
+            update_tvn_state(scaler)  # Track TVN ill-conditioning
 
         df_norm = df.with_columns(
             [pl.Series(name=feat, values=X_norm[:, i]) for i, feat in enumerate(features)]
