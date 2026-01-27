@@ -1,0 +1,257 @@
+# @package _global_
+
+# Batch Correction Method Comparison Sweep with PCA and Epsilon Tuning
+#
+# This sweep compares batch correction methods with optional PCA dimensionality
+# reduction and Spherize post-processing. Also sweeps epsilon values for
+# numerical stability.
+#
+# DESIGN RATIONALE (based on empirical analysis):
+# - TVN + Spherize together yields best results (PA ~40 vs ~25 for either alone)
+# - PCA before TVN/Spherize improves numerical stability for ill-conditioned matrices
+# - Z-score + PCA-128 gives better biological metrics (PC) than L2 norm
+# - Spherize MUST fit on negcon (controls) - fitting globally gives PA=0
+# - TVN should fit on ALL data (not just controls)
+# - Therefore: Spherize is an INDEPENDENT toggle, not mutually exclusive
+#
+# Methods compared (mutually exclusive):
+# - None (baseline: base normalization only)
+# - TVN (Typical Variation Normalization)
+#
+# Post-processing (can combine with above):
+# - PCA (dimensionality reduction) - runs AFTER base normalization
+# - Spherize (ZCA whitening) - runs AFTER batch correction
+#
+# Epsilon values for numerical stability:
+# - tvn_epsilon: Higher values (0.5, 1.0) reduce ill-conditioning
+# - spherize_epsilon: Higher values (1e-2, 1.0) improve stability
+#
+# Results include tvn_ill_conditioned flag in metrics.json to track instability.
+#
+# USAGE:
+#   python src/norm/run_pipeline.py --multirun hydra/launcher=joblib \
+#     hydra.launcher.n_jobs=32 +sweep=batch_correction_pca_sweep \
+#     input_override=./path/to/features.parquet
+
+defaults:
+  - /preset/embeddings
+
+# Enable batch correction validation (error if multiple methods enabled)
+validate_batch_correction: true
+validation_mode: "error"  # "error", "warn", or "skip"
+
+# Skip redundant configurations where method-specific params don't apply
+# E.g., skip tvn_alpha=0.3 when use_tvn=false (reduces 40K to ~960 runs)
+skip_redundant_configs: true
+
+# Abort pipeline if any step produces NaN/Inf values in features
+# Set to false to continue with warnings instead of aborting
+abort_on_invalid_features: true
+
+# Maximum variance explained by PC1 before flagging as collapsed
+# If PC1 explains > 40% of variance, the data has likely collapsed
+max_pc1_variance: 0.50
+
+# === DEFAULT PARAMETERS ===
+
+# Preprocessing
+corr_thresh: 0.95
+outlier_cut: 500
+use_sample_norm: false
+sample_norm_type: l2
+use_filter_features: false
+
+# Base normalization (normalize_standard)
+norm_method: robustmad
+norm_batch_col: "Metadata_Plate"
+fit_controls: false
+
+# Batch correction method selection (mutually exclusive)
+# batch_method controls which PRIMARY method is enabled (none, tvn)
+# The pipeline code converts this to use_tvn
+batch_method: "none"
+
+# This will be overridden by batch_method in the pipeline
+use_tvn: false
+
+# Spherize is INDEPENDENT - can be combined with any batch_method
+# (TVN + Spherize yields best results based on empirical analysis)
+use_spherize: false
+
+# PCA dimensionality reduction (EFAAR-style, before TVN/Spherize)
+# Reduces ill-conditioning and improves numerical stability
+use_pca: false
+pca_n_components: 256
+pca_whiten: false
+pca_fit_controls: true  # Fit on negcon controls
+
+# TVN parameters
+tvn_alpha: 0.3
+tvn_epsilon: 1.0  # Higher values improve numerical stability
+tvn_batch_col: "Metadata_Plate"
+tvn_fit_controls: true
+
+# Spherize parameters (post-processing whitening)
+# CRITICAL: spherize_fit_negcon MUST be true (PA=0 when fitting globally!)
+spherize_method: "ZCA-cor"
+spherize_epsilon: 1e-6  # Higher values improve numerical stability
+spherize_batch_col: ""  # Empty = global whitening (standard practice)
+spherize_fit_negcon: true  # CRITICAL: must fit on controls, not all data
+
+# Aggregation
+agg_method: median
+
+# === PIPELINE STEPS ===
+steps:
+  - name: clean_nans
+    enabled: true
+    params:
+      na_cutoff: 0.30
+
+  - name: sample_norm
+    enabled: ${use_sample_norm}
+    params:
+      norm: ${sample_norm_type}
+
+  - name: merge_metadata
+    enabled: true
+    params:
+      metadata_dir: "analysis/feature_similarity/input"
+
+  - name: filter_features
+    enabled: ${use_filter_features}
+    params:
+      operations:
+        - name: "variance_threshold"
+          freq_cut: 0.05
+          unique_cut: 0.01
+          var_threshold: 0.001
+        - name: "drop_outliers"
+          outlier_cutoff: ${outlier_cut}
+
+  - name: prune_correlated
+    enabled: true
+    params:
+      threshold: ${corr_thresh}
+      method: "pearson"
+
+  - name: normalize_standard
+    enabled: true
+    params:
+      method: ${norm_method}
+      batch_col: ${norm_batch_col}
+      fit_on_controls: ${fit_controls}
+      control_key: "negcon"
+      control_col: "Metadata_control_type"
+
+  - name: normalize_pca
+    enabled: ${use_pca}
+    params:
+      n_components: ${pca_n_components}
+      whiten: ${pca_whiten}
+      fit_on_controls: ${pca_fit_controls}
+      control_key: "negcon"
+      control_col: "Metadata_control_type"
+
+  - name: normalize_tvn
+    enabled: ${use_tvn}
+    params:
+      batch_col: ${tvn_batch_col}
+      alpha: ${tvn_alpha}
+      epsilon: ${tvn_epsilon}
+      fit_on_controls: ${tvn_fit_controls}
+      control_key: "negcon"
+      control_col: "Metadata_control_type"
+
+  - name: normalize_spherize
+    enabled: ${use_spherize}
+    params:
+      method: ${spherize_method}
+      batch_col: ${spherize_batch_col}
+      epsilon: ${spherize_epsilon}
+      fit_on_controls: ${spherize_fit_negcon}
+      control_key: "negcon"
+      control_col: "Metadata_control_type"
+
+  - name: aggregate_wells
+    enabled: true
+    params:
+      strata: ["Metadata_Plate", "Metadata_Well"]
+      method: ${agg_method}
+
+  - name: evaluate_metrics
+    enabled: true
+    params:
+      skip_visualization: true
+
+# === HYDRA SWEEP CONFIGURATION ===
+#
+# Spherize is independent and can combine with other methods
+# Based on analysis: TVN + Spherize yields PA ~40 vs ~25 for either alone
+# PCA before TVN/Spherize improves numerical stability
+#
+# Breakdown:
+# - batch_method: 2 (none, tvn) - mutually exclusive
+# - use_pca: 2 (true, false) - EFAAR-style dimensionality reduction
+# - pca_n_components: 2 (128, 256)
+# - use_spherize: 2 (true, false) - INDEPENDENT, can combine with above
+# - norm_method: 3 (none, robustmad, standardize)
+# - fit_controls: 2 (true, false)
+# - use_sample_norm: 2 (true, false)
+# - tvn_alpha: 2 (0.3, 0.5)
+# - tvn_epsilon: 2 (0.5, 1.0) - numerical stability
+# - tvn_fit_controls: 2 (true, false)
+# - spherize_epsilon: 3 (1e-6, 1e-2, 1.0) - numerical stability
+#
+# Key combinations to test:
+# - PCA + TVN + Spherize (expected best for morphem)
+# - TVN + Spherize (expected best: PA ~40 for dinov2/cp)
+# - TVN alone, Spherize alone (baseline comparison)
+# - High epsilon values for ill-conditioned matrices
+#
+hydra:
+  sweeper:
+    params:
+      # === BATCH CORRECTION METHOD (mutually exclusive) ===
+      # Primary batch correction - only ONE can be active
+      batch_method: none,tvn
+
+      # === SPHERIZE (independent post-processing) ===
+      # Can be combined with ANY batch_method above
+      # CRITICAL: spherize_fit_negcon=true is required (false gives PA=0)
+      use_spherize: true,false
+      spherize_method: ZCA-cor,ZCA  # ZCA-cor = correlation-based, ZCA = covariance-based
+      spherize_fit_negcon: "true"  # MUST be true - do not sweep this
+
+      # === BASE NORMALIZATION ===
+      norm_method: none,robustmad,standardize
+      fit_controls: true,false
+
+      # === PREPROCESSING ===
+      use_sample_norm: true,false
+      use_filter_features: true
+      # Default feature filtering (override for CP_measure - see below)
+      outlier_cut: "500"
+      corr_thresh: "0.95"
+
+      # === PCA PARAMS (EFAAR-style dimensionality reduction) ===
+      # PCA before TVN/Spherize improves numerical stability
+      use_pca: true,false
+      pca_n_components: "128,256"
+      pca_fit_controls: "true"  # Always fit on controls
+
+      # === TVN PARAMS ===
+      # tvn_alpha: 0.5 performed well in tvn_spherize_sweep
+      tvn_alpha: "0.3,0.5"
+      tvn_fit_controls: true,false
+      # Epsilon for numerical stability - higher values reduce ill-conditioning
+      tvn_epsilon: "0.5,1.0"
+
+      # === SPHERIZE EPSILON ===
+      # Higher epsilon improves numerical stability for ill-conditioned matrices
+      spherize_epsilon: "1e-6,1e-2,1.0"
+
+      # === AGGREGATION ===
+      # CRITICAL: mean aggregation gives significantly better PA (~49 vs ~40)
+      # Best tvn_spherize_sweep result used agg_method: mean
+      agg_method: median,mean
