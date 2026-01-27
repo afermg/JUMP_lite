@@ -21,7 +21,7 @@ steps:
   name: merge_metadata
   params:
     metadata_dir: analysis/feature_similarity/input
-- enabled: true
+- enabled: false
   name: filter_features
   params:
     operations:
@@ -31,7 +31,7 @@ steps:
       var_threshold: 0.001
     - name: drop_outliers
       outlier_cutoff: 500
-- enabled: true
+- enabled: false
   name: prune_correlated
   params:
     method: pearson
@@ -42,8 +42,16 @@ steps:
     batch_col: Metadata_Plate
     control_col: Metadata_control_type
     control_key: negcon
-    fit_on_controls: true
+    fit_on_controls: false
     method: standardize
+- enabled: false
+  name: normalize_pca
+  params:
+    control_col: Metadata_control_type
+    control_key: negcon
+    fit_on_controls: true
+    n_components: 128
+    whiten: false
 - enabled: true
   name: normalize_tvn
   params:
@@ -51,8 +59,8 @@ steps:
     batch_col: Metadata_Plate
     control_col: Metadata_control_type
     control_key: negcon
-    epsilon: 1.0
-    fit_on_controls: false
+    epsilon: 0.5
+    fit_on_controls: true
 - enabled: true
   name: normalize_spherize
   params:
@@ -62,19 +70,6 @@ steps:
     epsilon: 1.0e-06
     fit_on_controls: true
     method: ZCA-cor
-- enabled: false
-  name: normalize_harmony
-  params:
-    batch_col: Metadata_Plate
-    n_clusters: null
-    n_pcs: 50
-    sigma: 0.1
-    theta: 1.0
-- enabled: false
-  name: normalize_combat
-  params:
-    batch_col: Metadata_Plate
-    par_prior: true
 - enabled: true
   name: aggregate_wells
   params:

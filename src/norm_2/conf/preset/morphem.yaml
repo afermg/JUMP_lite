@@ -13,7 +13,7 @@ steps:
   name: clean_nans
   params:
     na_cutoff: 0.3
-- enabled: true
+- enabled: false
   name: sample_norm
   params:
     norm: l2
@@ -30,12 +30,12 @@ steps:
       unique_cut: 0.01
       var_threshold: 0.001
     - name: drop_outliers
-      outlier_cutoff: 500
+      outlier_cutoff: 15
 - enabled: true
   name: prune_correlated
   params:
     method: pearson
-    threshold: 0.95
+    threshold: 0.9
 - enabled: true
   name: normalize_standard
   params:
@@ -43,7 +43,15 @@ steps:
     control_col: Metadata_control_type
     control_key: negcon
     fit_on_controls: false
-    method: none
+    method: robustmad
+- enabled: false
+  name: normalize_pca
+  params:
+    control_col: Metadata_control_type
+    control_key: negcon
+    fit_on_controls: false
+    n_components: 128
+    whiten: false
 - enabled: true
   name: normalize_tvn
   params:
@@ -59,22 +67,9 @@ steps:
     batch_col: ''
     control_col: Metadata_control_type
     control_key: negcon
-    epsilon: 1.0e-06
+    epsilon: 1.0
     fit_on_controls: true
-    method: ZCA
-- enabled: false
-  name: normalize_harmony
-  params:
-    batch_col: Metadata_Plate
-    n_clusters: null
-    n_pcs: 50
-    sigma: 0.1
-    theta: 1.0
-- enabled: false
-  name: normalize_combat
-  params:
-    batch_col: Metadata_Plate
-    par_prior: true
+    method: ZCA-cor
 - enabled: true
   name: aggregate_wells
   params:

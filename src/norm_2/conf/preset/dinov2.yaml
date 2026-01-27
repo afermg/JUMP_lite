@@ -1,6 +1,6 @@
 # @package _global_
 
-# Subcell-optimized Configuration
+# Dinov2-optimized Configuration
 # Best settings from TVN/Spherize sweep
 
 input:
@@ -13,7 +13,7 @@ steps:
   name: clean_nans
   params:
     na_cutoff: 0.3
-- enabled: true
+- enabled: false
   name: sample_norm
   params:
     norm: l2
@@ -21,7 +21,7 @@ steps:
   name: merge_metadata
   params:
     metadata_dir: analysis/feature_similarity/input
-- enabled: true
+- enabled: false
   name: filter_features
   params:
     operations:
@@ -30,12 +30,12 @@ steps:
       unique_cut: 0.01
       var_threshold: 0.001
     - name: drop_outliers
-      outlier_cutoff: 15
-- enabled: true
+      outlier_cutoff: 500
+- enabled: false
   name: prune_correlated
   params:
     method: pearson
-    threshold: 0.9
+    threshold: 0.95
 - enabled: true
   name: normalize_standard
   params:
@@ -43,16 +43,16 @@ steps:
     control_col: Metadata_control_type
     control_key: negcon
     fit_on_controls: false
-    method: robustmad
-- enabled: true
+    method: standardize
+- enabled: false
   name: normalize_pca
   params:
     control_col: Metadata_control_type
     control_key: negcon
-    fit_on_controls: false
+    fit_on_controls: true
     n_components: 128
     whiten: false
-- enabled: true
+- enabled: false
   name: normalize_tvn
   params:
     alpha: 0.3
@@ -60,8 +60,8 @@ steps:
     control_col: Metadata_control_type
     control_key: negcon
     epsilon: 0.5
-    fit_on_controls: false
-- enabled: false
+    fit_on_controls: true
+- enabled: true
   name: normalize_spherize
   params:
     batch_col: ''
@@ -73,7 +73,7 @@ steps:
 - enabled: true
   name: aggregate_wells
   params:
-    method: median
+    method: mean
     strata:
     - Metadata_Plate
     - Metadata_Well
