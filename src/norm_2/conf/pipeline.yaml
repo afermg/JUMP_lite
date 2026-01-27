@@ -1,0 +1,120 @@
+# Default pipeline configuration for norm_2
+# This is the base config that presets extend from
+
+defaults:
+  - _self_
+
+# Input configuration
+input:
+  path: ""  # Must be provided via command line or preset
+
+# Output configuration
+output:
+  path: data/features/processed.parquet
+  compression: zstd
+
+# Pipeline steps (in order of execution)
+steps:
+  - name: clean_nans
+    enabled: true
+    params:
+      na_cutoff: 0.30
+
+  - name: sample_norm
+    enabled: false
+    params:
+      norm: l2
+
+  - name: merge_metadata
+    enabled: true
+    params:
+      metadata_dir: analysis/feature_similarity/input
+
+  - name: filter_features
+    enabled: false
+    params:
+      operations:
+        - name: variance_threshold
+          freq_cut: 0.05
+          unique_cut: 0.01
+          var_threshold: 0.001
+        - name: drop_outliers
+          outlier_cutoff: 500
+
+  - name: prune_correlated
+    enabled: true
+    params:
+      threshold: 0.9
+      method: pearson
+
+  - name: normalize_standard
+    enabled: true
+    params:
+      method: robustmad
+      batch_col: Metadata_Plate
+      fit_on_controls: false
+      control_key: negcon
+      control_col: Metadata_control_type
+
+  - name: normalize_tvn
+    enabled: false
+    params:
+      batch_col: Metadata_Plate
+      alpha: 0.5
+      epsilon: 1.0
+      fit_on_controls: true
+      control_key: negcon
+      control_col: Metadata_control_type
+
+  - name: normalize_spherize
+    enabled: false
+    params:
+      method: ZCA-cor
+      batch_col: ""
+      fit_on_controls: false
+      control_key: negcon
+      control_col: Metadata_control_type
+      epsilon: 1.0e-6
+
+  - name: normalize_harmony
+    enabled: false
+    params:
+      batch_col: Metadata_Plate
+      n_pcs: 50
+      theta: 2.0
+      sigma: 0.1
+
+  - name: normalize_combat
+    enabled: false
+    params:
+      batch_col: Metadata_Plate
+      par_prior: true
+
+  - name: aggregate_wells
+    enabled: true
+    params:
+      strata:
+        - Metadata_Plate
+        - Metadata_Well
+      method: median
+
+  - name: evaluate_metrics
+    enabled: true
+    params:
+      skip_visualization: false
+      skip_umap: false
+      n_top_compounds: 20
+
+# Validation settings
+abort_on_invalid_features: true
+max_pc1_variance: 0.50
+validate_batch_correction: false
+skip_redundant_configs: false
+
+# Hydra configuration
+hydra:
+  run:
+    dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  sweep:
+    dir: outputs/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    subdir: ${hydra.job.num}

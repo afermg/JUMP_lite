@@ -1,0 +1,257 @@
+# @package _global_
+
+# Batch Correction Method Comparison Sweep
+#
+# This sweep compares batch correction methods with optional Spherize post-processing.
+#
+# DESIGN RATIONALE (based on empirical analysis):
+# - TVN + Spherize together yields best results (PA ~40 vs ~25 for either alone)
+# - Spherize MUST fit on negcon (controls) - fitting globally gives PA=0
+# - TVN should fit on ALL data (not just controls)
+# - Therefore: Spherize is an INDEPENDENT toggle, not mutually exclusive
+#
+# Methods compared (mutually exclusive):
+# - None (baseline: base normalization only)
+# - TVN (Typical Variation Normalization)
+# - Harmony (iterative PCA correction, requires GPU)
+# - ComBat (empirical Bayes)
+#
+# Post-processing (can combine with above):
+# - Spherize (ZCA whitening) - runs AFTER batch correction
+#
+# See docs/batch_correction_guide.md for method details and rationale.
+#
+# USAGE:
+#   python src/norm/run_pipeline.py --multirun hydra/launcher=joblib \
+#     hydra.launcher.n_jobs=32 +sweep=batch_correction_sweep \
+#     input_override=./path/to/features.parquet
+
+defaults:
+  - /preset/embeddings
+
+# Enable batch correction validation (error if multiple methods enabled)
+validate_batch_correction: true
+validation_mode: "error"  # "error", "warn", or "skip"
+
+# Skip redundant configurations where method-specific params don't apply
+# E.g., skip tvn_alpha=0.3 when use_tvn=false (reduces 40K to ~960 runs)
+skip_redundant_configs: true
+
+# Abort pipeline if any step produces NaN/Inf values in features
+# Set to false to continue with warnings instead of aborting
+abort_on_invalid_features: true
+
+# Maximum variance explained by PC1 before flagging as collapsed
+# If PC1 explains > 40% of variance, the data has likely collapsed
+max_pc1_variance: 0.50
+
+# === DEFAULT PARAMETERS ===
+
+# Preprocessing
+corr_thresh: 0.95
+outlier_cut: 500
+use_sample_norm: false
+sample_norm_type: l2
+use_filter_features: false
+
+# Base normalization (normalize_standard)
+norm_method: robustmad
+norm_batch_col: "Metadata_Plate"
+fit_controls: false
+
+# Batch correction method selection (mutually exclusive)
+# batch_method controls which PRIMARY method is enabled (none, tvn, harmony, combat)
+# The pipeline code converts this to use_tvn, use_harmony, use_combat
+batch_method: "none"
+
+# These will be overridden by batch_method in the pipeline
+use_tvn: false
+use_harmony: false
+use_combat: false
+
+# Spherize is INDEPENDENT - can be combined with any batch_method
+# (TVN + Spherize yields best results based on empirical analysis)
+use_spherize: false
+
+# TVN parameters
+tvn_alpha: 0.3
+tvn_epsilon: 1.0  # Fixed per Ando 2017
+tvn_batch_col: "Metadata_Plate"
+tvn_fit_controls: true
+
+# Spherize parameters (post-processing whitening)
+# CRITICAL: spherize_fit_negcon MUST be true (PA=0 when fitting globally!)
+spherize_method: "ZCA-cor"
+spherize_epsilon: 1e-6
+spherize_batch_col: ""  # Empty = global whitening (standard practice)
+spherize_fit_negcon: true  # CRITICAL: must fit on controls, not all data
+
+# Harmony parameters (requires GPU)
+harmony_n_pcs: 50
+harmony_theta: 2.0
+harmony_sigma: 0.1
+harmony_n_clusters: null  # null = auto (min(100, N/30))
+
+# ComBat parameters
+combat_par_prior: true
+combat_batch_col: "Metadata_Plate"
+
+# Aggregation
+agg_method: median
+
+# === PIPELINE STEPS ===
+steps:
+  - name: clean_nans
+    enabled: true
+    params:
+      na_cutoff: 0.30
+
+  - name: sample_norm
+    enabled: ${use_sample_norm}
+    params:
+      norm: ${sample_norm_type}
+
+  - name: merge_metadata
+    enabled: true
+    params:
+      metadata_dir: "analysis/feature_similarity/input"
+
+  - name: filter_features
+    enabled: ${use_filter_features}
+    params:
+      operations:
+        - name: "variance_threshold"
+          freq_cut: 0.05
+          unique_cut: 0.01
+          var_threshold: 0.001
+        - name: "drop_outliers"
+          outlier_cutoff: ${outlier_cut}
+
+  - name: prune_correlated
+    enabled: true
+    params:
+      threshold: ${corr_thresh}
+      method: "pearson"
+
+  - name: normalize_standard
+    enabled: true
+    params:
+      method: ${norm_method}
+      batch_col: ${norm_batch_col}
+      fit_on_controls: ${fit_controls}
+      control_key: "negcon"
+      control_col: "Metadata_control_type"
+
+  - name: normalize_tvn
+    enabled: ${use_tvn}
+    params:
+      batch_col: ${tvn_batch_col}
+      alpha: ${tvn_alpha}
+      epsilon: ${tvn_epsilon}
+      fit_on_controls: ${tvn_fit_controls}
+      control_key: "negcon"
+      control_col: "Metadata_control_type"
+
+  - name: normalize_spherize
+    enabled: ${use_spherize}
+    params:
+      method: ${spherize_method}
+      batch_col: ${spherize_batch_col}
+      epsilon: ${spherize_epsilon}
+      fit_on_controls: ${spherize_fit_negcon}
+      control_key: "negcon"
+      control_col: "Metadata_control_type"
+
+  - name: normalize_harmony
+    enabled: ${use_harmony}
+    params:
+      batch_col: ${norm_batch_col}
+      n_pcs: ${harmony_n_pcs}
+      theta: ${harmony_theta}
+      sigma: ${harmony_sigma}
+      n_clusters: ${harmony_n_clusters}
+
+  - name: normalize_combat
+    enabled: ${use_combat}
+    params:
+      batch_col: ${combat_batch_col}
+      par_prior: ${combat_par_prior}
+
+  - name: aggregate_wells
+    enabled: true
+    params:
+      strata: ["Metadata_Plate", "Metadata_Well"]
+      method: ${agg_method}
+
+  - name: evaluate_metrics
+    enabled: true
+    params:
+      skip_visualization: true
+
+# === HYDRA SWEEP CONFIGURATION ===
+#
+# NEW DESIGN: Spherize is independent and can combine with other methods
+# Based on analysis: TVN + Spherize yields PA ~40 vs ~25 for either alone
+#
+# Breakdown:
+# - batch_method: 4 (none, tvn, harmony, combat) - mutually exclusive
+# - use_spherize: 2 (true, false) - INDEPENDENT, can combine with above
+# - norm_method: 3 (none, robustmad, standardize)
+# - fit_controls: 2 (true, false)
+# - use_sample_norm: 2 (true, false)
+# - use_filter_features: 2 (true, false)
+# - tvn_alpha: 2 (0.3, 0.5)
+# - tvn_fit_controls: 2 (true, false)
+# - harmony_n_pcs, harmony_theta, harmony_n_clusters
+# - combat_par_prior: 2 (true, false)
+#
+# Key combinations to test:
+# - TVN + Spherize (expected best: PA ~40)
+# - TVN alone, Spherize alone (baseline comparison)
+# - Harmony + Spherize, ComBat + Spherize (novel combinations)
+#
+# USAGE:
+#   python src/norm/run_pipeline.py --multirun hydra/launcher=joblib \
+#     hydra.launcher.n_jobs=32 +sweep=batch_correction_sweep \
+#     input_override=./path/to/features.parquet
+#
+hydra:
+  sweeper:
+    params:
+      # === BATCH CORRECTION METHOD (mutually exclusive) ===
+      # Primary batch correction - only ONE can be active
+      batch_method: none,tvn,harmony,combat
+      #batch_method: none,tvn
+
+      # === SPHERIZE (independent post-processing) ===
+      # Can be combined with ANY batch_method above
+      # CRITICAL: spherize_fit_negcon=true is required (false gives PA=0)
+      use_spherize: true,false
+      spherize_method: ZCA-cor,ZCA  # ZCA-cor = correlation-based, ZCA = covariance-based
+      spherize_fit_negcon: "true"  # MUST be true - do not sweep this
+
+      # === BASE NORMALIZATION ===
+      norm_method: none,robustmad,standardize
+      fit_controls: true,false
+
+      # === PREPROCESSING ===
+      use_sample_norm: true,false
+      use_filter_features: true,false
+
+      # === TVN PARAMS ===
+      # tvn_alpha: 0.5 performed well in tvn_spherize_sweep
+      tvn_alpha: "0.3,0.5"
+      tvn_fit_controls: true,false
+
+      # === HARMONY PARAMS ===
+      harmony_n_pcs: "50"
+      harmony_theta: "1.0"
+      harmony_n_clusters: "null"
+
+      # === COMBAT PARAMS ===
+      combat_par_prior: true,false
+
+      # === AGGREGATION ===
+      # CRITICAL: mean aggregation gives significantly better PA (~49 vs ~40)
+      # Best tvn_spherize_sweep result used agg_method: mean
+      agg_method: median,mean

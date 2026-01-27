@@ -1,0 +1,206 @@
+# @package _global_
+
+# Comprehensive sweep for TVN and Spherize with updated implementations
+#
+# Key changes tested:
+# - TVN now fits on controls by default (per original Ando et al. 2017 paper)
+# - Spherize properly centers data for non-correlation methods
+# - Tests interaction between TVN and Spherize
+#
+# This sweep explores:
+# 1. TVN: fit_on_controls, alpha, batch_col (global vs per-plate)
+# 2. Spherize: method, fit_on_controls, batch_col
+# 3. Combinations of TVN + Spherize
+# 4. Base normalization methods
+
+defaults:
+  - /preset/embeddings
+
+# Default sweep parameters
+corr_thresh: 0.95
+outlier_cut: 500
+norm_method: robustmad
+norm_batch_col: "Metadata_Plate"
+fit_controls: false
+use_sample_norm: true
+sample_norm_type: l2
+use_filter_features: false
+
+# TVN parameters (updated defaults)
+use_tvn: false
+tvn_alpha: 0.5
+tvn_epsilon: 1.0  # Match original paper (Ando 2017)
+tvn_batch_col: "Metadata_Plate"
+tvn_fit_controls: true  # New: default to fitting on controls
+
+# Spherize parameters
+use_spherize: false
+spherize_method: "ZCA-cor"
+spherize_batch_col: ""  # Empty string = global (null)
+spherize_fit_negcon: true
+
+# Harmony parameters (uses rapids_singlecell, requires GPU)
+use_harmony: false
+harmony_n_pcs: 50
+harmony_theta: 2.0
+harmony_sigma: 0.1
+
+# ComBat parameters
+use_combat: false
+combat_par_prior: true
+
+# Aggregation
+agg_method: median
+
+# Override steps with sweep variables
+steps:
+  - name: clean_nans
+    enabled: true
+    params:
+      na_cutoff: 0.30
+
+  - name: sample_norm
+    enabled: ${use_sample_norm}
+    params:
+      norm: ${sample_norm_type}
+
+  - name: merge_metadata
+    enabled: true
+    params:
+      metadata_dir: "analysis/feature_similarity/input"
+
+  - name: filter_features
+    enabled: ${use_filter_features}
+    params:
+      operations:
+        - name: "variance_threshold"
+          freq_cut: 0.05
+          unique_cut: 0.01
+          var_threshold: 0.001
+        - name: "drop_outliers"
+          outlier_cutoff: ${outlier_cut}
+
+  - name: prune_correlated
+    enabled: true
+    params:
+      threshold: ${corr_thresh}
+      method: "pearson"
+
+  - name: normalize_standard
+    enabled: true
+    params:
+      method: ${norm_method}
+      batch_col: ${norm_batch_col}
+      fit_on_controls: ${fit_controls}
+      control_key: "negcon"
+      control_col: "Metadata_control_type"
+
+  - name: normalize_tvn
+    enabled: ${use_tvn}
+    params:
+      batch_col: ${tvn_batch_col}
+      alpha: ${tvn_alpha}
+      epsilon: ${tvn_epsilon}
+      fit_on_controls: ${tvn_fit_controls}
+      control_key: "negcon"
+      control_col: "Metadata_control_type"
+
+  - name: normalize_spherize
+    enabled: ${use_spherize}
+    params:
+      method: ${spherize_method}
+      batch_col: ${spherize_batch_col}
+      fit_on_controls: ${spherize_fit_negcon}
+      control_key: "negcon"
+      control_col: "Metadata_control_type"
+
+  - name: normalize_harmony
+    enabled: ${use_harmony}
+    params:
+      batch_col: ${norm_batch_col}
+      n_pcs: ${harmony_n_pcs}
+      theta: ${harmony_theta}
+      sigma: ${harmony_sigma}
+
+  - name: normalize_combat
+    enabled: ${use_combat}
+    params:
+      batch_col: ${norm_batch_col}
+      par_prior: ${combat_par_prior}
+
+  - name: aggregate_wells
+    enabled: true
+    params:
+      strata: ["Metadata_Plate", "Metadata_Well"]
+      method: ${agg_method}
+
+  - name: evaluate_metrics
+    enabled: true
+    params:
+      skip_visualization: true  # Skip all visualization in parallel runs to avoid segfaults
+
+# Sweep configuration - COMPREHENSIVE (~1024 combinations)
+#
+# Comprehensive exploration of batch correction methods:
+# - TVN (Typical Variation Normalization)
+# - Spherize (ZCA whitening)
+# - Harmony (iterative PCA correction, GPU-accelerated)
+# - ComBat (empirical Bayes)
+#
+# Breakdown:
+# - use_filter_features: 2 (true, false)
+# - use_sample_norm: 2 (true, false)
+# - use_tvn: 2 (true, false)
+# - tvn_alpha: 2 (0.3, 0.5)
+# - tvn_fit_controls: 2 (true, false)
+# - use_spherize: 2 (true, false)
+# - spherize_fit_negcon: 2 (true, false)
+# - use_harmony: 2 (true, false) - requires GPU
+# - use_combat: 2 (true, false)
+# - agg_method: 2 (median, mean)
+#
+# Total: 2^10 = 1024 combinations
+#
+# USAGE:
+#   python src/norm/run_pipeline.py --multirun hydra/launcher=joblib \
+#     hydra.launcher.n_jobs=32 +sweep=tvn_spherize_sweep \
+#     input_override=./path/to/features.parquet
+
+hydra:
+  sweeper:
+    params:
+      # === BASE NORMALIZATION (fixed to best known) ===
+      norm_method: "robustmad"
+      fit_controls: "false"
+
+      # === SAMPLE NORMALIZATION (2) ===
+      use_sample_norm: "true,false"
+      sample_norm_type: "l2"
+
+      # === TVN - Typical Variation Normalization (2 * 2 * 2 = 8) ===
+      use_tvn: "true,false"
+      tvn_alpha: "0.3,0.5"
+      tvn_fit_controls: "true,false"  # KEY: original paper (true) vs all data (false)
+      tvn_batch_col: "Metadata_Plate"  # fixed to per-plate
+
+      # === SPHERIZE - Whitening (2 * 2 = 4) ===
+      use_spherize: "true,false"
+      spherize_method: "ZCA-cor"  # fixed to best known
+      spherize_fit_negcon: "true,false"
+      spherize_batch_col: "''"  # global
+
+      # === FEATURE SELECTION (2) ===
+      use_filter_features: "true,false"
+      corr_thresh: "0.95"
+
+      # === HARMONY (2) - requires GPU ===
+      use_harmony: "true,false"
+      harmony_theta: "2.0"
+      harmony_n_pcs: "50"
+
+      # === COMBAT (2) ===
+      use_combat: "true,false"
+      combat_par_prior: "true"
+
+      # === AGGREGATION (2) ===
+      agg_method: "median,mean"
