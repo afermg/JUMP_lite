@@ -13,6 +13,7 @@ from tqdm import tqdm
 import warnings
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
+import seaborn as sns
 
 # Try to import medpy, fallback to scipy
 try:
@@ -419,6 +420,181 @@ def visualize_samples(df: pd.DataFrame, root: Path, gt_method: str, methods: Lis
     plt.close()
 
 
+def visualize_single_sample(root: Path, gt_method: str, method: str, source_id: str,
+                            output_prefix: str, segment_step: str = "segment_cell",
+                            file_name: str = None):
+    """
+    Visualize a single well+compression comparison: original image and segmentation overlay
+    showing true positives (green), false positives (red), and false negatives (blue).
+
+    Args:
+        root: Root directory containing all methods
+        gt_method: Ground truth method name (e.g., 'zstd.zarr')
+        method: Compression method to compare (e.g., 'jpegxl_lossy_lq.zarr')
+        source_id: Well/source identifier to visualize
+        output_prefix: Output file prefix for saving the plot
+        segment_step: Segmentation step name (default: 'segment_cell')
+        file_name: Specific mask file name. If None, uses the first file found.
+    """
+    gt_dir = root / gt_method / "steps" / source_id / segment_step
+    method_dir = root / method / "steps" / source_id / segment_step
+
+    if not gt_dir.exists():
+        print(f"Ground truth directory not found: {gt_dir}")
+        return
+    if not method_dir.exists():
+        print(f"Method directory not found: {method_dir}")
+        return
+
+    # Find mask file
+    if file_name is None:
+        gt_files = sorted(gt_dir.glob("*.npz"))
+        if len(gt_files) == 0:
+            print(f"No mask files found in {gt_dir}")
+            return
+        file_name = gt_files[0].name
+        print(f"Using mask file: {file_name}")
+
+    gt_path = gt_dir / file_name
+    method_path = method_dir / file_name
+
+    if not gt_path.exists():
+        print(f"Ground truth mask not found: {gt_path}")
+        return
+    if not method_path.exists():
+        print(f"Method mask not found: {method_path}")
+        return
+
+    gt_mask = load_mask(gt_path)
+    method_mask = load_mask(method_path)
+
+    if gt_mask.shape != method_mask.shape:
+        print(f"Shape mismatch: GT {gt_mask.shape} vs Method {method_mask.shape}")
+        return
+
+    # Compute IoU
+    intersection = np.logical_and(gt_mask, method_mask).sum()
+    union = np.logical_or(gt_mask, method_mask).sum()
+    iou = intersection / union if union > 0 else 0.0
+
+    # Load original image
+    original_img = load_original_image(root, gt_method, source_id, file_name)
+
+    # Build overlay: green=TP, red=FP, blue=FN
+    overlay = np.zeros((*gt_mask.shape, 3))
+    overlay[gt_mask & method_mask] = [0, 1, 0]       # True positive
+    overlay[~gt_mask & method_mask] = [1, 0, 0]      # False positive
+    overlay[gt_mask & ~method_mask] = [0, 0, 1]       # False negative
+
+    method_display = method.replace('.zarr', '').replace('jpegxl_lossy_', 'jxl_')
+
+    fig, axes = plt.subplots(1, 2, figsize=(10, 4.5),
+                             gridspec_kw={'wspace': 0.05})
+
+    # Panel 1: Original image
+    if original_img is not None:
+        axes[0].imshow(original_img)
+    else:
+        axes[0].text(0.5, 0.5, 'Image not found', ha='center', va='center',
+                     transform=axes[0].transAxes, fontsize=12)
+    axes[0].set_title('Original', fontsize=11, fontweight='bold')
+    axes[0].axis('off')
+
+    # Panel 2: Segmentation comparison overlay
+    axes[1].imshow(overlay)
+    axes[1].set_title(f'{method_display} vs {gt_method.replace(".zarr", "")}  IoU: {iou:.4f}',
+                      fontsize=11, fontweight='bold')
+    axes[1].axis('off')
+
+    # Legend
+    legend_elements = [
+        mpatches.Patch(color='green', label='True Positive'),
+        mpatches.Patch(color='red', label='False Positive'),
+        mpatches.Patch(color='blue', label='False Negative')
+    ]
+    fig.legend(handles=legend_elements, loc='lower center', ncol=3,
+               bbox_to_anchor=(0.5, -0.02), fontsize=10)
+
+    output_path = f"{output_prefix}_{source_id}_{method_display}.png"
+    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    print(f"Saved single sample visualization to: {output_path}")
+    plt.close()
+
+
+def plot_iou_boxplot(df, output_prefix, segment_step="segment_cell"):
+    """
+    Create boxplot showing IoU distribution across compression methods.
+
+    Args:
+        df: DataFrame with detailed segmentation results (must have 'method' and 'iou' columns)
+        output_prefix: Output file prefix for saving the plot
+        segment_step: Segmentation step name for the title
+    """
+    # Clean up method names for display
+    df_plot = df.copy()
+    df_plot['codec'] = df_plot['method'].str.replace('.zarr', '').str.replace('jpegxl_lossy_', 'jxl_')
+
+    # Define codec order
+    codec_order = ['jxl_lq', 'jxl_mq', 'jxl_effort_3', 'jxl_hq']
+    df_plot = df_plot[df_plot['codec'].isin(codec_order)]
+
+    # Calculate stats for labels
+    codec_stats = df_plot.groupby('codec').agg(
+        n_total=('iou', 'count'),
+        median_iou=('iou', 'median')
+    )
+
+    codec_labels = {
+        codec: f"{codec}\nn={codec_stats.loc[codec, 'n_total']}"
+        for codec in codec_order if codec in codec_stats.index
+    }
+    label_order = [c for c in codec_order if c in codec_stats.index]
+
+    fig, ax = plt.subplots(figsize=(6, 6))
+
+    sns.violinplot(
+        data=df_plot,
+        x='codec',
+        y='iou',
+        order=label_order,
+        palette='viridis',
+        inner='box',
+        cut=0,
+        ax=ax
+    )
+
+    # sns.stripplot(
+    #     data=df_plot,
+    #     x='codec',
+    #     y='iou',
+    #     order=label_order,
+    #     color='black',
+    #     alpha=0.1,
+    #     size=3,
+    #     jitter=True,
+    #     ax=ax
+    # )
+
+    ax.set_xlabel('Codec', fontsize=12, fontweight='bold')
+    ax.set_ylabel('IoU', fontsize=12, fontweight='bold')
+    step_nice = 'Cell' if 'cell' in segment_step else 'Nuclei'
+    ax.set_title(f'{step_nice} Segmentation IoU Across Compression Methods',
+                 fontsize=14, fontweight='bold')
+
+    # Update x-axis labels to include sample counts
+    ax.set_xticks(range(len(label_order)))
+    ax.set_xticklabels([codec_labels[c] for c in label_order])
+
+    # Add horizontal line at 1.0 for reference
+    ax.axhline(y=1.0, color='gray', linestyle='--', alpha=0.5, label='Perfect overlap')
+
+    plt.tight_layout()
+    output_path = f"{output_prefix}_iou_boxplot.png"
+    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    print(f"Saved IoU boxplot to: {output_path}")
+    plt.show()
+
+
 def main():
     parser = argparse.ArgumentParser(description="Compare segmentation masks from different compression methods")
     parser.add_argument("--root", type=str, required=True, help="Root directory containing all methods")
@@ -427,12 +603,36 @@ def main():
     parser.add_argument("--output", type=str, default="segmentation_comparison", help="Output file prefix")
     parser.add_argument("--workers", type=int, default=4, help="Number of parallel workers")
     parser.add_argument("--segment-step", type=str, default="segment_cell", help="Segmentation step name (e.g., segment_cell, segment_nuclei)")
+    parser.add_argument("--visualize-sample", action="store_true", help="Only visualize a single well+method comparison (requires --well and one --methods entry)")
+    parser.add_argument("--well", type=str, default=None, help="Source/well ID for single sample visualization")
+    parser.add_argument("--file", type=str, default=None, help="Specific mask file name for single sample visualization (default: first file found)")
 
     args = parser.parse_args()
 
     root = Path(args.root)
     if not root.exists():
         raise ValueError(f"Root directory does not exist: {root}")
+
+    # Embed segment step in output prefix so cell/nuclei results don't overwrite each other
+    args.output = f"{args.output}_{args.segment_step}"
+
+    # Single sample visualization mode
+    if args.visualize_sample:
+        if args.well is None:
+            raise ValueError("--well is required when using --visualize-sample")
+        if len(args.methods) == 0:
+            raise ValueError("At least one --methods entry is required")
+        for method in args.methods:
+            visualize_single_sample(
+                root=root,
+                gt_method=args.ground_truth,
+                method=method,
+                source_id=args.well,
+                output_prefix=args.output,
+                segment_step=args.segment_step,
+                file_name=args.file,
+            )
+        return
 
     # Check if output already exists
     detailed_output = f"{args.output}_detailed.csv"
@@ -489,6 +689,9 @@ def main():
         # Save detailed results
         df.to_csv(detailed_output, index=False)
         print(f"\nDetailed results saved to: {detailed_output}")
+
+    # Plot IoU boxplot
+    plot_iou_boxplot(df, args.output, args.segment_step)
 
     # Compute summary statistics
     summary_data = []

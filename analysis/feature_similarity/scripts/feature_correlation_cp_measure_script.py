@@ -260,29 +260,72 @@ def parse_feature_names(df):
     return df
 
 
-def plot_correlation_boxplot(df, output_path="../output_figures/correlation_boxplot.png"):
+def plot_correlation_violinplot(df, output_path="../output_figures/correlation_violinplot.png"):
     """
-    Create boxenplot of feature correlations across compression methods.
+    Create violin + strip plot of feature correlations across compression methods.
 
     Args:
         df: DataFrame with correlation results
         output_path: Path to save plot
     """
-    plt.figure(figsize=(10, 6))
+    # Filter to lossy codecs only (exclude zstd reference)
+    codec_order = [
+        "jpegxl_lossy_lq.zarr",
+        "jpegxl_lossy_mq.zarr",
+        "jpegxl_lossy_effort_3.zarr",
+        "jpegxl_lossy_hq.zarr",
+    ]
+    df_filtered = df[df['key'].isin(codec_order)].copy()
+    df_filtered['codec'] = df_filtered['key'].str.replace('.zarr', '').str.replace('jpegxl_lossy_', 'jxl_')
 
-    order = ["jpegxl_lossy_lq.zarr",
-             "jpegxl_lossy_mq.zarr",
-             "jpegxl_lossy_effort_3.zarr",
-             "jpegxl_lossy_hq.zarr",
-             "zstd.zarr"]
+    display_order = ['jxl_lq', 'jxl_mq', 'jxl_effort_3', 'jxl_hq']
 
-    sns.boxenplot(data=df, x="key", y="corr", order=order)
-    plt.title("Distribution of Feature Correlations Across Compression Methods")
-    plt.xlabel("Compression strategy")
-    plt.ylabel("Feature Correlation Coefficient")
+    # Stats for tick labels
+    codec_stats = df_filtered.groupby('codec').agg(
+        n_total=('corr', 'count'),
+    )
+    codec_labels = {
+        codec: f"{codec}\nn={int(codec_stats.loc[codec, 'n_total'])}"
+        for codec in display_order if codec in codec_stats.index
+    }
+    label_order = [c for c in display_order if c in codec_stats.index]
+
+    fig, ax = plt.subplots(figsize=(6, 6))
+
+    sns.violinplot(
+        data=df_filtered,
+        x='codec',
+        y='corr',
+        order=label_order,
+        palette='viridis',
+        inner='box',
+        cut=0,
+        ax=ax
+    )
+
+    # sns.stripplot(
+    #     data=df_filtered,
+    #     x='codec',
+    #     y='corr',
+    #     order=label_order,
+    #     color='black',
+    #     alpha=0.1,
+    #     size=3,
+    #     jitter=True,
+    #     ax=ax
+    # )
+
+    ax.set_xlabel('Codec', fontsize=12, fontweight='bold')
+    ax.set_ylabel('Feature Correlation Coefficient', fontsize=12, fontweight='bold')
+    ax.set_title('Feature Correlations Across Compression Methods',
+                 fontsize=14, fontweight='bold')
+
+    ax.set_xticks(range(len(label_order)))
+    ax.set_xticklabels([codec_labels[c] for c in label_order])
+
     plt.tight_layout()
-    plt.savefig(output_path, dpi=150)
-    print(f"Saved boxplot to: {output_path}")
+    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    print(f"Saved correlation plot to: {output_path}")
     plt.show()
 
 
@@ -897,7 +940,7 @@ def main():
 
     # Create visualizations
     print("\nCreating visualizations...")
-    plot_correlation_boxplot(df)
+    plot_correlation_violinplot(df)
     plot_feature_heatmap(df)
     plot_compression_heatmap(df)
     plot_compartment_heatmap(df)
