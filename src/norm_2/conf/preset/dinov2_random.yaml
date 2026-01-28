@@ -42,8 +42,8 @@ steps:
     batch_col: Metadata_Plate
     control_col: Metadata_control_type
     control_key: negcon
-    fit_on_controls: false
-    method: robustmad
+    fit_on_controls: true
+    method: standardize
 - enabled: true
   name: normalize_pca
   params:
@@ -67,7 +67,7 @@ steps:
     batch_col: ''
     control_col: Metadata_control_type
     control_key: negcon
-    epsilon: 1.0
+    epsilon: 1.0e-06
     fit_on_controls: true
     method: ZCA-cor
 - enabled: true
@@ -80,6 +80,7 @@ steps:
 - enabled: true
   name: evaluate_metrics
   params:
+    min_compounds_per_target: 3
     skip_visualization: false
 hydra:
   run:

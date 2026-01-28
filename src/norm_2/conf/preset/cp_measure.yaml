@@ -59,7 +59,7 @@ steps:
     batch_col: Metadata_Plate
     control_col: Metadata_control_type
     control_key: negcon
-    epsilon: 0.5
+    epsilon: 1.0
     fit_on_controls: false
 - enabled: false
   name: normalize_spherize
@@ -80,6 +80,7 @@ steps:
 - enabled: true
   name: evaluate_metrics
   params:
+    min_compounds_per_target: 3
     skip_visualization: false
 hydra:
   run:

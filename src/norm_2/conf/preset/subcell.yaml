@@ -13,7 +13,7 @@ steps:
   name: clean_nans
   params:
     na_cutoff: 0.3
-- enabled: true
+- enabled: false
   name: sample_norm
   params:
     norm: l2
@@ -43,8 +43,8 @@ steps:
     control_col: Metadata_control_type
     control_key: negcon
     fit_on_controls: false
-    method: robustmad
-- enabled: true
+    method: standardize
+- enabled: false
   name: normalize_pca
   params:
     control_col: Metadata_control_type
@@ -61,7 +61,7 @@ steps:
     control_key: negcon
     epsilon: 0.5
     fit_on_controls: false
-- enabled: false
+- enabled: true
   name: normalize_spherize
   params:
     batch_col: ''
@@ -73,13 +73,14 @@ steps:
 - enabled: true
   name: aggregate_wells
   params:
-    method: median
+    method: mean
     strata:
     - Metadata_Plate
     - Metadata_Well
 - enabled: true
   name: evaluate_metrics
   params:
+    min_compounds_per_target: 3
     skip_visualization: false
 hydra:
   run:
