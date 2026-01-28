@@ -5,6 +5,8 @@ Converted from Marimo notebook to standalone Python script with functions
 Analyzes correlation between features extracted from compressed vs uncompressed images.
 """
 
+from utils_cp_measure_name_mapping import get_cpm_to_measurement_mapper as get_name_mapper
+
 import warnings
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
@@ -252,7 +254,9 @@ def parse_feature_names(df):
     Returns:
         pd.DataFrame: DataFrame with added compartment, mode, feature columns
     """
+    df["full_feature_name"] = df["feature"]
     df[["compartment", "mode", "feature"]] = df.feature.str.split("/", expand=True)
+    
     return df
 
 
@@ -365,44 +369,220 @@ def plot_compartment_heatmap(df, output_path="../output/compartment_heatmap.png"
     plt.show()
 
 
+def map_features_to_groups(df):
+    """
+    Map feature names to their measurement groups using the CellProfiler name mapper.
+
+    Args:
+        df: DataFrame with 'feature' column containing feature names
+
+    Returns:
+        pd.DataFrame: DataFrame with added 'feature_group' column
+    """
+    
+    # Get string before first upper case letter as key
+    df['feature_group'] = df['feature'].str.extract(r'^([a-z]+)', expand=False)
+
+    return df
+
+
+def plot_feature_group_boxplot(df, output_path="../output/feature_group_boxplot.png"):
+    """
+    Create boxplot of median feature correlations grouped by feature group.
+
+    Shows feature groups on x-axis with separate boxes for each codec within each group.
+
+    Args:
+        df: DataFrame with correlation results (must have 'feature_group' column)
+        output_path: Path to save plot
+    """
+    # Define codec order (excluding zstd since we're comparing against it)
+    codec_order = [
+        "jpegxl_lossy_lq.zarr",
+        "jpegxl_lossy_mq.zarr",
+        "jpegxl_lossy_effort_3.zarr",
+        "jpegxl_lossy_hq.zarr",
+    ]
+
+    # Filter to only include codecs we want to compare (exclude zstd)
+    df_filtered = df[df['key'].isin(codec_order)].copy()
+
+    # Clean up codec names for display
+    df_filtered['codec'] = df_filtered['key'].str.replace('.zarr', '').str.replace('jpegxl_lossy_', 'jxl_')
+
+    # Get unique feature groups sorted by median correlation
+    group_stats = df_filtered.groupby('feature_group').agg(
+        median_corr=('corr', 'median'),
+        n_features=('feature', 'nunique')
+    ).sort_values('median_corr', ascending=False)
+    group_order = group_stats.index.tolist()
+
+    # Create labels with feature counts
+    group_labels = {grp: f"{grp}\n(n={group_stats.loc[grp, 'n_features']})" for grp in group_order}
+
+    # Create the plot
+    fig, ax = plt.subplots(figsize=(14, 8))
+
+    sns.boxplot(
+        data=df_filtered,
+        x='feature_group',
+        y='corr',
+        hue='codec',
+        order=group_order,
+        hue_order=['jxl_lq', 'jxl_mq', 'jxl_effort_3', 'jxl_hq'],
+        palette='viridis',
+        ax=ax
+    )
+
+    ax.set_xlabel('Feature Group', fontsize=12, fontweight='bold')
+    ax.set_ylabel('Feature Correlation with ZSTD', fontsize=12, fontweight='bold')
+    ax.set_title('Feature Correlation by Feature Group Across Compression Methods',
+                 fontsize=14, fontweight='bold')
+
+    # Update x-axis labels to include feature counts
+    ax.set_xticks(range(len(group_order)))
+    ax.set_xticklabels([group_labels[grp] for grp in group_order], rotation=45, ha='right')
+
+    # Add horizontal line at 1.0 for reference
+    ax.axhline(y=1.0, color='gray', linestyle='--', alpha=0.5, label='Perfect correlation')
+
+    # Adjust legend
+    ax.legend(title='Codec', bbox_to_anchor=(1.02, 1), loc='upper left')
+
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    print(f"Saved feature group boxplot to: {output_path}")
+    plt.show()
+
+
+def plot_feature_group_swarmplot(df, output_path="../output/feature_group_swarmplot.png"):
+    """
+    Create swarmplot of feature correlations grouped by feature group.
+
+    Shows individual data points for each feature, grouped by feature group with
+    separate swarms for each codec.
+
+    Args:
+        df: DataFrame with correlation results (must have 'feature_group' column)
+        output_path: Path to save plot
+    """
+    # Define codec order (excluding zstd since we're comparing against it)
+    codec_order = [
+        "jpegxl_lossy_lq.zarr",
+        "jpegxl_lossy_mq.zarr",
+        "jpegxl_lossy_effort_3.zarr",
+        "jpegxl_lossy_hq.zarr",
+    ]
+
+    # Filter to only include codecs we want to compare (exclude zstd)
+    df_filtered = df[df['key'].isin(codec_order)].copy()
+
+    # Clean up codec names for display
+    df_filtered['codec'] = df_filtered['key'].str.replace('.zarr', '').str.replace('jpegxl_lossy_', 'jxl_')
+
+    # Get unique feature groups sorted by median correlation
+    group_stats = df_filtered.groupby('feature_group').agg(
+        median_corr=('corr', 'median'),
+        n_features=('feature', 'nunique')
+    ).sort_values('median_corr', ascending=False)
+    group_order = group_stats.index.tolist()
+
+    # Create labels with feature counts
+    group_labels = {grp: f"{grp}\n(n={group_stats.loc[grp, 'n_features']})" for grp in group_order}
+
+    # Create the plot
+    fig, ax = plt.subplots(figsize=(16, 8))
+
+    sns.swarmplot(
+        data=df_filtered,
+        x='feature_group',
+        y='corr',
+        hue='codec',
+        order=group_order,
+        hue_order=['jxl_lq', 'jxl_mq', 'jxl_effort_3', 'jxl_hq'],
+        palette='viridis',
+        dodge=True,
+        size=3,
+        alpha=0.7,
+        ax=ax
+    )
+
+    ax.set_xlabel('Feature Group', fontsize=12, fontweight='bold')
+    ax.set_ylabel('Feature Correlation with ZSTD', fontsize=12, fontweight='bold')
+    ax.set_title('Feature Correlation by Feature Group Across Compression Methods (Swarmplot)',
+                 fontsize=14, fontweight='bold')
+
+    # Update x-axis labels to include feature counts
+    ax.set_xticks(range(len(group_order)))
+    ax.set_xticklabels([group_labels[grp] for grp in group_order], rotation=45, ha='right')
+
+    # Add horizontal line at 1.0 for reference
+    ax.axhline(y=1.0, color='gray', linestyle='--', alpha=0.5, label='Perfect correlation')
+
+    # Adjust legend
+    ax.legend(title='Codec', bbox_to_anchor=(1.02, 1), loc='upper left')
+
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    print(f"Saved feature group swarmplot to: {output_path}")
+    plt.show()
+
+
 def main():
     """Main pipeline for feature correlation analysis."""
     # Configuration
-    workspace_dir = Path("/work") / "datasets" / "aliby_output" / "jump_target2_4plate"
+    workspace_dir = Path("/work") / "datasets" / "aliby_output" / "cp_measure" /"jump_target2_4plate"
     cache_dir = Path(workspace_dir) / "db_cache"
     output_dir = Path("../output")
 
+    # If output_dir / "feature_correlations.parquet" exists, ask if to rerun or load and skip
+    if (output_dir / "feature_correlations.parquet").exists():
+        rerun = input(f"{output_dir / 'feature_correlations.parquet'} exists. Rerun analysis? (y/n): ")
+        if rerun.lower() != 'y':
+            df = pd.read_parquet(output_dir / "feature_correlations.parquet")
+            print("Loaded existing correlation results.")
+            rerun = False
+        else:
+            rerun = True
+    
     # For local testing, you can override this:
     # workspace_dir = Path("path/to/your/workspace")
+    if rerun:
+        print(f"Workspace directory: {workspace_dir}")
+        print(f"Cache directory: {cache_dir}")
+        print(f"Output directory: {output_dir}")
 
-    print(f"Workspace directory: {workspace_dir}")
-    print(f"Cache directory: {cache_dir}")
-    print(f"Output directory: {output_dir}")
+        # Find profile directories
+        print("\nFinding profile directories...")
+        profiles_dirs = find_profiles_dirs(workspace_dir)
 
-    # Find profile directories
-    print("\nFinding profile directories...")
-    profiles_dirs = find_profiles_dirs(workspace_dir)
+        # Process all compressions
+        print("\nProcessing all compression methods...")
+        features_per_compression = process_all_compressions(
+            profiles_dirs, workspace_dir, cache_dir, output_dir
+        )
 
-    # Process all compressions
-    print("\nProcessing all compression methods...")
-    features_per_compression = process_all_compressions(
-        profiles_dirs, workspace_dir, cache_dir, output_dir
-    )
+        print(f"\nFound {len(features_per_compression)} compression methods:")
+        for key in features_per_compression.keys():
+            print(f"  - {key}")
 
-    print(f"\nFound {len(features_per_compression)} compression methods:")
-    for key in features_per_compression.keys():
-        print(f"  - {key}")
+        # Calculate correlations
+        print("\nCalculating feature correlations...")
+        df = calculate_feature_correlations(features_per_compression, reference_key="zstd.zarr")
 
-    # Calculate correlations
-    print("\nCalculating feature correlations...")
-    df = calculate_feature_correlations(features_per_compression, reference_key="zstd.zarr")
+        print("\nCorrelation statistics by compression method:")
+        print(df.groupby("key")["corr"].agg(['mean', 'median', 'std']))
 
-    print("\nCorrelation statistics by compression method:")
-    print(df.groupby("key")["corr"].agg(['mean', 'median', 'std']))
+        # Parse feature names
+        print("\nParsing feature names...")
+        df = parse_feature_names(df)
 
-    # Parse feature names
-    print("\nParsing feature names...")
-    df = parse_feature_names(df)
+        df.to_parquet(output_dir / "feature_correlations.parquet")
+        print(f"Saved correlation results to: {output_dir / 'feature_correlations.parquet'}")
+    
+    # Map features to groups
+    print("\nMapping features to groups...")
+    df = map_features_to_groups(df)
 
     # Create visualizations
     print("\nCreating visualizations...")
@@ -410,10 +590,11 @@ def main():
     plot_feature_heatmap(df)
     plot_compression_heatmap(df)
     plot_compartment_heatmap(df)
+    plot_feature_group_boxplot(df)
+    plot_feature_group_swarmplot(df)
 
     print("\nAnalysis complete!")
-    return df, features_per_compression
 
 
 if __name__ == "__main__":
-    df, features_per_compression = main()
+    main()

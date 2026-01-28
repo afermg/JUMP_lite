@@ -119,13 +119,13 @@ def create_pa_pc_plot(df: pd.DataFrame, output_path: Path):
     ax.legend(handles=size_handles, title="Codec (size)", loc="lower left",
               bbox_to_anchor=(1.02, 0), fontsize=9)
 
-    ax.set_xlabel("Profile Consistency (PC)", fontsize=12)
+    ax.set_xlabel("Phenotypic Consistency (PC)", fontsize=12)
     ax.set_ylabel("Phenotypic Activity (PA %)", fontsize=12)
     ax.set_title("PA vs PC by Model and Codec", fontsize=14, fontweight="bold")
     ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    plt.savefig(output_path, dpi=150, bbox_inches="tight")
+    plt.savefig(output_path, dpi=150, bbox_inches="tight", pad_inches=0.4)
     plt.close()
 
     print(f"Saved PA vs PC plot to: {output_path}")
@@ -135,7 +135,7 @@ def create_metrics_plot(df: pd.DataFrame, output_path: Path):
     """Create a 5-panel plot showing metrics vs file size, colored by feature_type."""
     metrics = [
         ("pa", "Phenotypic Activity (%)"),
-        ("pc", "Profile Consistency"),
+        ("pc", "Phenotypic Consistency"),
         ("balance", "Balance (PA × PC)"),
         ("silhouette", "Silhouette Score"),
         ("kbet", "kBET Score"),

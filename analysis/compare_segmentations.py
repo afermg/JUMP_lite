@@ -434,51 +434,61 @@ def main():
     if not root.exists():
         raise ValueError(f"Root directory does not exist: {root}")
 
-    print(f"Loading ground truth from: {args.ground_truth}")
-    print(f"Segmentation step: {args.segment_step}")
-    gt_files = find_mask_files(root, args.ground_truth, args.segment_step)
-    print(f"Found {len(gt_files)} ground truth mask files")
-
-    if len(gt_files) == 0:
-        raise ValueError(f"No ground truth files found in {root / args.ground_truth}")
-
-    all_results = []
-
-    for method in args.methods:
-        print(f"\nProcessing method: {method}")
-        method_files = find_mask_files(root, method, args.segment_step)
-        print(f"Found {len(method_files)} mask files for {method}")
-
-        matches = match_files(gt_files, method_files)
-        print(f"Matched {len(matches)} file pairs")
-
-        if len(matches) == 0:
-            print(f"Warning: No matching files found for {method}")
-            continue
-
-        # Prepare arguments for parallel processing
-        task_args = [(gt, pred, method) for gt, pred in matches][:]
-
-        # Process in parallel
-        with ProcessPoolExecutor(max_workers=args.workers) as executor:
-            futures = [executor.submit(process_file_pair, task_arg) for task_arg in task_args]
-
-            for future in tqdm(as_completed(futures), total=len(futures), desc=f"Comparing {method}"):
-                result = future.result()
-                if result is not None:
-                    all_results.append(result)
-
-    if len(all_results) == 0:
-        print("No results generated. Check your data paths.")
-        return
-
-    # Create detailed results DataFrame
-    df = pd.DataFrame(all_results)
-
-    # Save detailed results
+    # Check if output already exists
     detailed_output = f"{args.output}_detailed.csv"
-    df.to_csv(detailed_output, index=False)
-    print(f"\nDetailed results saved to: {detailed_output}")
+    rerun = True
+    if Path(detailed_output).exists():
+        rerun_input = input(f"{detailed_output} exists. Rerun analysis? (y/n): ")
+        if rerun_input.lower() != 'y':
+            df = pd.read_csv(detailed_output)
+            print(f"Loaded existing results from {detailed_output}")
+            rerun = False
+
+    if rerun:
+        print(f"Loading ground truth from: {args.ground_truth}")
+        print(f"Segmentation step: {args.segment_step}")
+        gt_files = find_mask_files(root, args.ground_truth, args.segment_step)
+        print(f"Found {len(gt_files)} ground truth mask files")
+
+        if len(gt_files) == 0:
+            raise ValueError(f"No ground truth files found in {root / args.ground_truth}")
+
+        all_results = []
+
+        for method in args.methods:
+            print(f"\nProcessing method: {method}")
+            method_files = find_mask_files(root, method, args.segment_step)
+            print(f"Found {len(method_files)} mask files for {method}")
+
+            matches = match_files(gt_files, method_files)
+            print(f"Matched {len(matches)} file pairs")
+
+            if len(matches) == 0:
+                print(f"Warning: No matching files found for {method}")
+                continue
+
+            # Prepare arguments for parallel processing
+            task_args = [(gt, pred, method) for gt, pred in matches][:]
+
+            # Process in parallel
+            with ProcessPoolExecutor(max_workers=args.workers) as executor:
+                futures = [executor.submit(process_file_pair, task_arg) for task_arg in task_args]
+
+                for future in tqdm(as_completed(futures), total=len(futures), desc=f"Comparing {method}"):
+                    result = future.result()
+                    if result is not None:
+                        all_results.append(result)
+
+        if len(all_results) == 0:
+            print("No results generated. Check your data paths.")
+            return
+
+        # Create detailed results DataFrame
+        df = pd.DataFrame(all_results)
+
+        # Save detailed results
+        df.to_csv(detailed_output, index=False)
+        print(f"\nDetailed results saved to: {detailed_output}")
 
     # Compute summary statistics
     summary_data = []
