@@ -260,7 +260,7 @@ def parse_feature_names(df):
     return df
 
 
-def plot_correlation_boxplot(df, output_path="../output/correlation_boxplot.png"):
+def plot_correlation_boxplot(df, output_path="../output_figures/correlation_boxplot.png"):
     """
     Create boxenplot of feature correlations across compression methods.
 
@@ -287,7 +287,7 @@ def plot_correlation_boxplot(df, output_path="../output/correlation_boxplot.png"
 
 
 def plot_feature_heatmap(df, compression_key="jpegxl_lossy_effort_3.zarr",
-                        output_path="../output/feature_heatmap.png"):
+                        output_path="../output_figures/feature_heatmap.png"):
     """
     Create heatmap of correlations by feature and compartment.
 
@@ -310,7 +310,7 @@ def plot_feature_heatmap(df, compression_key="jpegxl_lossy_effort_3.zarr",
     plt.show()
 
 
-def plot_compression_heatmap(df, output_path="../output/compression_heatmap.png"):
+def plot_compression_heatmap(df, output_path="../output_figures/compression_heatmap.png"):
     """
     Create heatmap of median correlations by feature and compression method.
 
@@ -339,7 +339,7 @@ def plot_compression_heatmap(df, output_path="../output/compression_heatmap.png"
     plt.show()
 
 
-def plot_compartment_heatmap(df, output_path="../output/compartment_heatmap.png"):
+def plot_compartment_heatmap(df, output_path="../output_figures/compartment_heatmap.png"):
     """
     Create heatmap of median correlations by compartment and compression method.
 
@@ -386,7 +386,7 @@ def map_features_to_groups(df):
     return df
 
 
-def plot_feature_group_boxplot(df, output_path="../output/feature_group_boxplot.png"):
+def plot_feature_group_boxplot(df, output_path="../output_figures/feature_group_boxplot.png"):
     """
     Create boxplot of median feature correlations grouped by feature group.
 
@@ -413,12 +413,32 @@ def plot_feature_group_boxplot(df, output_path="../output/feature_group_boxplot.
     # Get unique feature groups sorted by median correlation
     group_stats = df_filtered.groupby('feature_group').agg(
         median_corr=('corr', 'median'),
+        n_total=('corr', 'count'),
         n_features=('feature', 'nunique')
     ).sort_values('median_corr', ascending=False)
+
+    # Calculate per-codec counts
+    n_codecs = df_filtered['codec'].nunique()
+    group_stats['n_per_codec'] = (group_stats['n_total'] / n_codecs).astype(int)
     group_order = group_stats.index.tolist()
 
-    # Create labels with feature counts
-    group_labels = {grp: f"{grp}\n(n={group_stats.loc[grp, 'n_features']})" for grp in group_order}
+    # Nice display names for feature groups
+    nice_names = {
+        'sizeshape': 'Size & Shape',
+        'radial': 'Radial Distribution',
+        'zernike': 'Zernike',
+        'intensity': 'Intensity',
+        'texture': 'Texture',
+        'correlation': 'Correlation',
+        'granularity': 'Granularity',
+        'location': 'Location',
+    }
+
+    # Create labels with condensed counts (total:per_codec:feat)
+    group_labels = {
+        grp: f"{nice_names.get(grp, grp)}\nn={group_stats.loc[grp, 'n_total']}:{group_stats.loc[grp, 'n_per_codec']}:{group_stats.loc[grp, 'n_features']}"
+        for grp in group_order
+    }
 
     # Create the plot
     fig, ax = plt.subplots(figsize=(14, 8))
@@ -455,12 +475,12 @@ def plot_feature_group_boxplot(df, output_path="../output/feature_group_boxplot.
     plt.show()
 
 
-def plot_feature_group_swarmplot(df, output_path="../output/feature_group_swarmplot.png"):
+def plot_feature_group_violinplot(df, output_path="../output_figures/feature_group_violinplot.png"):
     """
-    Create swarmplot of feature correlations grouped by feature group.
+    Create violinplot of feature correlations grouped by feature group.
 
-    Shows individual data points for each feature, grouped by feature group with
-    separate swarms for each codec.
+    Shows distribution of correlations for each feature group with
+    separate violins for each codec.
 
     Args:
         df: DataFrame with correlation results (must have 'feature_group' column)
@@ -483,17 +503,25 @@ def plot_feature_group_swarmplot(df, output_path="../output/feature_group_swarmp
     # Get unique feature groups sorted by median correlation
     group_stats = df_filtered.groupby('feature_group').agg(
         median_corr=('corr', 'median'),
+        n_total=('corr', 'count'),
         n_features=('feature', 'nunique')
     ).sort_values('median_corr', ascending=False)
+
+    # Calculate per-codec counts
+    n_codecs = df_filtered['codec'].nunique()
+    group_stats['n_per_codec'] = (group_stats['n_total'] / n_codecs).astype(int)
     group_order = group_stats.index.tolist()
 
-    # Create labels with feature counts
-    group_labels = {grp: f"{grp}\n(n={group_stats.loc[grp, 'n_features']})" for grp in group_order}
+    # Create labels with condensed counts (total:per_codec:feat)
+    group_labels = {
+        grp: f"{grp}\nn={group_stats.loc[grp, 'n_total']}:{group_stats.loc[grp, 'n_per_codec']}:{group_stats.loc[grp, 'n_features']}"
+        for grp in group_order
+    }
 
     # Create the plot
     fig, ax = plt.subplots(figsize=(16, 8))
 
-    sns.swarmplot(
+    sns.violinplot(
         data=df_filtered,
         x='feature_group',
         y='corr',
@@ -501,15 +529,14 @@ def plot_feature_group_swarmplot(df, output_path="../output/feature_group_swarmp
         order=group_order,
         hue_order=['jxl_lq', 'jxl_mq', 'jxl_effort_3', 'jxl_hq'],
         palette='viridis',
-        dodge=True,
-        size=3,
-        alpha=0.7,
+        inner='box',
+        cut=0,
         ax=ax
     )
 
     ax.set_xlabel('Feature Group', fontsize=12, fontweight='bold')
     ax.set_ylabel('Feature Correlation with ZSTD', fontsize=12, fontweight='bold')
-    ax.set_title('Feature Correlation by Feature Group Across Compression Methods (Swarmplot)',
+    ax.set_title('Feature Correlation by Feature Group Across Compression Methods',
                  fontsize=14, fontweight='bold')
 
     # Update x-axis labels to include feature counts
@@ -524,7 +551,291 @@ def plot_feature_group_swarmplot(df, output_path="../output/feature_group_swarmp
 
     plt.tight_layout()
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
-    print(f"Saved feature group swarmplot to: {output_path}")
+    print(f"Saved feature group violinplot to: {output_path}")
+    plt.show()
+
+
+def plot_feature_group_by_compartment(df, output_path="../output_figures/feature_group_by_compartment.png"):
+    """
+    Create boxplots for SizeShape, RadialDistribution, and Zernike (AreaShape) features,
+    with separation by both codec and compartment.
+
+    Args:
+        df: DataFrame with correlation results (must have 'feature_group' and 'compartment' columns)
+        output_path: Path to save plot
+    """
+    # Define codec order (excluding zstd since we're comparing against it)
+    codec_order = [
+        "jpegxl_lossy_lq.zarr",
+        "jpegxl_lossy_mq.zarr",
+        "jpegxl_lossy_effort_3.zarr",
+        "jpegxl_lossy_hq.zarr",
+    ]
+
+    # Filter to only include codecs we want to compare (exclude zstd)
+    df_filtered = df[df['key'].isin(codec_order)].copy()
+
+    # Clean up codec names for display
+    df_filtered['codec'] = df_filtered['key'].str.replace('.zarr', '').str.replace('jpegxl_lossy_', 'jxl_')
+
+    # Define the three feature groups to plot
+    feature_groups = ['sizeshape', 'radial', 'zernike']
+    feature_group_titles = {
+        'sizeshape': 'SizeShape Features',
+        'radial': 'Radial Distribution Features',
+        'zernike': 'Zernike Features'
+    }
+
+    # Create figure with 3 subplots
+    fig, axes = plt.subplots(1, 3, figsize=(20, 8), sharey=True)
+
+    for idx, feature_group in enumerate(feature_groups):
+        ax = axes[idx]
+
+        # Filter data for this feature group
+        df_group = df_filtered[df_filtered['feature_group'] == feature_group].copy()
+
+        if len(df_group) == 0:
+            ax.text(0.5, 0.5, f'No data for {feature_group}', ha='center', va='center', transform=ax.transAxes)
+            ax.set_title(feature_group_titles.get(feature_group, feature_group))
+            continue
+
+        # Get compartment order sorted alphabetically
+        compartment_order = sorted(df_group['compartment'].unique())
+
+        # Calculate stats for labels
+        compartment_stats = df_group.groupby('compartment').agg(
+            n_total=('corr', 'count'),
+            n_features=('feature', 'nunique')
+        )
+        n_codecs = df_group['codec'].nunique()
+        compartment_stats['n_per_codec'] = (compartment_stats['n_total'] / n_codecs).astype(int)
+
+        # Create labels with condensed counts (total:per_codec:feat)
+        compartment_labels = {
+            comp: f"{comp}\nn={compartment_stats.loc[comp, 'n_total']}:{compartment_stats.loc[comp, 'n_features']}"
+            for comp in compartment_order
+        }
+
+        sns.boxplot(
+            data=df_group,
+            x='compartment',
+            y='corr',
+            hue='codec',
+            order=compartment_order,
+            hue_order=['jxl_lq', 'jxl_mq', 'jxl_effort_3', 'jxl_hq'],
+            palette='viridis',
+            ax=ax
+        )
+
+        ax.set_xlabel('Compartment', fontsize=11, fontweight='bold')
+        if idx == 0:
+            ax.set_ylabel('Feature Correlation with ZSTD', fontsize=11, fontweight='bold')
+        else:
+            ax.set_ylabel('')
+
+        ax.set_title(feature_group_titles.get(feature_group, feature_group), fontsize=12, fontweight='bold')
+
+        # Update x-axis labels
+        ax.set_xticks(range(len(compartment_order)))
+        ax.set_xticklabels([compartment_labels[comp] for comp in compartment_order], rotation=45, ha='right', fontsize=9)
+
+        # Add horizontal line at 1.0 for reference
+        ax.axhline(y=1.0, color='gray', linestyle='--', alpha=0.5)
+
+        # Only show legend on the last subplot
+        if idx < 2:
+            ax.get_legend().remove()
+        else:
+            ax.legend(title='Codec', bbox_to_anchor=(1.02, 1), loc='upper left')
+
+    plt.suptitle('Feature Correlation by Compartment and Codec', fontsize=14, fontweight='bold', y=1.02)
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    print(f"Saved feature group by compartment plot to: {output_path}")
+    plt.show()
+
+
+def extract_feature_subcategory(feature_name):
+    """
+    Extract subcategory from feature name.
+
+    Examples:
+        radial_zernikesRadialDistribution_ZernikePhase_7_3 -> zernikesRadialDistribution_ZernikePhase
+        radial_distributionRadialDistribution_FracAtD_4of4 -> distributionRadialDistribution_FracAtD
+        radial_distributionRadialDistribution_MeanFrac_1of4 -> distributionRadialDistribution_MeanFrac
+        zernikeZernike_4_0 -> Zernike
+        sizeshapeArea -> Area
+        sizeshapeCentralMoment_0_0 -> CentralMoment
+    """
+    import re
+
+    if pd.isna(feature_name):
+        return 'Unknown'
+
+    # Handle zernike features: zernikeZernike_4_0 -> 4_0
+    if feature_name.startswith('zernike') and 'Zernike' in feature_name:
+        # Extract the trailing X_Y part
+        match = re.search(r'_(\d+_\d+)$', feature_name)
+        if match:
+            return match.group(1)
+        return 'Zernike'
+
+    # Handle radial features: strip 'radial_' prefix and trailing numeric params
+    # radial_zernikesRadialDistribution_ZernikePhase_7_3 -> zernikesRadialDistribution_ZernikePhase
+    if feature_name.startswith('radial_'):
+        rest = feature_name[len('radial_'):]
+        # Remove trailing numeric parameters like _7_3, _4of4, _1of4
+        rest = re.sub(r'_\d+_\d+$', '', rest)  # Remove _X_Y suffix
+        rest = re.sub(r'_\d+of\d+$', '', rest)  # Remove _Xof4 suffix
+        return rest
+
+    # Handle sizeshape features - use original logic
+    # Strip lowercase prefix and get the part starting with uppercase
+    match = re.match(r'^[a-z]+([A-Z].*)', feature_name)
+    if match:
+        rest = match.group(1)
+        # Handle Moment features
+        moment_prefixes = ['CentralMoment', 'HuMoment', 'NormalizedMoment', 'SpatialMoment',
+                           'InertiaTensor', 'InertiaTensorEigenvalues']
+        for prefix in moment_prefixes:
+            if rest.startswith(prefix):
+                return prefix
+        # For other features, get the CamelCase word before any underscore or number
+        match2 = re.match(r'^([A-Z][a-zA-Z]*)', rest)
+        if match2:
+            return match2.group(1)
+        return rest
+
+    return feature_name
+
+
+def plot_feature_subgroups_by_compartment(df, output_path="../output_figures/feature_subgroups_by_compartment.png"):
+    """
+    Create boxplots with rows for cell/nuclei compartments and columns for feature groups,
+    grouped by feature subcategory within each subplot.
+
+    Args:
+        df: DataFrame with correlation results
+        output_path: Path to save plot
+    """
+    # Define codec order (excluding zstd since we're comparing against it)
+    codec_order = [
+        "jpegxl_lossy_lq.zarr",
+        "jpegxl_lossy_mq.zarr",
+        "jpegxl_lossy_effort_3.zarr",
+        "jpegxl_lossy_hq.zarr",
+    ]
+
+    # Filter to only include codecs we want to compare (exclude zstd)
+    df_filtered = df[df['key'].isin(codec_order)].copy()
+
+    # Clean up codec names for display
+    df_filtered['codec'] = df_filtered['key'].str.replace('.zarr', '').str.replace('jpegxl_lossy_', 'jxl_')
+
+    # Clean up compartment names (e.g., 'nuclei_1' -> 'nuclei')
+    df_filtered['compartment_clean'] = df_filtered['compartment'].str.extract(r'^([a-zA-Z]+)', expand=False)
+
+    # Extract feature subcategory
+    df_filtered['feature_subcategory'] = df_filtered['feature'].apply(extract_feature_subcategory)
+
+    # Define the feature groups and compartments
+    feature_groups = ['sizeshape', 'radial', 'zernike']
+    feature_group_titles = {
+        'sizeshape': 'SizeShape',
+        'radial': 'Radial Distribution',
+        'zernike': 'Zernike (AreaShape)'
+    }
+    compartments = ['cell', 'nuclei']
+
+    # Create figure with 2 rows (compartments) × 3 columns (feature groups)
+    fig, axes = plt.subplots(2, 3, figsize=(22, 12), sharey=True)
+
+    for row_idx, compartment in enumerate(compartments):
+        for col_idx, feature_group in enumerate(feature_groups):
+            ax = axes[row_idx, col_idx]
+
+            # Filter data for this compartment and feature group
+            df_subset = df_filtered[
+                (df_filtered['compartment_clean'] == compartment) &
+                (df_filtered['feature_group'] == feature_group)
+            ].copy()
+
+            if len(df_subset) == 0:
+                ax.text(0.5, 0.5, f'No data', ha='center', va='center', transform=ax.transAxes)
+                ax.set_title(f"{compartment.capitalize()} - {feature_group_titles.get(feature_group, feature_group)}")
+                continue
+
+            # Calculate stats for labels
+            subcat_stats = df_subset.groupby('feature_subcategory').agg(
+                n_total=('corr', 'count'),
+                n_features=('feature', 'nunique')
+            )
+            n_codecs = df_subset['codec'].nunique()
+            subcat_stats['n_per_codec'] = (subcat_stats['n_total'] / n_codecs).astype(int)
+
+            # Get subcategory order - sort by name for zernike, by median for others
+            if feature_group == 'zernike':
+                subcat_order = sorted(df_subset['feature_subcategory'].unique())
+            else:
+                subcat_order = df_subset.groupby('feature_subcategory')['corr'].median().sort_values(ascending=False).index.tolist()
+
+            # Create condensed labels (single line for sizeshape/zernike, two lines for radial)
+            if feature_group in ['sizeshape', 'zernike']:
+                subcat_labels = {
+                    subcat: f"{subcat} (n={subcat_stats.loc[subcat, 'n_total']}:{subcat_stats.loc[subcat, 'n_features']})"
+                    for subcat in subcat_order
+                }
+            else:
+                subcat_labels = {
+                    subcat: f"{subcat}\nn={subcat_stats.loc[subcat, 'n_total']}:{subcat_stats.loc[subcat, 'n_features']}"
+                    for subcat in subcat_order
+                }
+
+            sns.boxplot(
+                data=df_subset,
+                x='feature_subcategory',
+                y='corr',
+                hue='codec',
+                order=subcat_order,
+                hue_order=['jxl_lq', 'jxl_mq', 'jxl_effort_3', 'jxl_hq'],
+                palette='viridis',
+                ax=ax
+            )
+
+            # Set labels
+            if row_idx == 1:
+                ax.set_xlabel('Feature Subcategory', fontsize=10, fontweight='bold')
+            else:
+                ax.set_xlabel('')
+
+            if col_idx == 0:
+                ax.set_ylabel(f'{compartment.capitalize()}\nCorrelation with ZSTD', fontsize=10, fontweight='bold')
+            else:
+                ax.set_ylabel('')
+
+            # Set title only for top row
+            if row_idx == 0:
+                ax.set_title(feature_group_titles.get(feature_group, feature_group), fontsize=12, fontweight='bold')
+
+            # Update x-axis labels
+            ax.set_xticks(range(len(subcat_order)))
+            ax.set_xticklabels([subcat_labels[s] for s in subcat_order], rotation=45, ha='right', fontsize=8)
+
+            # Add horizontal line at 1.0 for reference
+            ax.axhline(y=1.0, color='gray', linestyle='--', alpha=0.5)
+
+            # Remove legend except for top-right subplot
+            if not (row_idx == 0 and col_idx == 2):
+                if ax.get_legend():
+                    ax.get_legend().remove()
+            else:
+                ax.legend(title='Codec', bbox_to_anchor=(1.02, 1), loc='upper left', fontsize=9)
+
+    plt.suptitle('Feature Correlation by Subcategory: Cell vs Nuclei', fontsize=14, fontweight='bold', y=1.02)
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    print(f"Saved feature subgroups by compartment plot to: {output_path}")
     plt.show()
 
 
@@ -533,7 +844,7 @@ def main():
     # Configuration
     workspace_dir = Path("/work") / "datasets" / "aliby_output" / "cp_measure" /"jump_target2_4plate"
     cache_dir = Path(workspace_dir) / "db_cache"
-    output_dir = Path("../output")
+    output_dir = Path("../output_figures")
 
     # If output_dir / "feature_correlations.parquet" exists, ask if to rerun or load and skip
     if (output_dir / "feature_correlations.parquet").exists():
@@ -591,8 +902,10 @@ def main():
     plot_compression_heatmap(df)
     plot_compartment_heatmap(df)
     plot_feature_group_boxplot(df)
-    plot_feature_group_swarmplot(df)
-
+    plot_feature_group_violinplot(df)
+    plot_feature_group_by_compartment(df)
+    plot_feature_subgroups_by_compartment(df)
+    
     print("\nAnalysis complete!")
 
 
