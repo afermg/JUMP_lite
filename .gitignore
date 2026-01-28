@@ -51,6 +51,7 @@ output/
 metadata_analysis_results/
 plots_summary/
 docs/
+tmp/
 
 
 # Jupyter Notebook

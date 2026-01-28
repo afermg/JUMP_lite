@@ -13,6 +13,7 @@ from tqdm import tqdm
 import warnings
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
+import matplotlib.colors as mcolors
 import seaborn as sns
 
 # Try to import medpy, fallback to scipy
@@ -179,34 +180,10 @@ def load_original_image(root: Path, method: str, source_id: str, mask_file: str,
     Returns a 3-channel RGB representation using specified channels.
     """
     # Try to load from the source Zarr archive first
-    zarr_source_path = Path("/work/datasets/jump_target2_4plate/zstd.zarr") / source_id
-
-    if zarr_source_path.exists():
-        try:
-            import zarr
-            # Load the Zarr array
-            store = zarr.open(str(zarr_source_path), mode='r')
-            img = store[:]
-
-            # img shape is [channels, height, width] for Zarr v3
-            if img.ndim == 3 and img.shape[0] < img.shape[1]:
-                # Select specified channels and create RGB (as float array)
-                selected = np.zeros((*img.shape[1:], 3), dtype=np.float64)
-
-                for i, ch in enumerate(channels):
-                    if ch < img.shape[0]:
-                        ch_data = img[ch].astype(np.float64)
-                        # Use 1st and 99th percentiles for better contrast
-                        ch_min = np.percentile(ch_data, 1)
-                        ch_max = np.percentile(ch_data, 99)
-                        if ch_max > ch_min:
-                            # Clip values to percentile range then normalize
-                            ch_clipped = np.clip(ch_data, ch_min, ch_max)
-                            selected[..., i] = (ch_clipped - ch_min) / (ch_max - ch_min)
-
-                return selected
-        except Exception as e:
-            warnings.warn(f"Failed to load Zarr image from {zarr_source_path}: {e}")
+    zarr_store_path = Path("/work/datasets/jump_target2_4plate/zstd.zarr")
+    result = load_zarr_image(zarr_store_path, source_id, channels)
+    if result is not None:
+        return result
 
     # Fallback: Try to find the original image in pipeline output directories
     # Get the base name without extension
@@ -521,6 +498,227 @@ def visualize_single_sample(root: Path, gt_method: str, method: str, source_id: 
     plt.close()
 
 
+def _register_jpegxl_codec():
+    """Register the JpegXL numcodecs codec if available."""
+    try:
+        import numcodecs
+        from imagecodecs.numcodecs import Jpegxl
+        numcodecs.register_codec(Jpegxl)
+    except (ImportError, AttributeError, ValueError):
+        pass
+
+_register_jpegxl_codec()
+
+
+def load_zarr_image(zarr_store_path: Path, source_id: str, channels: List[int] = [0, 1, 2]) -> np.ndarray:
+    """Load an image from a zarr group and return a 3-channel float64 array.
+
+    Args:
+        zarr_store_path: Path to the zarr store (e.g., /data/jpegxl_lossy_hq.zarr)
+        source_id: Key within the zarr group
+        channels: Channel indices to use for RGB
+    """
+    if not zarr_store_path.exists():
+        return None
+    try:
+        import zarr
+        store = zarr.open(str(zarr_store_path), mode='r')
+        if source_id not in store:
+            warnings.warn(f"Source {source_id} not found in {zarr_store_path}")
+            return None
+        img = store[source_id][:]
+
+        if img.ndim == 3 and img.shape[0] < img.shape[1]:
+            selected = np.zeros((*img.shape[1:], 3), dtype=np.float64)
+            for i, ch in enumerate(channels):
+                if ch < img.shape[0]:
+                    ch_data = img[ch].astype(np.float64)
+                    ch_min = np.percentile(ch_data, 1)
+                    ch_max = np.percentile(ch_data, 99)
+                    if ch_max > ch_min:
+                        ch_clipped = np.clip(ch_data, ch_min, ch_max)
+                        selected[..., i] = (ch_clipped - ch_min) / (ch_max - ch_min)
+            return selected
+    except Exception as e:
+        warnings.warn(f"Failed to load zarr image from {zarr_store_path}/{source_id}: {e}")
+    return None
+
+
+def visualize_compression_grid(root: Path, zarr_root: Path, gt_method: str, methods: List[str],
+                               source_id: str, output_prefix: str, file_name: str = None):
+    """
+    Create a 2x5 grid showing a well across compression levels.
+    Row 1: Original images (zstd + 4 lossy codecs).
+    Row 2: Combined segmentation masks (cell in green, nuclei in blue).
+
+    Args:
+        root: Root directory containing CellProfiler output (segmentation masks)
+        zarr_root: Root directory containing zarr source images (e.g., /work/datasets/jump_target2_4plate)
+        gt_method: Ground truth method name (e.g., 'zstd.zarr')
+        methods: List of compression methods to compare
+        source_id: Well/source identifier to visualize
+        output_prefix: Output file prefix for saving the plot
+        file_name: Specific mask file name. If None, uses the first file found.
+    """
+    # Fixed order: best quality to worst
+    method_order = [
+        gt_method,
+        "jpegxl_lossy_hq.zarr",
+        "jpegxl_lossy_effort_3.zarr",
+        "jpegxl_lossy_mq.zarr",
+        "jpegxl_lossy_lq.zarr",
+    ]
+    all_methods = [m for m in method_order if m == gt_method or m in methods]
+
+    # Find mask file name if not specified
+    if file_name is None:
+        cell_dir = root / gt_method / "steps" / source_id / "segment_cell"
+        if cell_dir.exists():
+            mask_files = sorted(cell_dir.glob("*.npz"))
+            if len(mask_files) > 0:
+                file_name = mask_files[0].name
+                print(f"Using mask file: {file_name}")
+            else:
+                print(f"No mask files found in {cell_dir}")
+                return
+        else:
+            print(f"Cell segmentation directory not found: {cell_dir}")
+            return
+
+    # Load all images once
+    images = {}
+    display_names = {}
+    for method in all_methods:
+        display = method.replace('.zarr', '').replace('jpegxl_lossy_', 'jxl_')
+        display_names[method] = display
+        zarr_store_path = zarr_root / method
+        images[method] = load_zarr_image(zarr_store_path, source_id)
+
+    # --- 2×N grid: images + segmentation ---
+    n_cols = len(all_methods)
+    fig, axes = plt.subplots(2, n_cols, figsize=(3.5 * n_cols, 7),
+                             gridspec_kw={'wspace': 0.05, 'hspace': 0.15})
+
+    for col, method in enumerate(all_methods):
+        img = images[method]
+        if img is not None:
+            axes[0, col].imshow(img)
+        else:
+            axes[0, col].text(0.5, 0.5, 'Not found', ha='center', va='center',
+                              transform=axes[0, col].transAxes, fontsize=10)
+        axes[0, col].set_title(display_names[method], fontsize=10, fontweight='bold')
+        axes[0, col].axis('off')
+
+        # Row 2: Combined cell + nuclei segmentation
+        cell_path = root / method / "steps" / source_id / "segment_cell" / file_name
+        nuclei_path = root / method / "steps" / source_id / "segment_nuclei" / file_name
+
+        cell_mask = load_mask(cell_path) if cell_path.exists() else None
+        nuclei_mask = load_mask(nuclei_path) if nuclei_path.exists() else None
+
+        if cell_mask is not None or nuclei_mask is not None:
+            shape = cell_mask.shape if cell_mask is not None else nuclei_mask.shape
+            overlay = np.zeros((*shape, 3))
+            if cell_mask is not None:
+                overlay[cell_mask, 1] = 1.0   # Green for cell
+            if nuclei_mask is not None:
+                overlay[nuclei_mask, 2] = 1.0  # Blue for nuclei
+            axes[1, col].imshow(overlay)
+        else:
+            axes[1, col].text(0.5, 0.5, 'Not found', ha='center', va='center',
+                              transform=axes[1, col].transAxes, fontsize=10)
+        axes[1, col].axis('off')
+
+    axes[0, 0].text(-0.05, 0.5, 'Image', transform=axes[0, 0].transAxes,
+                    fontsize=12, fontweight='bold', va='center', ha='right', rotation=90)
+    axes[1, 0].text(-0.05, 0.5, 'Segmentation', transform=axes[1, 0].transAxes,
+                    fontsize=12, fontweight='bold', va='center', ha='right', rotation=90)
+
+    legend_elements = [
+        mpatches.Patch(color='green', label='Cell'),
+        mpatches.Patch(color='blue', label='Nuclei'),
+    ]
+    fig.legend(handles=legend_elements, loc='lower center', ncol=2,
+               bbox_to_anchor=(0.5, -0.02), fontsize=10)
+
+    output_path = f"{output_prefix}_{source_id}_grid.png"
+    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    print(f"Saved compression grid to: {output_path}")
+    plt.close()
+
+    # --- NxN difference grid ---
+    visualize_diff_grid(images, all_methods, display_names, output_prefix, source_id)
+
+
+def visualize_diff_grid(images: Dict, all_methods: List[str], display_names: Dict,
+                        output_prefix: str, source_id: str):
+    """
+    Create an NxN grid showing pairwise image differences.
+    Cell (row, col) shows image[row] - image[col].
+
+    Args:
+        images: Dict mapping method name to loaded image array (or None)
+        all_methods: Ordered list of method names
+        display_names: Dict mapping method name to display string
+        output_prefix: Output file prefix
+        source_id: Well/source identifier
+    """
+    # Diverging colormap: blue -> black -> red
+    diff_cmap = mcolors.LinearSegmentedColormap.from_list(
+        'BkRdBu', ['#2166ac', 'black', '#b2182b'])
+
+    n = len(all_methods)
+    fig, axes = plt.subplots(n, n, figsize=(3.5 * n, 3.5 * n),
+                             gridspec_kw={'wspace': 0.05, 'hspace': 0.05})
+
+    for row in range(n):
+        for col in range(n):
+            ax = axes[row, col]
+            img_row = images[all_methods[row]]
+            img_col = images[all_methods[col]]
+
+            if row == col:
+                # Diagonal: show original image
+                if img_row is not None:
+                    ax.imshow(img_row)
+                else:
+                    ax.text(0.5, 0.5, 'N/A', ha='center', va='center',
+                            transform=ax.transAxes, fontsize=10)
+            elif img_row is not None and img_col is not None:
+                # Off-diagonal: grayscale difference with diverging colormap
+                # Use per-channel diff to preserve structure, then average
+                diff = np.mean(img_row - img_col, axis=2)
+                # Scale to 99.5th percentile for contrast (clip outliers)
+                p = np.percentile(np.abs(diff), 99.5)
+                vbound = max(p, 1e-10)
+                ax.imshow(np.clip(diff, -vbound, vbound), cmap=diff_cmap,
+                          vmin=-vbound, vmax=vbound)
+            else:
+                ax.text(0.5, 0.5, 'N/A', ha='center', va='center',
+                        transform=ax.transAxes, fontsize=10)
+
+            ax.axis('off')
+
+            # Column headers on top row
+            if row == 0:
+                ax.set_title(display_names[all_methods[col]], fontsize=10, fontweight='bold')
+            # Row labels on left column
+            if col == 0:
+                ax.text(-0.05, 0.5, display_names[all_methods[row]],
+                        transform=ax.transAxes, fontsize=10, fontweight='bold',
+                        va='center', ha='right', rotation=90)
+
+    # Add a shared colorbar
+    cbar_ax = fig.add_axes([0.92, 0.15, 0.015, 0.7])
+    sm = plt.cm.ScalarMappable(cmap=diff_cmap, norm=plt.Normalize(vmin=-1, vmax=1))
+    fig.colorbar(sm, cax=cbar_ax, label='Normalized difference')
+
+    output_path = f"{output_prefix}_{source_id}_diff.png"
+    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    print(f"Saved difference grid to: {output_path}")
+    plt.close()
+
+
 def plot_iou_boxplot(df, output_prefix, segment_step="segment_cell"):
     """
     Create boxplot showing IoU distribution across compression methods.
@@ -606,6 +804,7 @@ def main():
     parser.add_argument("--visualize-sample", action="store_true", help="Only visualize a single well+method comparison (requires --well and one --methods entry)")
     parser.add_argument("--well", type=str, default=None, help="Source/well ID for single sample visualization")
     parser.add_argument("--file", type=str, default=None, help="Specific mask file name for single sample visualization (default: first file found)")
+    parser.add_argument("--zarr-root", type=str, default="/work/datasets/jump_target2_4plate", help="Root directory containing zarr source images")
 
     args = parser.parse_args()
 
@@ -632,6 +831,15 @@ def main():
                 segment_step=args.segment_step,
                 file_name=args.file,
             )
+        visualize_compression_grid(
+            root=root,
+            zarr_root=Path(args.zarr_root),
+            gt_method=args.ground_truth,
+            methods=args.methods,
+            source_id=args.well,
+            output_prefix=args.output,
+            file_name=args.file,
+        )
         return
 
     # Check if output already exists
