@@ -1,0 +1,180 @@
+# @package _global_
+
+# Basic Test Sweep - ~1200 configurations (with redundancy filtering)
+#
+# Expanded sweep for testing pipeline functionality.
+# Includes method-specific params that are skipped when method is disabled.
+#
+# Base combinations: 2 * 2 * 2 * 3 * 2 * 2 * 2 * 2 = 384
+# With method params: ~1200 after redundancy filtering
+#
+# USAGE:
+#   uv run python src/norm_2/pipeline.py --multirun hydra/launcher=joblib \
+#     hydra.launcher.n_jobs=16 +sweep=basic_test_sweep \
+#     input_override=./output/openphenom_8bit_jump_target2_4plate_zstd_raw_features.parquet
+
+defaults:
+  - /preset/dinov2_490
+
+input_override: null
+
+# Skip redundant configs (shouldn't be needed with fixed params, but safe to have)
+skip_redundant_configs: true
+
+# Abort on invalid features
+abort_on_invalid_features: true
+
+# Abort if TVN encounters ill-conditioned covariance matrix
+abort_on_ill_conditioned_tvn: true
+
+# No PC1 variance check for this test
+max_pc1_variance: 0.60  # Abort if PC1 explains > 60% variance (data collapsed)
+
+# === SWEPT PARAMETERS (defaults matching best config) ===
+batch_method: none
+use_tvn: false
+use_spherize: false
+use_pca: false
+norm_method: robustmad
+fit_controls: true
+use_sample_norm: false  # Swept
+agg_method: median
+
+# === FIXED PARAMETERS (not swept) ===
+corr_thresh: 0.90
+outlier_cut: 15
+sample_norm_type: l2
+use_filter_features: true
+
+# TVN params (fixed to defaults)
+tvn_alpha: 0.3
+tvn_epsilon: 0.5
+tvn_batch_col: "Metadata_Plate"
+tvn_fit_controls: true
+
+# Spherize params (fixed to defaults)
+spherize_method: "ZCA-cor"
+spherize_epsilon: 1e-6
+spherize_batch_col: ""
+spherize_fit_negcon: true
+
+# PCA params (fixed)
+pca_n_components: 128
+pca_whiten: false
+pca_fit_controls: false
+
+# Normalization
+norm_batch_col: "Metadata_Plate"
+
+# === PIPELINE STEPS ===
+steps:
+  - name: clean_nans
+    enabled: true
+    params:
+      na_cutoff: 0.30
+
+  - name: sample_norm
+    enabled: ${use_sample_norm}
+    params:
+      norm: ${sample_norm_type}
+
+  - name: merge_metadata
+    enabled: true
+    params:
+      metadata_dir: "analysis/feature_similarity/input"
+
+  - name: filter_features
+    enabled: ${use_filter_features}
+    params:
+      operations:
+        - name: "variance_threshold"
+          freq_cut: 0.05
+          unique_cut: 0.01
+          var_threshold: 0.001
+        - name: "drop_outliers"
+          outlier_cutoff: ${outlier_cut}
+
+  - name: prune_correlated
+    enabled: ${use_filter_features}
+    params:
+      threshold: ${corr_thresh}
+      method: "pearson"
+
+  - name: normalize_standard
+    enabled: true
+    params:
+      method: ${norm_method}
+      batch_col: ${norm_batch_col}
+      fit_on_controls: ${fit_controls}
+      control_key: "negcon"
+      control_col: "Metadata_control_type"
+
+  - name: normalize_pca
+    enabled: ${use_pca}
+    params:
+      n_components: ${pca_n_components}
+      whiten: ${pca_whiten}
+      fit_on_controls: ${pca_fit_controls}
+      control_key: "negcon"
+      control_col: "Metadata_control_type"
+
+  - name: normalize_tvn
+    enabled: ${use_tvn}
+    params:
+      batch_col: ${tvn_batch_col}
+      alpha: ${tvn_alpha}
+      epsilon: ${tvn_epsilon}
+      fit_on_controls: ${tvn_fit_controls}
+      control_key: "negcon"
+      control_col: "Metadata_control_type"
+
+  - name: normalize_spherize
+    enabled: ${use_spherize}
+    params:
+      method: ${spherize_method}
+      batch_col: ${spherize_batch_col}
+      epsilon: ${spherize_epsilon}
+      fit_on_controls: ${spherize_fit_negcon}
+      control_key: "negcon"
+      control_col: "Metadata_control_type"
+
+  - name: aggregate_wells
+    enabled: true
+    params:
+      strata: ["Metadata_Plate", "Metadata_Well"]
+      method: ${agg_method}
+
+  - name: evaluate_metrics
+    enabled: true
+    params:
+      skip_visualization: true
+      min_compounds_per_target: 3
+
+# === HYDRA SWEEP ===
+# NOTE: First value in each list should match the default above
+hydra:
+  sweeper:
+    params:
+      # Core method toggles (2^3 = 8)
+      batch_method: none,tvn
+      use_spherize: false,true
+      use_pca: false,true
+
+      # Base normalization (3 * 2 = 6)
+      norm_method: robustmad,standardize,none
+      fit_controls: true,false
+
+      # Aggregation (2^1 = 2)
+      agg_method: median,mean
+
+      # Sample normalization (2x multiplier)
+      use_sample_norm: false,true
+
+      # Method-specific params (only matter when method is enabled)
+      # TVN params (when batch_method=tvn)
+      tvn_fit_controls: true,false
+      tvn_epsilon: "0.5,1.0"
+
+      # Spherize params (when use_spherize=true)
+      spherize_method: ZCA-cor,ZCA
+      spherize_epsilon: "1e-6,1.0"
