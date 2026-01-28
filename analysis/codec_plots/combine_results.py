@@ -61,7 +61,74 @@ def main():
     plot_path = output_path.parent / "combined_metrics_plot.png"
     create_metrics_plot(combined, plot_path)
 
+    # Create PA vs PC plot
+    pa_pc_plot_path = output_path.parent / "pa_vs_pc_plot.png"
+    create_pa_pc_plot(combined, pa_pc_plot_path)
+
     return 0
+
+
+def create_pa_pc_plot(df: pd.DataFrame, output_path: Path):
+    """Create a PA vs PC scatter plot with dot size by codec and color by model."""
+    fig, ax = plt.subplots(figsize=(10, 8))
+
+    # Get unique feature types (models) and assign colors
+    feature_types = sorted(df["feature_type"].unique())
+    cmap = plt.colormaps.get_cmap("tab10")
+    colors = {ft: cmap(i) for i, ft in enumerate(feature_types)}
+
+    # Get unique codecs and assign sizes (ordered by file size: zstd > hq > effort > mq > lq)
+    codec_order = ["zstd", "jpegxl_lossy_hq", "jpegxl_lossy_effort_3", "jpegxl_lossy_mq", "jpegxl_lossy_lq"]
+    codecs = [c for c in codec_order if c in df["codec"].unique()]
+    # Add any codecs not in the predefined order
+    codecs += [c for c in df["codec"].unique() if c not in codec_order]
+    # Map codecs to sizes (larger size for larger file size codecs, zstd is largest)
+    size_min, size_max = 50, 600
+    codec_sizes = {codec: size_max - (size_max - size_min) * i / max(1, len(codecs) - 1)
+                   for i, codec in enumerate(codecs)}
+
+    # Plot each point
+    for _, row in df.iterrows():
+        ax.scatter(
+            row["pc"],
+            row["pa"],
+            c=[colors[row["feature_type"]]],
+            s=codec_sizes[row["codec"]],
+            alpha=0.7,
+            edgecolors="black",
+            linewidths=0.5,
+        )
+
+    # Create legend for models (colors)
+    color_handles = [
+        plt.Line2D([0], [0], marker="o", color="w", markerfacecolor=colors[ft],
+                   markersize=10, label=ft)
+        for ft in feature_types
+    ]
+    legend1 = ax.legend(handles=color_handles, title="Model", loc="upper left",
+                        bbox_to_anchor=(1.02, 1), fontsize=9)
+    ax.add_artist(legend1)
+
+    # Create legend for codecs (sizes)
+    size_handles = [
+        plt.Line2D([0], [0], marker="o", color="gray", markersize=codec_sizes[codec] ** 0.5,
+                   label=df[df["codec"] == codec]["codec_label"].iloc[0] if "codec_label" in df.columns else codec,
+                   linestyle="None")
+        for codec in codecs
+    ]
+    ax.legend(handles=size_handles, title="Codec (size)", loc="lower left",
+              bbox_to_anchor=(1.02, 0), fontsize=9)
+
+    ax.set_xlabel("Profile Consistency (PC)", fontsize=12)
+    ax.set_ylabel("Phenotypic Activity (PA %)", fontsize=12)
+    ax.set_title("PA vs PC by Model and Codec", fontsize=14, fontweight="bold")
+    ax.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150, bbox_inches="tight")
+    plt.close()
+
+    print(f"Saved PA vs PC plot to: {output_path}")
 
 
 def create_metrics_plot(df: pd.DataFrame, output_path: Path):

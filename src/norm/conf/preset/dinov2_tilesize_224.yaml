@@ -13,7 +13,7 @@ steps:
   name: clean_nans
   params:
     na_cutoff: 0.3
-- enabled: false
+- enabled: true
   name: sample_norm
   params:
     norm: l2
@@ -42,43 +42,38 @@ steps:
     batch_col: Metadata_Plate
     control_col: Metadata_control_type
     control_key: negcon
-    fit_on_controls: false
+    fit_on_controls: true
     method: standardize
-- enabled: false
+- enabled: true
+  name: normalize_pca
+  params:
+    control_col: Metadata_control_type
+    control_key: negcon
+    fit_on_controls: true
+    n_components: 256
+    whiten: false
+- enabled: true
   name: normalize_tvn
   params:
     alpha: 0.3
     batch_col: Metadata_Plate
     control_col: Metadata_control_type
     control_key: negcon
-    epsilon: 1.0
-    fit_on_controls: true
+    epsilon: 0.5
+    fit_on_controls: false
 - enabled: true
   name: normalize_spherize
   params:
     batch_col: ''
     control_col: Metadata_control_type
     control_key: negcon
-    epsilon: 1.0e-06
+    epsilon: 1.0
     fit_on_controls: true
     method: ZCA
-- enabled: false
-  name: normalize_harmony
-  params:
-    batch_col: Metadata_Plate
-    n_clusters: null
-    n_pcs: 50
-    sigma: 0.1
-    theta: 1.0
-- enabled: false
-  name: normalize_combat
-  params:
-    batch_col: Metadata_Plate
-    par_prior: true
 - enabled: true
   name: aggregate_wells
   params:
-    method: median
+    method: mean
     strata:
     - Metadata_Plate
     - Metadata_Well
