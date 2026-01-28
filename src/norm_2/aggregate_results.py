@@ -37,6 +37,7 @@ def generate_visualization_for_result(result_dir: Path, skip_umap: bool = False)
     """
     # Find the processed parquet file
     parquet_candidates = [
+        result_dir / "OUTPUT.parquet",
         result_dir / "embeddings_processed.parquet",
         result_dir / "processed.parquet",
     ]
@@ -590,6 +591,23 @@ if __name__ == "__main__":
             df_sorted_product = df.sort_values("Balance", ascending=False)
             print(df_sorted_product[display_cols + ["Balance"]].head(top_n).to_string(index=False))
 
+        # Filter out ill-conditioned TVN runs and show best Balance
+        if "tvn_ill_conditioned" in df.columns and "Balance" in df.columns:
+            df_well_conditioned = df[df["tvn_ill_conditioned"] == False]
+            n_filtered = len(df) - len(df_well_conditioned)
+            print(f"\n" + "="*80)
+            print(f"TOP CONFIGURATIONS (EXCLUDING ILL-CONDITIONED TVN)")
+            print(f"="*80)
+            print(f"Filtered out {n_filtered} ill-conditioned runs ({len(df_well_conditioned)} remaining)")
+
+            if len(df_well_conditioned) > 0:
+                top_n_filtered = min(top_n, len(df_well_conditioned))
+                df_well_sorted = df_well_conditioned.sort_values("Balance", ascending=False)
+                print(f"\nTop {top_n_filtered} well-conditioned configurations by Balance:")
+                print(df_well_sorted[display_cols + ["Balance"]].head(top_n_filtered).to_string(index=False))
+            else:
+                print("\nNo well-conditioned configurations found!")
+
         print("\n" + "="*80)
         print("BEST CONFIGURATIONS")
         print("="*80)
@@ -621,6 +639,18 @@ if __name__ == "__main__":
                     print(f"  {col}: {best_row[col]}")
             print(f"  path: {best_row['run_path']}")
 
+        # Best well-conditioned configuration
+        if "tvn_ill_conditioned" in df.columns and "Balance" in df.columns:
+            df_well_conditioned = df[df["tvn_ill_conditioned"] == False]
+            if len(df_well_conditioned) > 0:
+                best_idx = df_well_conditioned["Balance"].idxmax()
+                best_row = df_well_conditioned.loc[best_idx]
+                print(f"\n[Best Balance (well-conditioned only): {best_row['Balance']:.2f}]")
+                for col in param_cols:
+                    if col in best_row and pd.notna(best_row[col]):
+                        print(f"  {col}: {best_row[col]}")
+                print(f"  path: {best_row['run_path']}")
+
         # Generate visualizations for best configs
         print("\n" + "="*80)
         print("GENERATING VISUALIZATIONS FOR BEST CONFIGS")
@@ -644,6 +674,19 @@ if __name__ == "__main__":
                 best_configs[best_balance_path] = "Best Balance"
             else:
                 best_configs[best_balance_path] += " + Best Balance"
+
+        # Add best well-conditioned balance config
+        best_wellcond_path = None
+        if "tvn_ill_conditioned" in df.columns and "Balance" in df.columns:
+            df_well_conditioned = df[df["tvn_ill_conditioned"] == False]
+            if len(df_well_conditioned) > 0:
+                best_wellcond_path = df_well_conditioned.loc[df_well_conditioned["Balance"].idxmax(), 'run_path']
+                if best_wellcond_path not in best_configs:
+                    best_configs[best_wellcond_path] = "Best Balance (well-conditioned)"
+                else:
+                    best_configs[best_wellcond_path] += " + Best Balance (well-conditioned)"
+
+        if "Balance" in df.columns:
             df.drop(columns=['Balance'], inplace=True)
 
         for run_path, label in best_configs.items():
@@ -652,12 +695,15 @@ if __name__ == "__main__":
             generate_visualization_for_result(Path(run_path), skip_umap=False)
 
         # Copy best Balance config to best_settings directory
-        if best_balance_path:
+        # Prefer well-conditioned best if available
+        config_to_save = best_wellcond_path if best_wellcond_path else best_balance_path
+        config_label = "well-conditioned " if best_wellcond_path else ""
+        if config_to_save:
             print("\n" + "="*80)
-            print("SAVING BEST BALANCE CONFIG")
+            print(f"SAVING BEST {config_label.upper()}BALANCE CONFIG")
             print("="*80)
 
-            best_settings_dir = Path("/home/jfredinh/projects/JUMP_core/src/norm/conf/preset")
+            best_settings_dir = Path("/home/jfredinh/projects/JUMP_core/src/norm_2/conf/preset")
             best_settings_dir.mkdir(parents=True, exist_ok=True)
 
             # Extract feature type from data_dir name
@@ -668,7 +714,7 @@ if __name__ == "__main__":
                 feature_type = dir_name.split("_")[0]
 
             # Load, clean, and save pipeline_config.yaml
-            src_config = Path(best_balance_path) / "pipeline_config.yaml"
+            src_config = Path(config_to_save) / "pipeline_config.yaml"
             dst_config = best_settings_dir / f"{feature_type}.yaml"
 
             if src_config.exists():

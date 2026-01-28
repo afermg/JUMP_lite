@@ -40,6 +40,40 @@ uv run python src/norm_2/pipeline.py --multirun hydra/launcher=joblib hydra.laun
 uv run python src/norm_2/pipeline.py --multirun hydra/launcher=joblib hydra.launcher.n_jobs=64 hydra.sweeper.max_batch_size=64 +sweep=batch_correction_pca_sweep input_override=./output/dinov2_tilesize_224_jump_target2_4plate_zstd_raw_features.parquet
 ```
 
+# Smaller sweep
+``` bash
+uv run python src/norm_2/pipeline.py --multirun hydra/launcher=joblib hydra.launcher.n_jobs=64 hydra.sweeper.max_batch_size=64 +sweep=basic_test_sweep input_override=./output/dinov2_jump_target2_4plate_zstd_raw_features.parquet
+
+# DINOv2 tilesize 224
+uv run python src/norm_2/pipeline.py --multirun hydra/launcher=joblib hydra.launcher.n_jobs=64 hydra.sweeper.max_batch_size=64 +sweep=basic_test_sweep input_override=./output/dinov2_tilesize_224_jump_target2_4plate_zstd_raw_features.parquet
+
+# DINOv2 490 variant
+uv run python src/norm_2/pipeline.py --multirun hydra/launcher=joblib hydra.launcher.n_jobs=64 hydra.sweeper.max_batch_size=64 +sweep=basic_test_sweep input_override=./output/dinov2_490_jump_target2_4plate_zstd_raw_features.parquet
+
+
+
+
+
+# CellProfiler measurements (with custom filtering)
+uv run python src/norm_2/pipeline.py --multirun hydra/launcher=joblib hydra.launcher.n_jobs=64 +sweep=basic_test_sweep input_override=./output/cp_measure_jump_target2_4plate_zstd_raw_features.parquet 
+
+# Subcellular features
+uv run python src/norm_2/pipeline.py --multirun hydra/launcher=joblib hydra.launcher.n_jobs=64 +sweep=basic_test_sweep input_override=./output/subcell_jump_target2_4plate_zstd_raw_features.parquet
+
+# DINOv2 random baseline
+uv run python src/norm_2/pipeline.py --multirun hydra/launcher=joblib hydra.launcher.n_jobs=64  +sweep=basic_test_sweep input_override=./output/dinov2_random_jump_target2_4plate_zstd_raw_features.parquet
+
+# OpenPhenom 8-bit
+uv run python src/norm_2/pipeline.py --multirun hydra/launcher=joblib hydra.launcher.n_jobs=64 +sweep=basic_test_sweep input_override=./output/openphenom_8bit_jump_target2_4plate_zstd_raw_features.parquet
+
+# Morphem embeddings
+uv run python src/norm_2/pipeline.py --multirun hydra/launcher=joblib hydra.launcher.n_jobs=64  +sweep=basic_test_sweep input_override=./output/morphem_jump_target2_4plate_zstd_raw_features.parquet
+
+
+
+
+```
+
 
 ## Aggregating Results
 
@@ -47,21 +81,23 @@ After sweeps complete, aggregate results to find best configurations:
 
 ```bash
 # Run aggregation for each embedding type (can run in parallel with &)
-uv run python src/norm_2/aggregate_results.py /home/jfredinh/projects/JUMP_core/data/features/batch_correction_pca_sweep/dinov2_jump_target2_4plate_zstd_raw_features/ &
+uv run python src/norm_2/aggregate_results.py /home/jfredinh/projects/JUMP_core/data/features/basic_test_sweep/dinov2_jump_target2_4plate_zstd_raw_features/ &
 
-uv run python src/norm_2/aggregate_results.py /home/jfredinh/projects/JUMP_core/data/features/batch_correction_pca_sweep/cp_measure_jump_target2_4plate_zstd_raw_features/ &
+uv run python src/norm_2/aggregate_results.py /home/jfredinh/projects/JUMP_core/data/features/basic_test_sweep/dinov2_490_jump_target2_4plate_zstd_raw_features/ &
 
-uv run python src/norm_2/aggregate_results.py /home/jfredinh/projects/JUMP_core/data/features/batch_correction_pca_sweep/subcell_jump_target2_4plate_zstd_raw_features/ &
+uv run python src/norm_2/aggregate_results.py /home/jfredinh/projects/JUMP_core/data/features/basic_test_sweep/dinov2_tilesize_224_jump_target2_4plate_zstd_raw_features/ &
 
-uv run python src/norm_2/aggregate_results.py /home/jfredinh/projects/JUMP_core/data/features/batch_correction_pca_sweep/dinov2_random_jump_target2_4plate_zstd_raw_features/ &
 
-uv run python src/norm_2/aggregate_results.py /home/jfredinh/projects/JUMP_core/data/features/batch_correction_pca_sweep/openphenom_8bit_jump_target2_4plate_zstd_raw_features/ &
 
-uv run python src/norm_2/aggregate_results.py /home/jfredinh/projects/JUMP_core/data/features/batch_correction_pca_sweep/dinov2_490_jump_target2_4plate_zstd_raw_features/ &
+uv run python src/norm_2/aggregate_results.py /home/jfredinh/projects/JUMP_core/data/features/basic_test_sweep/cp_measure_jump_target2_4plate_zstd_raw_features/ &
 
-uv run python src/norm_2/aggregate_results.py /home/jfredinh/projects/JUMP_core/data/features/batch_correction_pca_sweep/dinov2_tilesize_224_jump_target2_4plate_zstd_raw_features/ &
+uv run python src/norm_2/aggregate_results.py /home/jfredinh/projects/JUMP_core/data/features/basic_test_sweep/subcell_jump_target2_4plate_zstd_raw_features/ &
 
-uv run python src/norm_2/aggregate_results.py /home/jfredinh/projects/JUMP_core/data/features/batch_correction_pca_sweep/morphem_jump_target2_4plate_zstd_raw_features/ &
+uv run python src/norm_2/aggregate_results.py /home/jfredinh/projects/JUMP_core/data/features/basic_test_sweep/dinov2_random_jump_target2_4plate_zstd_raw_features/ &
+
+uv run python src/norm_2/aggregate_results.py /home/jfredinh/projects/JUMP_core/data/features/basic_test_sweep/openphenom_8bit_jump_target2_4plate_zstd_raw_features/ &
+
+uv run python src/norm_2/aggregate_results.py /home/jfredinh/projects/JUMP_core/data/features/basic_test_sweep/morphem_jump_target2_4plate_zstd_raw_features/ &
 ```
 
 ## Running All Normalizations with Best Config
@@ -69,21 +105,22 @@ uv run python src/norm_2/aggregate_results.py /home/jfredinh/projects/JUMP_core/
 Apply the best normalization configuration to all data:
 
 ```bash
-uv run python src/norm_2/run_all_normalizations.py --input output --output data/batch_correction_pca_sweep/dinov2 --preset dinov2 --filter dinov2 &
+uv run python src/norm_2/run_all_normalizations.py --input output --output data/basic_test_sweep/dinov2 --preset dinov2 --filter dinov2 &
 
-uv run python src/norm_2/run_all_normalizations.py --input output --output data/batch_correction_pca_sweep/cp_measure --preset cp_measure --filter cp_measure &
+uv run python src/norm_2/run_all_normalizations.py --input output --output data/basic_test_sweep/dinov2_490 --preset dinov2_490 --filter dinov2_490 &
 
-uv run python src/norm_2/run_all_normalizations.py --input output --output data/batch_correction_pca_sweep/subcell --preset subcell --filter subcell &
+uv run python src/norm_2/run_all_normalizations.py --input output --output data/basic_test_sweep/dinov2_tilesize_224 --preset dinov2_tilesize_224 --filter dinov2_tilesize_224 &
 
-uv run python src/norm_2/run_all_normalizations.py --input output --output data/batch_correction_pca_sweep/dinov2_random --preset dinov2_random --filter dinov2_random &
 
-uv run python src/norm_2/run_all_normalizations.py --input output --output data/batch_correction_pca_sweep/openphenom_8bit --preset openphenom_8bit --filter openphenom_8bit &
+uv run python src/norm_2/run_all_normalizations.py --input output --output data/basic_test_sweep/cp_measure --preset cp_measure --filter cp_measure &
 
-uv run python src/norm_2/run_all_normalizations.py --input output --output data/batch_correction_pca_sweep/dinov2_490 --preset dinov2_490 --filter dinov2_490 &
+uv run python src/norm_2/run_all_normalizations.py --input output --output data/basic_test_sweep/subcell --preset subcell --filter subcell &
 
-uv run python src/norm_2/run_all_normalizations.py --input output --output data/batch_correction_pca_sweep/dinov2_tilesize_224 --preset dinov2_tilesize_224 --filter dinov2_tilesize_224 &
+uv run python src/norm_2/run_all_normalizations.py --input output --output data/basic_test_sweep/dinov2_random --preset dinov2_random --filter dinov2_random &
 
-uv run python src/norm_2/run_all_normalizations.py --input output --output data/batch_correction_pca_sweep/morphem --preset morphem --filter morphem &
+uv run python src/norm_2/run_all_normalizations.py --input output --output data/basic_test_sweep/openphenom_8bit --preset openphenom_8bit --filter openphenom_8bit &
+
+uv run python src/norm_2/run_all_normalizations.py --input output --output data/basic_test_sweep/morphem --preset morphem --filter morphem &
 ```
 
 ## Generating Plots and Summary
@@ -91,21 +128,23 @@ uv run python src/norm_2/run_all_normalizations.py --input output --output data/
 Generate comparison plots for each model type:
 
 ```bash
-python analysis/codec_plots/plot_codec_comparison.py data/batch_correction_pca_sweep/dinov2 --output ./plots_summary/batch_correction_pca_sweep/ --prefix dinov2 &
+python analysis/codec_plots/plot_codec_comparison.py data/basic_test_sweep/dinov2 --output ./plots_summary/basic_test_sweep/ --prefix dinov2 &
 
-python analysis/codec_plots/plot_codec_comparison.py data/batch_correction_pca_sweep/cp_measure --output ./plots_summary/batch_correction_pca_sweep/ --prefix cp_measure &
+python analysis/codec_plots/plot_codec_comparison.py data/basic_test_sweep/dinov2_490 --output ./plots_summary/basic_test_sweep/ --prefix dinov2_490 &
 
-python analysis/codec_plots/plot_codec_comparison.py data/batch_correction_pca_sweep/subcell --output ./plots_summary/batch_correction_pca_sweep/ --prefix subcell &
+python analysis/codec_plots/plot_codec_comparison.py data/basic_test_sweep/dinov2_tilesize_224 --output ./plots_summary/basic_test_sweep/ --prefix dinov2_tilesize_224 &
 
-python analysis/codec_plots/plot_codec_comparison.py data/batch_correction_pca_sweep/dinov2_random --output ./plots_summary/batch_correction_pca_sweep/ --prefix dinov2_random &
 
-python analysis/codec_plots/plot_codec_comparison.py data/batch_correction_pca_sweep/openphenom_8bit --output ./plots_summary/batch_correction_pca_sweep/ --prefix openphenom_8bit &
 
-python analysis/codec_plots/plot_codec_comparison.py data/batch_correction_pca_sweep/dinov2_490 --output ./plots_summary/batch_correction_pca_sweep/ --prefix dinov2_490 &
+python analysis/codec_plots/plot_codec_comparison.py data/basic_test_sweep/cp_measure --output ./plots_summary/basic_test_sweep/ --prefix cp_measure &
 
-python analysis/codec_plots/plot_codec_comparison.py data/batch_correction_pca_sweep/dinov2_tilesize_224 --output ./plots_summary/batch_correction_pca_sweep/ --prefix dinov2_tilesize_224 &
+python analysis/codec_plots/plot_codec_comparison.py data/basic_test_sweep/subcell --output ./plots_summary/basic_test_sweep/ --prefix subcell &
 
-python analysis/codec_plots/plot_codec_comparison.py data/batch_correction_pca_sweep/morphem --output ./plots_summary/batch_correction_pca_sweep/ --prefix morphem &
+python analysis/codec_plots/plot_codec_comparison.py data/basic_test_sweep/dinov2_random --output ./plots_summary/basic_test_sweep/ --prefix dinov2_random &
+
+python analysis/codec_plots/plot_codec_comparison.py data/basic_test_sweep/openphenom_8bit --output ./plots_summary/basic_test_sweep/ --prefix openphenom_8bit &
+
+python analysis/codec_plots/plot_codec_comparison.py data/basic_test_sweep/morphem --output ./plots_summary/basic_test_sweep/ --prefix morphem &
 ```
 
 ## Combining All Results
@@ -113,7 +152,7 @@ python analysis/codec_plots/plot_codec_comparison.py data/batch_correction_pca_s
 Combine results from all model types into a single summary:
 
 ```bash
-python analysis/codec_plots/combine_results.py plots_summary/batch_correction_pca_sweep/
+python analysis/codec_plots/combine_results.py plots_summary/basic_test_sweep/
 ```
 
 ## Running a Single Preset
@@ -167,3 +206,37 @@ Each run produces a `metrics.json` file with:
 2. **Memory management**: Adjust `hydra.launcher.n_jobs` based on available RAM
 3. **Ill-conditioned matrices**: Check `tvn_ill_conditioned` in metrics.json for numerical issues
 4. **Morphem stability**: Use `morphem_pca_zscore` preset or enable PCA in sweep for better stability
+
+
+
+
+uv run python src/norm_2/run_all_normalizations.py --input output --output data/basic_test_sweep_without_l2/cp_measure --preset cp_measure --filter cp_measure &
+
+uv run python src/norm_2/run_all_normalizations.py --input output --output data/basic_test_sweep_without_l2/subcell --preset subcell --filter subcell &
+
+uv run python src/norm_2/run_all_normalizations.py --input output --output data/basic_test_sweep_without_l2/dinov2_random --preset dinov2_random --filter dinov2_random &
+
+uv run python src/norm_2/run_all_normalizations.py --input output --output data/basic_test_sweep_without_l2/openphenom_8bit --preset openphenom_8bit --filter openphenom_8bit &
+
+uv run python src/norm_2/run_all_normalizations.py --input output --output data/basic_test_sweep_without_l2/morphem --preset morphem --filter morphem &
+
+
+
+
+
+python analysis/codec_plots/plot_codec_comparison.py data/basic_test_sweep_without_l2/cp_measure --output ./plots_summary/basic_test_sweep_without_l2_tar3/ --prefix cp_measure &
+
+python analysis/codec_plots/plot_codec_comparison.py data/basic_test_sweep_without_l2/subcell --output ./plots_summary/basic_test_sweep_without_l2_tar3/ --prefix subcell &
+
+python analysis/codec_plots/plot_codec_comparison.py data/basic_test_sweep_without_l2/dinov2_random --output ./plots_summary/basic_test_sweep_without_l2_tar3/ --prefix dinov2_random &
+
+python analysis/codec_plots/plot_codec_comparison.py data/basic_test_sweep_without_l2/openphenom_8bit --output ./plots_summary/basic_test_sweep_without_l2_tar3/ --prefix openphenom_8bit &
+
+python analysis/codec_plots/plot_codec_comparison.py data/basic_test_sweep_without_l2/morphem --output ./plots_summary/basic_test_sweep_without_l2_tar3/ --prefix morphem &
+
+
+
+
+
+
+

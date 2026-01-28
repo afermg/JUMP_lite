@@ -31,7 +31,7 @@ def main():
         cmd = [
             sys.executable, "src/norm_2/pipeline.py",
             f"+preset={args.preset}",
-            f"input_override={f}",
+            f"+input_override={f}",
             f"output.path={args.output / f.stem}/processed.parquet",
         ]
         if args.dry_run:

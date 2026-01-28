@@ -88,7 +88,7 @@ def calculate_phenotypic_activity(
 
 def _filter_targets_by_compound_count(
     df_consensus,
-    min_compounds_per_target: int = 2,
+    min_compounds_per_target: int = 3,
     max_targets_per_compound: int = 50,
     exclude_unknown: bool = True,
 ):
@@ -161,7 +161,7 @@ def calculate_phenotypic_consistency(
     null_size: int = 10_000,
     p_threshold: float = 0.05,
     seed: int = 0,
-    min_compounds_per_target: int = 2,
+    min_compounds_per_target: int = 3,
     max_targets_per_compound: int = 50,
 ) -> dict[str, Any]:
     """
@@ -335,6 +335,7 @@ def evaluate_all(
     skip_visualization: bool = False,
     skip_umap: bool = False,
     n_top_compounds: int = 20,
+    min_compounds_per_target: int = 3,
 ) -> dict[str, Any]:
     """
     Run all metrics and optionally save results.
@@ -346,6 +347,7 @@ def evaluate_all(
         skip_visualization: Skip visualization generation
         skip_umap: Skip UMAP in visualization
         n_top_compounds: Number of compounds to highlight
+        min_compounds_per_target: Minimum compounds required per target for PC
 
     Returns:
         Dictionary with all metrics
@@ -378,7 +380,7 @@ def evaluate_all(
 
     # Phenotypic Consistency
     try:
-        pc = calculate_phenotypic_consistency(df, features)
+        pc = calculate_phenotypic_consistency(df, features, min_compounds_per_target=min_compounds_per_target)
         results["PC"] = pc["pct_targets_active"]
         results["n_targets_active"] = pc["n_targets_active"]
         results["n_targets_total"] = pc["n_targets_total"]

@@ -10,6 +10,9 @@ This module provides:
 
 from __future__ import annotations
 
+import os
+os.environ["JAX_PLATFORMS"] = "cpu"  # Suppress JAX GPU/TPU warnings
+
 import shutil
 import sys
 from pathlib import Path
@@ -28,7 +31,9 @@ from norm_2.core import (
     correlation_threshold,
     drop_na_columns,
     drop_outliers,
+    get_tvn_state,
     normalize,
+    reset_tvn_state,
     sample_normalize as core_sample_normalize,
     variance_threshold,
 )
@@ -430,6 +435,7 @@ def evaluate_metrics(df: pl.DataFrame, config: dict) -> pl.DataFrame:
         skip_visualization=config.get("skip_visualization", False),
         skip_umap=config.get("skip_umap", False),
         n_top_compounds=config.get("n_top_compounds", 20),
+        min_compounds_per_target=config.get("min_compounds_per_target", 3),
     )
 
     return df
@@ -455,6 +461,87 @@ STEPS = {
     "prune_correlated": prune_correlated,
     "evaluate_metrics": evaluate_metrics,
 }
+
+
+# =============================================================================
+# Redundant Configuration Detection
+# =============================================================================
+
+# Default values for method-specific parameters
+# Used to detect redundant sweep configurations
+# NOTE: These must match the FIRST value in each sweep parameter list
+# to avoid skipping all configs. If sweep has tvn_alpha: "0.3,0.5",
+# set default to 0.3 here.
+METHOD_PARAM_DEFAULTS = {
+    "tvn": {
+        "tvn_fit_controls": True,  # Match sweep's first value
+        "tvn_epsilon": 0.5,  # Match sweep's first value
+    },
+    "spherize": {
+        "spherize_method": "ZCA-cor",
+        "spherize_epsilon": 1e-6,  # Match sweep's first value
+    },
+    "pca": {
+        # pca_n_components and pca_fit_controls not swept, no redundancy check needed
+    },
+}
+
+
+def is_redundant_config(config: dict) -> tuple[bool, str | None]:
+    """Check if configuration is redundant due to irrelevant method-specific params.
+
+    When a batch correction method is disabled, its method-specific parameters
+    don't affect the output. To avoid running redundant combinations, we only
+    run configurations where disabled methods have their default parameter values.
+
+    Example: If batch_method=none, we skip configs where tvn_alpha=0.3 (non-default)
+    and only run tvn_alpha=0.5 (default). This reduces 40K combinations to ~960.
+
+    Args:
+        config: Pipeline configuration dict
+
+    Returns:
+        tuple: (is_redundant: bool, reason: str or None)
+    """
+    # Get batch_method or fall back to individual flags
+    # Note: use_spherize is always independent (can combine with other methods)
+    batch_method = config.get("batch_method")
+    if batch_method is not None:
+        use_tvn = (batch_method == "tvn")
+    else:
+        use_tvn = config.get("use_tvn", False)
+
+    # Spherize and PCA are independent - get from config directly
+    use_spherize = config.get("use_spherize", False)
+    use_pca = config.get("use_pca", False)
+
+    # For each disabled method, check if params differ from defaults
+    checks = [
+        ("tvn", use_tvn, METHOD_PARAM_DEFAULTS["tvn"]),
+        ("spherize", use_spherize, METHOD_PARAM_DEFAULTS["spherize"]),
+        ("pca", use_pca, METHOD_PARAM_DEFAULTS["pca"]),
+    ]
+
+    for method_name, is_enabled, defaults in checks:
+        if is_enabled:
+            continue  # Method is enabled, params matter
+
+        # Method is disabled - check if any param differs from default
+        for param, default_val in defaults.items():
+            actual_val = config.get(param, default_val)
+            # Handle type mismatches (e.g., string "true" vs bool True)
+            if isinstance(default_val, bool) and isinstance(actual_val, str):
+                actual_val = actual_val.lower() == "true"
+            elif isinstance(default_val, (int, float)) and isinstance(actual_val, str):
+                try:
+                    actual_val = type(default_val)(actual_val)
+                except (ValueError, TypeError):
+                    pass
+
+            if actual_val != default_val:
+                return True, f"{method_name} disabled but {param}={actual_val} (default: {default_val})"
+
+    return False, None
 
 
 # =============================================================================
@@ -574,6 +661,26 @@ def run_pipeline(
                 step["enabled"] = batch_method == "combat"
             elif step_name == "normalize_spherize":
                 step["enabled"] = config.get("use_spherize", False)
+            elif step_name == "normalize_pca":
+                step["enabled"] = config.get("use_pca", False)
+    else:
+        # batch_method not set - override steps if flags are explicitly set
+        for step in config.get("steps", []):
+            step_name = step.get("name", "")
+            if step_name == "normalize_spherize" and "use_spherize" in config:
+                step["enabled"] = config.get("use_spherize", False)
+            elif step_name == "normalize_pca" and "use_pca" in config:
+                step["enabled"] = config.get("use_pca", False)
+            elif step_name == "normalize_tvn" and "use_tvn" in config:
+                step["enabled"] = config.get("use_tvn", False)
+
+    # Check for redundant configuration (skip early to save time)
+    skip_redundant = config.get("skip_redundant_configs", False)
+    if skip_redundant:
+        is_redundant, reason = is_redundant_config(config)
+        if is_redundant:
+            print(f"SKIPPING redundant config: {reason}")
+            return float("inf")  # Return sentinel for Optuna compatibility
 
     # Input path
     if input_override:
@@ -664,6 +771,13 @@ def run_pipeline(
         if len(df) == 0:
             print(f"\nERROR: No rows remaining after {step_name}")
             return float("inf")
+
+        # Check for ill-conditioned TVN
+        if step_name == "normalize_tvn":
+            tvn_ill_conditioned, tvn_condition_number = get_tvn_state()
+            if tvn_ill_conditioned and config.get("abort_on_ill_conditioned_tvn", True):
+                print(f"\nABORTING: TVN ill-conditioned (condition number: {tvn_condition_number:.2e})")
+                return float("inf")
 
         # Validate features
         if step_name != "evaluate_metrics":
