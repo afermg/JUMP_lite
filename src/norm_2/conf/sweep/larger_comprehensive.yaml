@@ -1,0 +1,125 @@
+# @package _global_
+
+# Larger Comprehensive Sweep Configuration
+#
+# Expanded parameter sweep covering more normalization options:
+# - Batch correction methods (none, tvn, tvn_efaar)
+# - Normalization methods (robustmad, standardize, none)
+# - TVN parameters (alpha, epsilon, fit_controls)
+# - Spherize methods (ZCA-cor, PCA-cor)
+# - Sample normalization (none, l2)
+# - Outlier cutoffs
+# - Aggregation methods
+# - Correlation thresholds
+#
+# With redundancy filtering: ~800-1200 unique configs
+#
+# USAGE:
+#   uv run python src/norm_2/pipeline.py --multirun hydra/launcher=joblib \
+#     hydra.launcher.n_jobs=12 +sweep=larger_comprehensive \
+#     +input_override=./output/features.parquet
+
+defaults:
+  - /preset/standard
+
+input_override: null
+
+# Skip redundant configs (HIGHLY recommended)
+skip_redundant_configs: true
+
+# Abort on invalid features
+abort_on_invalid_features: true
+
+# Abort if TVN encounters ill-conditioned covariance matrix
+abort_on_ill_conditioned_tvn: true
+
+# PC1 variance check
+max_pc1_variance: 0.70
+
+# === SWEPT PARAMETERS (defaults - first value in each sweep list) ===
+
+# Batch correction method
+batch_method: none
+
+# Standard normalization
+norm_method: robustmad
+norm_fit_controls: true
+
+# Sample normalization
+use_sample_norm: false
+sample_norm_type: l2
+
+# Spherize whitening
+use_spherize: false
+spherize_fit_controls: true
+spherize_method: "ZCA-cor"
+
+# Aggregation
+agg_method: median
+
+# Feature filtering
+outlier_cut: 15
+corr_thresh: 0.90
+
+# TVN params (only used when batch_method=tvn)
+tvn_alpha: 0.3
+tvn_epsilon: 0.5
+tvn_fit_controls: true
+tvn_batch_col: "Metadata_Plate"
+
+# TVN_EFAAR params (only used when batch_method=tvn_efaar)
+tvn_efaar_epsilon: 0.5
+tvn_efaar_batch_col: "Metadata_Plate"
+
+# === FIXED PARAMETERS ===
+use_filter_features: true
+use_prune_correlated: true
+skip_visualization: true
+
+# === HYDRA SWEEP ===
+#
+# Parameter combinations:
+#   batch_method: 3 (none, tvn, tvn_efaar)
+#   norm_method: 3 (robustmad, standardize, none)
+#   norm_fit_controls: 2 (true, false)
+#   use_sample_norm: 2 (false, true)
+#   use_spherize: 2 (false, true)
+#   spherize_fit_controls: 2 (true, false) - only when use_spherize=true
+#   spherize_method: 2 (ZCA-cor, PCA-cor) - only when use_spherize=true
+#   agg_method: 2 (median, mean)
+#   outlier_cut: 3 (15, 30, 500)
+#   corr_thresh: 3 (0.90, 0.85, 0.95)
+#   tvn_alpha: 2 (0.3, 0.5) - only when batch_method=tvn
+#   tvn_epsilon: 2 (0.5, 1.0) - only when batch_method=tvn
+#   tvn_fit_controls: 2 (true, false) - only when batch_method=tvn
+#
+# Theoretical max: 3 × 3 × 2 × 2 × 2 × 2 × 2 × 2 × 3 × 3 × 2 × 2 × 2 = 20,736
+# After redundancy filtering: ~800-1200 unique configs
+#
+hydra:
+  sweeper:
+    params:
+      # Core batch correction
+      batch_method: none,tvn,tvn_efaar
+      norm_method: robustmad,standardize,none
+      norm_fit_controls: true,false
+
+      # Sample normalization
+      use_sample_norm: false,true
+
+      # Spherize whitening
+      use_spherize: false,true
+      spherize_fit_controls: true,false
+      spherize_method: ZCA-cor,PCA-cor
+
+      # Aggregation
+      agg_method: median,mean
+
+      # Feature filtering
+      outlier_cut: 15,30,500
+      corr_thresh: 0.90,0.85,0.95
+
+      # TVN-specific params
+      tvn_alpha: 0.3,0.5
+      tvn_epsilon: 0.5,1.0
+      tvn_fit_controls: true,false

@@ -1,0 +1,93 @@
+# @package _global_
+
+# Comprehensive Sweep Configuration
+#
+# Tests all major normalization parameters systematically:
+# - Batch correction methods (none, tvn, tvn_efaar)
+# - Normalization methods (robustmad, standardize)
+# - Fit on controls (true, false)
+# - Spherize whitening (on/off)
+# - Aggregation methods (median, mean)
+# - TVN alpha values
+# - Correlation thresholds
+#
+# With redundancy filtering, this produces ~200-300 unique configurations
+#
+# USAGE:
+#   uv run python src/norm_2/pipeline.py --multirun hydra/launcher=joblib \
+#     hydra.launcher.n_jobs=12 +sweep=comprehensive \
+#     +input_override=./output/features.parquet
+
+defaults:
+  - /preset/standard
+
+input_override: null
+
+# Skip redundant configs (highly recommended - reduces ~1000+ to ~200-300)
+skip_redundant_configs: true
+
+# Abort on invalid features
+abort_on_invalid_features: true
+
+# Abort if TVN encounters ill-conditioned covariance matrix
+abort_on_ill_conditioned_tvn: true
+
+# PC1 variance check (looser for exploration)
+max_pc1_variance: 0.70
+
+# === SWEPT PARAMETERS (defaults - first value in each sweep list) ===
+batch_method: none
+norm_method: robustmad
+norm_fit_controls: true      # fit standard normalization on controls only
+use_spherize: false
+spherize_fit_controls: true  # fit spherize on controls only
+agg_method: median
+corr_thresh: 0.90
+
+# TVN params (only used when batch_method=tvn)
+tvn_alpha: 0.3
+tvn_epsilon: 0.5
+tvn_fit_controls: true       # fit TVN on controls only
+tvn_batch_col: "Metadata_Plate"
+
+# TVN_EFAAR params (only used when batch_method=tvn_efaar)
+tvn_efaar_epsilon: 0.5
+tvn_efaar_batch_col: "Metadata_Plate"
+
+# Spherize params (only used when use_spherize=true)
+spherize_method: "ZCA-cor"
+spherize_epsilon: 1.0e-06
+
+# === FIXED PARAMETERS ===
+use_sample_norm: false
+use_filter_features: true
+use_prune_correlated: true
+outlier_cut: 15
+skip_visualization: true
+
+# === HYDRA SWEEP ===
+#
+# Parameter combinations:
+#   batch_method: 3 (none, tvn, tvn_efaar)
+#   norm_method: 3 (robustmad, standardize, none)
+#   norm_fit_controls: 2 (true, false) - only matters when norm_method != none
+#   use_spherize: 2 (true, false)
+#   spherize_fit_controls: 2 (true, false) - only matters when use_spherize=true
+#   agg_method: 2 (median, mean)
+#   tvn_alpha: 2 (0.3, 0.5) - only matters when batch_method=tvn
+#   corr_thresh: 3 (0.85, 0.90, 0.95)
+#
+# Theoretical max: 3 × 3 × 2 × 2 × 2 × 2 × 2 × 3 = 864
+# After redundancy filtering: ~300-400 unique configs
+#
+hydra:
+  sweeper:
+    params:
+      batch_method: none,tvn,tvn_efaar
+      norm_method: robustmad,standardize,none
+      norm_fit_controls: true,false
+      use_spherize: false,true
+      spherize_fit_controls: true,false
+      agg_method: median,mean
+      tvn_alpha: 0.3,0.5
+      corr_thresh: 0.85,0.90,0.95

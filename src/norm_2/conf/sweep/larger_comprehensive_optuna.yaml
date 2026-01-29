@@ -1,0 +1,133 @@
+# @package _global_
+
+# Larger Comprehensive Sweep - Optuna Version
+#
+# Identical parameter space to larger_comprehensive.yaml but using Optuna's
+# TPE sampler for smarter exploration and optional pruning.
+#
+# Parameter space (same as larger_comprehensive.yaml):
+#   batch_method: 3 (none, tvn, tvn_efaar)
+#   norm_method: 3 (robustmad, standardize, none)
+#   norm_fit_controls: 2 (true, false)
+#   use_sample_norm: 2 (false, true)
+#   use_spherize: 2 (false, true)
+#   spherize_fit_controls: 2 (true, false)
+#   spherize_method: 2 (ZCA-cor, PCA-cor)
+#   agg_method: 2 (median, mean)
+#   outlier_cut: 3 (15, 30, 500)
+#   corr_thresh: 3 (0.90, 0.85, 0.95)
+#   tvn_alpha: 2 (0.3, 0.5)
+#   tvn_epsilon: 2 (0.5, 1.0)
+#   tvn_fit_controls: 2 (true, false)
+#
+# Theoretical max: 20,736 combinations
+# With redundancy filtering: ~800-1200 unique configs
+# Optuna n_trials: 400 (finds good configs faster via TPE)
+#
+# USAGE:
+#   uv run python src/norm_2/pipeline.py --multirun \
+#     hydra/sweeper=optuna hydra/launcher=joblib \
+#     +sweep=larger_comprehensive_optuna \
+#     hydra.launcher.n_jobs=12 \
+#     +input_override=./output/features.parquet
+#
+# To run exhaustive grid search instead of Optuna sampling:
+#   Add: hydra.sweeper.sampler._target_=optuna.samplers.GridSampler
+
+defaults:
+  - /preset/optuna_base
+
+input_override: null
+
+# === VALIDATION SETTINGS ===
+skip_redundant_configs: true
+abort_on_invalid_features: true
+abort_on_ill_conditioned_tvn: true
+max_pc1_variance: 0.70
+
+# === DEFAULT VALUES ===
+# These match the first value in each search_space choice list
+# (required for redundancy detection to work correctly)
+
+batch_method: none
+norm_method: robustmad
+norm_fit_controls: true
+
+use_sample_norm: false
+sample_norm_type: l2
+
+use_spherize: false
+spherize_fit_controls: true
+spherize_method: "ZCA-cor"
+
+agg_method: median
+outlier_cut: 15
+corr_thresh: 0.90
+
+tvn_alpha: 0.3
+tvn_epsilon: 0.5
+tvn_fit_controls: true
+tvn_batch_col: "Metadata_Plate"
+
+tvn_efaar_epsilon: 0.5
+tvn_efaar_batch_col: "Metadata_Plate"
+
+# === FIXED PARAMETERS ===
+use_filter_features: true
+use_prune_correlated: true
+skip_visualization: true
+
+# === HYDRA + OPTUNA CONFIG ===
+hydra:
+  sweeper:
+    # Optimization direction (pipeline returns -PA, so minimize)
+    direction: minimize
+
+    # Number of trials to run (vs 20K theoretical grid)
+    # TPE typically finds near-optimal in 200-400 trials
+    n_trials: 400
+
+    # Storage for resumable studies (optional - comment out for ephemeral)
+    # storage: sqlite:///optuna_study.db
+    # study_name: larger_comprehensive
+
+    # TPE Sampler configuration
+    sampler:
+      seed: 42
+      n_startup_trials: 30
+      multivariate: true
+
+    # === PARAMETER OVERRIDES ===
+    # Uses Hydra's standard override syntax with Optuna distributions
+    params:
+      # Core batch correction method
+      batch_method: choice(none, tvn, tvn_efaar)
+
+      # Standard normalization
+      norm_method: choice(robustmad, standardize, none)
+      norm_fit_controls: choice(true, false)
+
+      # Sample normalization (L1/L2 per row)
+      use_sample_norm: choice(false, true)
+
+      # Spherize whitening
+      use_spherize: choice(false, true)
+      spherize_fit_controls: choice(true, false)
+      spherize_method: choice(ZCA-cor, PCA-cor)
+
+      # Aggregation
+      agg_method: choice(median, mean)
+
+      # Feature filtering
+      outlier_cut: choice(15, 30, 500)
+      corr_thresh: choice(0.90, 0.85, 0.95)
+
+      # TVN-specific params (only matter when batch_method=tvn)
+      tvn_alpha: choice(0.3, 0.5)
+      tvn_epsilon: choice(0.5, 1.0)
+      tvn_fit_controls: choice(true, false)
+
+  launcher:
+    n_jobs: 12
+    prefer: processes
+    verbose: 1

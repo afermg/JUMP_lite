@@ -61,6 +61,13 @@ steps:
     control_key: negcon
     epsilon: 0.5
     fit_on_controls: true
+- enabled: false
+  name: normalize_tvn_efaar
+  params:
+    batch_col: Metadata_Plate
+    control_col: Metadata_control_type
+    control_key: negcon
+    epsilon: 0.5
 - enabled: true
   name: normalize_spherize
   params:

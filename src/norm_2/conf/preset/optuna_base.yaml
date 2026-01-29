@@ -1,0 +1,109 @@
+# @package _global_
+
+# Optuna Base Preset
+# Streamlined preset for Optuna sweeps - minimal defaults, fast startup.
+# All tunable params are set to their "first" values to match redundancy detection.
+
+input:
+  path: INPUT_FILE.parquet
+output:
+  path: data/features/OUTPUT.parquet
+  compression: zstd
+
+steps:
+  - name: clean_nans
+    enabled: true
+    params:
+      na_cutoff: 0.30
+
+  - name: sample_norm
+    enabled: false
+    params:
+      norm: l2
+
+  - name: merge_metadata
+    enabled: true
+    params:
+      metadata_dir: "analysis/feature_similarity/input"
+
+  - name: filter_features
+    enabled: true
+    params:
+      operations:
+        - name: "variance_threshold"
+          freq_cut: 0.05
+          unique_cut: 0.01
+          var_threshold: 0.001
+        - name: "drop_outliers"
+          outlier_cutoff: 15
+
+  - name: prune_correlated
+    enabled: true
+    params:
+      threshold: 0.90
+      method: "pearson"
+
+  - name: normalize_standard
+    enabled: true
+    params:
+      method: robustmad
+      batch_col: Metadata_Plate
+      fit_on_controls: true
+      control_key: "negcon"
+      control_col: "Metadata_control_type"
+
+  - name: normalize_pca
+    enabled: false
+    params:
+      n_components: 128
+      whiten: false
+      fit_on_controls: true
+      control_key: "negcon"
+      control_col: "Metadata_control_type"
+
+  - name: normalize_tvn
+    enabled: false
+    params:
+      batch_col: Metadata_Plate
+      alpha: 0.3
+      epsilon: 0.5
+      fit_on_controls: true
+      control_key: "negcon"
+      control_col: "Metadata_control_type"
+
+  - name: normalize_tvn_efaar
+    enabled: false
+    params:
+      batch_col: Metadata_Plate
+      epsilon: 0.5
+      control_key: "negcon"
+      control_col: "Metadata_control_type"
+
+  - name: normalize_spherize
+    enabled: false
+    params:
+      method: "ZCA-cor"
+      batch_col: ""
+      epsilon: 1.0e-06
+      fit_on_controls: true
+      control_key: "negcon"
+      control_col: "Metadata_control_type"
+
+  - name: aggregate_wells
+    enabled: true
+    params:
+      strata: ["Metadata_Plate", "Metadata_Well"]
+      method: median
+
+  - name: evaluate_metrics
+    enabled: true
+    params:
+      skip_visualization: true
+      min_compounds_per_target: 3
+
+hydra:
+  run:
+    dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  sweep:
+    dir: outputs/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    subdir: ${hydra.job.num}
