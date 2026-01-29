@@ -802,6 +802,7 @@ def main():
     parser.add_argument("--workers", type=int, default=4, help="Number of parallel workers")
     parser.add_argument("--segment-step", type=str, default="segment_cell", help="Segmentation step name (e.g., segment_cell, segment_nuclei)")
     parser.add_argument("--visualize-sample", action="store_true", help="Only visualize a single well+method comparison (requires --well and one --methods entry)")
+    parser.add_argument("--visualize-sample-grid", action="store_true", help="Visualize a grid of samples for different compressions and the difference between them (requires --well, --visualize-sample and one --methods entry)")
     parser.add_argument("--well", type=str, default=None, help="Source/well ID for single sample visualization")
     parser.add_argument("--file", type=str, default=None, help="Specific mask file name for single sample visualization (default: first file found)")
     parser.add_argument("--zarr-root", type=str, default="/work/datasets/jump_target2_4plate", help="Root directory containing zarr source images")
@@ -831,15 +832,16 @@ def main():
                 segment_step=args.segment_step,
                 file_name=args.file,
             )
-        visualize_compression_grid(
-            root=root,
-            zarr_root=Path(args.zarr_root),
-            gt_method=args.ground_truth,
-            methods=args.methods,
-            source_id=args.well,
-            output_prefix=args.output,
-            file_name=args.file,
-        )
+        if args.visualize_sample_grid:
+            visualize_compression_grid(
+                root=root,
+                zarr_root=Path(args.zarr_root),
+                gt_method=args.ground_truth,
+                methods=args.methods,
+                source_id=args.well,
+                output_prefix=args.output,
+                file_name=args.file,
+            )
         return
 
     # Check if output already exists
