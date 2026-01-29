@@ -168,10 +168,10 @@ class Spherize:
 
 class TVN:
     """
-    Typical Variation Normalization from EFAAR benchmarking.
+    Typical Variation Normalization (legacy implementation).
 
     Removes batch-specific covariance by fractional matrix power transformation.
-    Particularly effective for batch correction while preserving biological signal.
+    This is a simplified version - for the proper EFAAR implementation, use TVN_EFAAR.
     """
 
     def __init__(self, alpha: float = 0.5, epsilon: float = 1.0):
@@ -179,69 +179,29 @@ class TVN:
         self.epsilon = epsilon
         self.mean_: np.ndarray | None = None
         self.cov_alpha_: np.ndarray | None = None
-        self.ill_conditioned_: bool = False  # Track if matrix was ill-conditioned
-        self.condition_number_: float | None = None  # Store condition number for reporting
+        self.ill_conditioned_: bool = False
+        self.condition_number_: float | None = None
 
     def fit(self, X: np.ndarray) -> "TVN":
         if len(X) < 2:
             raise ValueError("TVN requires at least 2 samples")
 
-        # Center data
         self.mean_ = X.mean(axis=0)
         X_centered = X - self.mean_
 
-        # Debug info
-        stds = np.sort(np.std(X_centered, axis=0))[:5]
-        print("Feature stddev before TVN:", stds)
-        print("Feature shape:", X_centered.shape)
-        print("Max and Min pre mean feature stddev:", np.max(X), np.min(X))
-        print("Max and Min feature stddev:", np.max(X_centered), np.min(X_centered))
-
-        # Compute covariance
         cov = np.cov(X_centered.T)
-
-        # Check condition number and apply adaptive regularization
         cond_number = np.linalg.cond(cov)
-        self.condition_number_ = cond_number  # Store for reporting
+        self.condition_number_ = cond_number
         regularization = self.epsilon
 
         if cond_number > 1e10:
-            self.ill_conditioned_ = True  # Flag for reporting
+            self.ill_conditioned_ = True
             regularization = max(self.epsilon, cond_number / 1e8)
-
-            # Update global state for pipeline-wide tracking
             update_tvn_state(True, cond_number)
-
-            if not hasattr(TVN, '_warned_ill_conditioned'):
-                TVN._warned_ill_conditioned = True
-
-                issues = []
-                n_samples, n_features = X_centered.shape
-
-                ratio = n_samples / n_features
-                if ratio < 3:
-                    issues.append(f"Low sample/feature ratio: {ratio:.2f}")
-
-                corr_matrix = np.corrcoef(X_centered.T)
-                np.fill_diagonal(corr_matrix, 0)
-                high_corr_count = np.sum(np.abs(corr_matrix) > 0.95) // 2
-                if high_corr_count > 0:
-                    issues.append(f"Highly correlated features: {high_corr_count} pairs")
-
-                variances = np.var(X_centered, axis=0)
-                low_var_count = np.sum(variances < 1e-10)
-                if low_var_count > 0:
-                    issues.append(f"Near-zero variance features: {low_var_count}")
-
-                msg = f"TVN: Covariance ill-conditioned (cond={cond_number:.2e}). Using regularization={regularization:.2e}."
-                if issues:
-                    msg += "\n  Potential causes: " + ", ".join(issues)
-                warnings.warn(msg, UserWarning)
+            warnings.warn(f"TVN: Covariance ill-conditioned (cond={cond_number:.2e})")
         else:
-            # Update global state even if not ill-conditioned (to track max)
             update_tvn_state(False, cond_number)
 
-        # Fractional matrix power with regularization
         self.cov_alpha_ = fractional_matrix_power(
             cov + regularization * np.eye(cov.shape[0]), -self.alpha
         )
@@ -253,6 +213,174 @@ class TVN:
 
     def fit_transform(self, X: np.ndarray) -> np.ndarray:
         return self.fit(X).transform(X)
+
+
+class TVN_EFAAR:
+    """
+    Typical Variation Normalization matching EFAAR benchmarking implementation.
+
+    Implements the proper EFAAR TVN workflow based on CORAL:
+    1. Fit target covariance on ALL controls (global reference)
+    2. For each batch: whiten using batch covariance, recolor using target covariance
+
+    This is based on the CORAL (CORrelation ALignment) method from:
+    https://www.aaai.org/ocs/index.php/AAAI/AAAI16/paper/download/12443/11842
+
+    Reference implementation:
+    https://github.com/recursionpharma/EFAAR_benchmarking/blob/trunk/efaar_benchmarking/efaar.py
+
+    The transformation aligns batch-specific distributions to a common target distribution
+    while preserving biological signal.
+    """
+
+    def __init__(self, epsilon: float = 0.5):
+        """
+        Args:
+            epsilon: Regularization added to covariance matrices (default 0.5 per EFAAR)
+        """
+        self.epsilon = epsilon
+        self.target_cov_: np.ndarray | None = None
+        self.target_cov_sqrt_: np.ndarray | None = None
+        self.n_features_: int | None = None
+        self.ill_conditioned_: bool = False
+        self.condition_number_: float | None = None
+
+    def fit(self, X_controls: np.ndarray) -> "TVN_EFAAR":
+        """
+        Fit target covariance on ALL control samples.
+
+        Args:
+            X_controls: Control embeddings from ALL batches (n_samples, n_features)
+        """
+        if len(X_controls) < 2:
+            raise ValueError("TVN_EFAAR requires at least 2 control samples")
+
+        self.n_features_ = X_controls.shape[1]
+
+        # Compute target covariance from all controls with regularization
+        self.target_cov_ = np.cov(X_controls, rowvar=False, ddof=1) + self.epsilon * np.eye(self.n_features_)
+
+        # Check condition number
+        cond_number = np.linalg.cond(self.target_cov_)
+        self.condition_number_ = cond_number
+
+        if cond_number > 1e10:
+            self.ill_conditioned_ = True
+            update_tvn_state(True, cond_number)
+            warnings.warn(f"TVN_EFAAR: Target covariance ill-conditioned (cond={cond_number:.2e})")
+        else:
+            update_tvn_state(False, cond_number)
+
+        # Pre-compute target covariance sqrt for recoloring
+        self.target_cov_sqrt_ = fractional_matrix_power(self.target_cov_, 0.5)
+
+        print(f"  TVN_EFAAR fit on {len(X_controls)} controls, {self.n_features_} features")
+        print(f"  Target covariance condition number: {cond_number:.2e}")
+
+        return self
+
+    def transform_batch(self, X_batch: np.ndarray, X_batch_controls: np.ndarray) -> np.ndarray:
+        """
+        Transform a single batch using CORAL: whiten with batch cov, recolor with target cov.
+
+        Args:
+            X_batch: All embeddings in this batch (n_samples, n_features)
+            X_batch_controls: Control embeddings in this batch (n_controls, n_features)
+
+        Returns:
+            Transformed embeddings for this batch
+        """
+        if self.target_cov_sqrt_ is None:
+            raise ValueError("Must call fit() before transform_batch()")
+
+        if len(X_batch_controls) < 2:
+            warnings.warn(f"TVN_EFAAR: Batch has only {len(X_batch_controls)} controls, skipping CORAL")
+            return X_batch
+
+        # Compute source (batch-specific) covariance with regularization
+        source_cov = np.cov(X_batch_controls, rowvar=False, ddof=1) + self.epsilon * np.eye(self.n_features_)
+
+        # Check batch condition number
+        batch_cond = np.linalg.cond(source_cov)
+        if batch_cond > 1e10:
+            self.ill_conditioned_ = True
+            update_tvn_state(True, batch_cond)
+            warnings.warn(f"TVN_EFAAR: Batch covariance ill-conditioned (cond={batch_cond:.2e})")
+
+        # CORAL transformation: whiten with source, recolor with target
+        # X_transformed = X @ source_cov^(-0.5) @ target_cov^(0.5)
+        source_cov_inv_sqrt = fractional_matrix_power(source_cov, -0.5)
+
+        X_whitened = X_batch @ source_cov_inv_sqrt
+        X_recolored = X_whitened @ self.target_cov_sqrt_
+
+        return X_recolored.real
+
+
+def tvn_efaar_on_controls(
+    embeddings: np.ndarray,
+    control_mask: np.ndarray,
+    batch_labels: np.ndarray | None = None,
+    epsilon: float = 0.5,
+) -> np.ndarray:
+    """
+    Apply TVN (Typical Variation Normalization) matching EFAAR implementation.
+
+    This implements the CORAL-based TVN from:
+    https://github.com/recursionpharma/EFAAR_benchmarking
+
+    Note: This function assumes embeddings have ALREADY been:
+    1. Centered/scaled on controls (globally)
+    2. PCA transformed (fit on controls)
+    3. Centered/scaled on controls (per-batch)
+
+    Args:
+        embeddings: Embeddings to normalize (n_samples, n_features)
+        control_mask: Boolean mask indicating control samples
+        batch_labels: Batch labels for each sample (None = single batch)
+        epsilon: Regularization for covariance matrices (default 0.5 per EFAAR)
+
+    Returns:
+        Normalized embeddings with batch effects removed via CORAL
+    """
+    embeddings = embeddings.copy()
+
+    # Fit target covariance on ALL controls
+    target_cov = np.cov(embeddings[control_mask], rowvar=False, ddof=1) + epsilon * np.eye(embeddings.shape[1])
+    target_cov_sqrt = fractional_matrix_power(target_cov, 0.5)
+
+    cond_number = np.linalg.cond(target_cov)
+    if cond_number > 1e10:
+        update_tvn_state(True, cond_number)
+        warnings.warn(f"TVN_EFAAR: Target covariance ill-conditioned (cond={cond_number:.2e})")
+    else:
+        update_tvn_state(False, cond_number)
+
+    print(f"  TVN_EFAAR: {control_mask.sum()} controls, condition={cond_number:.2e}")
+
+    if batch_labels is not None:
+        # Per-batch CORAL transformation
+        unique_batches = np.unique(batch_labels)
+        for batch in unique_batches:
+            batch_mask = batch_labels == batch
+            batch_control_mask = batch_mask & control_mask
+
+            n_batch_controls = batch_control_mask.sum()
+            if n_batch_controls < 2:
+                warnings.warn(f"TVN_EFAAR: Batch '{batch}' has only {n_batch_controls} controls, skipping")
+                continue
+
+            # Compute source (batch) covariance
+            source_cov = np.cov(embeddings[batch_control_mask], rowvar=False, ddof=1) + epsilon * np.eye(embeddings.shape[1])
+            source_cov_inv_sqrt = fractional_matrix_power(source_cov, -0.5)
+
+            # CORAL: whiten with source, recolor with target
+            embeddings[batch_mask] = embeddings[batch_mask] @ source_cov_inv_sqrt
+            embeddings[batch_mask] = embeddings[batch_mask] @ target_cov_sqrt
+
+        embeddings = embeddings.real
+
+    return embeddings
 
 
 class PCATransform:

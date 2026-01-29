@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Aggregate metrics directly from data/features output directories."""
 
+import argparse
 import json
 from pathlib import Path
 import pandas as pd
@@ -519,12 +520,23 @@ def create_heatmaps(df: pd.DataFrame, output_dir: Path):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python aggregate_results.py <data_dir>")
-        print("Example: python aggregate_results.py data/features/zstd_raw_features")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(
+        description="Aggregate metrics from data/features output directories."
+    )
+    parser.add_argument(
+        "data_dir",
+        type=Path,
+        help="Path to data/features directory (e.g., data/features/zstd_raw_features)"
+    )
+    parser.add_argument(
+        "--suffix",
+        type=str,
+        default="",
+        help="Suffix to append to the preset name (e.g., --suffix zstd produces dinov2_zstd.yaml)"
+    )
+    args = parser.parse_args()
 
-    data_dir = Path(sys.argv[1])
+    data_dir = args.data_dir
     if not data_dir.exists():
         print(f"Error: Directory {data_dir} does not exist")
         sys.exit(1)
@@ -656,7 +668,7 @@ if __name__ == "__main__":
             print("SAVING BEST BALANCE CONFIG")
             print("="*80)
 
-            best_settings_dir = Path("/home/jfredinh/projects/JUMP_core/src/norm/conf/preset")
+            best_settings_dir = Path("/home/jfredinh/projects/JUMP_core/src/norm_2/conf/preset")
             best_settings_dir.mkdir(parents=True, exist_ok=True)
 
             # Extract feature type from data_dir name
@@ -668,7 +680,8 @@ if __name__ == "__main__":
 
             # Load, clean, and save pipeline_config.yaml
             src_config = Path(best_balance_path) / "pipeline_config.yaml"
-            dst_config = best_settings_dir / f"{feature_type}.yaml"
+            preset_name = f"{feature_type}_{args.suffix}" if args.suffix else feature_type
+            dst_config = best_settings_dir / f"{preset_name}.yaml"
 
             if src_config.exists():
                 with open(src_config) as f:

@@ -40,6 +40,9 @@ dependencies = [
     "inmoose>=0.9.1",
     # RAPIDS packages (cupy, rapids-singlecell, cuml, anndata) installed via pixi
     # See pixi.toml - run with: pixi run python ...
+    "upsetplot>=0.9.0",
+    "supervenn>=0.5.0",
+    "matplotlib-venn>=1.1.2",
 ]
 
 [dependency-groups]

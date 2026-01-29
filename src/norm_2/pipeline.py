@@ -279,6 +279,92 @@ def normalize_tvn(df: pl.DataFrame, config: dict) -> pl.DataFrame:
     return df
 
 
+def normalize_tvn_efaar(df: pl.DataFrame, config: dict) -> pl.DataFrame:
+    """
+    Normalize using TVN matching EFAAR benchmarking implementation.
+
+    This implements the complete EFAAR TVN workflow:
+    1. Center/scale on controls (globally)
+    2. PCA fit on controls, transform all
+    3. Center/scale on controls (per-batch)
+    4. CORAL: whiten with batch covariance, recolor with global covariance
+
+    Reference: https://github.com/recursionpharma/EFAAR_benchmarking
+    """
+    print("\n=== Step: Normalize (TVN_EFAAR) ===")
+    from sklearn.decomposition import PCA
+    from sklearn.preprocessing import StandardScaler
+    from norm_2.core import tvn_efaar_on_controls
+
+    features, _ = infer_columns(df, ["Metadata_"])
+    features = get_numeric_features(df, features)
+
+    batch_col = config.get("batch_col", "Metadata_Plate")
+    if batch_col == "":
+        batch_col = None
+    control_col = config.get("control_col", "Metadata_control_type")
+    control_key = config.get("control_key", "negcon")
+    epsilon = config.get("epsilon", 0.5)
+
+    print(f"  batch_col: {batch_col}, control_col: {control_col}, control_key: {control_key}")
+    print(f"  epsilon: {epsilon}")
+
+    # Extract data
+    X = df.select(features).to_numpy()
+    control_mask = (df[control_col] == control_key).to_numpy()
+    batch_labels = df[batch_col].to_numpy() if batch_col else None
+
+    print(f"  Input shape: {X.shape}, controls: {control_mask.sum()}")
+
+    # Step 1: Global center/scale on controls
+    print("  Step 1: Global center/scale on controls...")
+    scaler_global = StandardScaler()
+    scaler_global.fit(X[control_mask])
+    X = scaler_global.transform(X)
+
+    # Step 2: PCA fit on controls, transform all
+    print("  Step 2: PCA on controls...")
+    pca = PCA()
+    pca.fit(X[control_mask])
+    X = pca.transform(X)
+    print(f"    PCA components: {X.shape[1]}")
+
+    # Step 3: Per-batch center/scale on controls
+    print("  Step 3: Per-batch center/scale on controls...")
+    if batch_labels is not None:
+        unique_batches = np.unique(batch_labels)
+        for batch in unique_batches:
+            batch_mask = batch_labels == batch
+            batch_control_mask = batch_mask & control_mask
+            if batch_control_mask.sum() >= 2:
+                scaler_batch = StandardScaler()
+                scaler_batch.fit(X[batch_control_mask])
+                X[batch_mask] = scaler_batch.transform(X[batch_mask])
+    else:
+        # Global if no batch column
+        scaler = StandardScaler()
+        scaler.fit(X[control_mask])
+        X = scaler.transform(X)
+
+    # Step 4: CORAL (whiten with batch cov, recolor with global cov)
+    print("  Step 4: CORAL transformation...")
+    X = tvn_efaar_on_controls(X, control_mask, batch_labels, epsilon=epsilon)
+
+    # Create new feature names (PCA changes dimensionality)
+    new_features = [f"PC_{i}" for i in range(X.shape[1])]
+
+    # Build result dataframe
+    metadata_cols = [c for c in df.columns if c not in features]
+    result_df = df.select(metadata_cols)
+
+    # Add transformed features
+    for i, feat_name in enumerate(new_features):
+        result_df = result_df.with_columns(pl.Series(name=feat_name, values=X[:, i]))
+
+    print(f"  Result: {result_df.shape}")
+    return result_df
+
+
 def normalize_spherize(df: pl.DataFrame, config: dict) -> pl.DataFrame:
     """Normalize using Spherize."""
     print("\n=== Step: Normalize (Spherize) ===")
@@ -455,6 +541,7 @@ STEPS = {
     "normalize_standard": normalize_standard,
     "normalize_pca": normalize_pca,
     "normalize_tvn": normalize_tvn,
+    "normalize_tvn_efaar": normalize_tvn_efaar,
     "normalize_spherize": normalize_spherize,
     "normalize_harmony": _skip_harmony,
     "normalize_combat": _skip_combat,
@@ -474,12 +561,20 @@ STEPS = {
 # set default to 0.3 here.
 METHOD_PARAM_DEFAULTS = {
     "tvn": {
+        "tvn_alpha": 0.3,  # Match sweep's first value
         "tvn_fit_controls": True,  # Match sweep's first value
         "tvn_epsilon": 0.5,  # Match sweep's first value
     },
+    "tvn_efaar": {
+        "tvn_efaar_epsilon": 0.5,  # Match sweep's first value
+    },
     "spherize": {
-        "spherize_method": "ZCA-cor",
-        "spherize_epsilon": 1e-6,  # Match sweep's first value
+        "spherize_method": "ZCA-cor",  # Match sweep's first value
+        "spherize_fit_controls": True,  # Match sweep's first value
+        "spherize_epsilon": 1e-6,
+    },
+    "sample_norm": {
+        "sample_norm_type": "l2",  # Match sweep's first value
     },
     "pca": {
         # pca_n_components and pca_fit_controls not swept, no redundancy check needed
@@ -487,7 +582,7 @@ METHOD_PARAM_DEFAULTS = {
 }
 
 
-def is_redundant_config(config: dict) -> tuple[bool, str | None]:
+def is_redundant_config(config: dict, input_path: Path | None = None) -> tuple[bool, str | None]:
     """Check if configuration is redundant due to irrelevant method-specific params.
 
     When a batch correction method is disabled, its method-specific parameters
@@ -499,26 +594,87 @@ def is_redundant_config(config: dict) -> tuple[bool, str | None]:
 
     Args:
         config: Pipeline configuration dict
+        input_path: Optional input file path (used to detect CellProfiler data)
 
     Returns:
         tuple: (is_redundant: bool, reason: str or None)
     """
+    # Skip sample normalization (L1/L2) for CellProfiler measurements
+    # Sample norm is designed for embeddings, not traditional CP features
+    if input_path is not None:
+        input_name_lower = input_path.name.lower()
+        is_cellprofiler = "cp_measure" in input_name_lower or "cpmeasure" in input_name_lower or "cellprofiler" in input_name_lower
+        if is_cellprofiler:
+            use_sample_norm = config.get("use_sample_norm", False)
+            if isinstance(use_sample_norm, str):
+                use_sample_norm = use_sample_norm.lower() == "true"
+            if use_sample_norm:
+                return True, "sample_norm (L1/L2) not appropriate for CellProfiler data"
     # Get batch_method or fall back to individual flags
     # Note: use_spherize is always independent (can combine with other methods)
     batch_method = config.get("batch_method")
     if batch_method is not None:
         use_tvn = (batch_method == "tvn")
+        use_tvn_efaar = (batch_method == "tvn_efaar")
     else:
         use_tvn = config.get("use_tvn", False)
+        use_tvn_efaar = config.get("use_tvn_efaar", False)
 
     # Spherize and PCA are independent - get from config directly
     use_spherize = config.get("use_spherize", False)
     use_pca = config.get("use_pca", False)
 
+    # Helper to get norm_fit_controls (with fallback to legacy fit_controls)
+    def get_norm_fit_controls():
+        val = config.get("norm_fit_controls", config.get("fit_controls", True))
+        if isinstance(val, str):
+            val = val.lower() == "true"
+        return val
+
+    # When tvn_efaar is used, norm_method and norm_fit_controls don't matter
+    # (tvn_efaar does its own normalization, bypassing normalize_standard)
+    if use_tvn_efaar:
+        norm_method = config.get("norm_method", "robustmad")
+        norm_fit_controls = get_norm_fit_controls()
+        # Only run one combo of norm_method/norm_fit_controls for tvn_efaar
+        if norm_method != "robustmad" or norm_fit_controls != True:
+            return True, f"tvn_efaar ignores norm_method={norm_method}, norm_fit_controls={norm_fit_controls}"
+
+    # When norm_method=none, norm_fit_controls doesn't matter (no normalization done)
+    norm_method = config.get("norm_method", "robustmad")
+    if norm_method == "none":
+        norm_fit_controls = get_norm_fit_controls()
+        # Only run norm_fit_controls=True (default) when norm_method=none
+        if norm_fit_controls != True:
+            return True, f"norm_method=none ignores norm_fit_controls={norm_fit_controls}"
+
+    # When use_spherize=false, spherize_fit_controls and spherize_method don't matter
+    if not use_spherize:
+        spherize_fit_controls = config.get("spherize_fit_controls", True)
+        if isinstance(spherize_fit_controls, str):
+            spherize_fit_controls = spherize_fit_controls.lower() == "true"
+        if spherize_fit_controls != True:
+            return True, f"spherize disabled but spherize_fit_controls={spherize_fit_controls}"
+
+        spherize_method = config.get("spherize_method", "ZCA-cor")
+        if spherize_method != "ZCA-cor":
+            return True, f"spherize disabled but spherize_method={spherize_method}"
+
+    # When use_sample_norm=false, sample_norm_type doesn't matter
+    use_sample_norm = config.get("use_sample_norm", False)
+    if isinstance(use_sample_norm, str):
+        use_sample_norm = use_sample_norm.lower() == "true"
+    if not use_sample_norm:
+        sample_norm_type = config.get("sample_norm_type", "l2")
+        if sample_norm_type != "l2":
+            return True, f"sample_norm disabled but sample_norm_type={sample_norm_type}"
+
     # For each disabled method, check if params differ from defaults
     checks = [
         ("tvn", use_tvn, METHOD_PARAM_DEFAULTS["tvn"]),
+        ("tvn_efaar", use_tvn_efaar, METHOD_PARAM_DEFAULTS["tvn_efaar"]),
         ("spherize", use_spherize, METHOD_PARAM_DEFAULTS["spherize"]),
+        ("sample_norm", use_sample_norm, METHOD_PARAM_DEFAULTS["sample_norm"]),
         ("pca", use_pca, METHOD_PARAM_DEFAULTS["pca"]),
     ]
 
@@ -648,6 +804,7 @@ def run_pipeline(
     batch_method = config.get("batch_method")
     if batch_method is not None:
         config["use_tvn"] = batch_method == "tvn"
+        config["use_tvn_efaar"] = batch_method == "tvn_efaar"
         config["use_harmony"] = batch_method == "harmony"
         config["use_combat"] = batch_method == "combat"
 
@@ -655,6 +812,12 @@ def run_pipeline(
             step_name = step.get("name", "")
             if step_name == "normalize_tvn":
                 step["enabled"] = batch_method == "tvn"
+            elif step_name == "normalize_tvn_efaar":
+                step["enabled"] = batch_method == "tvn_efaar"
+            elif step_name == "normalize_standard":
+                # Disable normalize_standard when tvn_efaar is used (it does its own normalization)
+                if batch_method == "tvn_efaar":
+                    step["enabled"] = False
             elif step_name == "normalize_harmony":
                 step["enabled"] = batch_method == "harmony"
             elif step_name == "normalize_combat":
@@ -663,6 +826,81 @@ def run_pipeline(
                 step["enabled"] = config.get("use_spherize", False)
             elif step_name == "normalize_pca":
                 step["enabled"] = config.get("use_pca", False)
+
+    # Propagate top-level sweep parameters to step configurations
+    # This maps sweep params (fit_controls, norm_method, etc.) to step params
+    for step in config.get("steps", []):
+        step_name = step.get("name", "")
+        if "params" not in step:
+            step["params"] = {}
+
+        # Handle step enable/disable flags
+        if step_name == "sample_norm" and "use_sample_norm" in config:
+            step["enabled"] = config["use_sample_norm"]
+        elif step_name == "filter_features" and "use_filter_features" in config:
+            step["enabled"] = config["use_filter_features"]
+        elif step_name == "prune_correlated" and "use_prune_correlated" in config:
+            step["enabled"] = config["use_prune_correlated"]
+
+        # Handle step-specific parameters
+        if step_name == "sample_norm":
+            if "sample_norm_type" in config:
+                step["params"]["norm"] = config["sample_norm_type"]
+
+        elif step_name == "normalize_standard":
+            # Map top-level norm_method -> step param method
+            if "norm_method" in config:
+                step["params"]["method"] = config["norm_method"]
+            # Map top-level norm_fit_controls -> step param fit_on_controls
+            # (also support legacy "fit_controls" for backwards compatibility)
+            if "norm_fit_controls" in config:
+                step["params"]["fit_on_controls"] = config["norm_fit_controls"]
+            elif "fit_controls" in config:
+                step["params"]["fit_on_controls"] = config["fit_controls"]
+
+        elif step_name == "normalize_tvn":
+            # Map top-level tvn params to step params
+            if "tvn_alpha" in config:
+                step["params"]["alpha"] = config["tvn_alpha"]
+            if "tvn_epsilon" in config:
+                step["params"]["epsilon"] = config["tvn_epsilon"]
+            if "tvn_fit_controls" in config:
+                step["params"]["fit_on_controls"] = config["tvn_fit_controls"]
+            if "tvn_batch_col" in config:
+                step["params"]["batch_col"] = config["tvn_batch_col"]
+
+        elif step_name == "normalize_tvn_efaar":
+            # Map top-level tvn_efaar params to step params
+            if "tvn_efaar_epsilon" in config:
+                step["params"]["epsilon"] = config["tvn_efaar_epsilon"]
+            if "tvn_efaar_batch_col" in config:
+                step["params"]["batch_col"] = config["tvn_efaar_batch_col"]
+
+        elif step_name == "normalize_spherize":
+            # Map top-level spherize params to step params
+            if "spherize_method" in config:
+                step["params"]["method"] = config["spherize_method"]
+            if "spherize_epsilon" in config:
+                step["params"]["epsilon"] = config["spherize_epsilon"]
+            if "spherize_fit_controls" in config:
+                step["params"]["fit_on_controls"] = config["spherize_fit_controls"]
+
+        elif step_name == "aggregate_wells":
+            # Map top-level agg_method to step param
+            if "agg_method" in config:
+                step["params"]["method"] = config["agg_method"]
+
+        elif step_name == "prune_correlated":
+            # Map top-level corr_thresh to step param
+            if "corr_thresh" in config:
+                step["params"]["threshold"] = config["corr_thresh"]
+
+        elif step_name == "filter_features":
+            # Map top-level outlier_cut to step param
+            if "outlier_cut" in config and "operations" in step["params"]:
+                for op in step["params"]["operations"]:
+                    if op.get("name") == "drop_outliers":
+                        op["outlier_cutoff"] = config["outlier_cut"]
     else:
         # batch_method not set - override steps if flags are explicitly set
         for step in config.get("steps", []):
@@ -673,22 +911,24 @@ def run_pipeline(
                 step["enabled"] = config.get("use_pca", False)
             elif step_name == "normalize_tvn" and "use_tvn" in config:
                 step["enabled"] = config.get("use_tvn", False)
+            elif step_name == "normalize_tvn_efaar" and "use_tvn_efaar" in config:
+                step["enabled"] = config.get("use_tvn_efaar", False)
 
-    # Check for redundant configuration (skip early to save time)
-    skip_redundant = config.get("skip_redundant_configs", False)
-    if skip_redundant:
-        is_redundant, reason = is_redundant_config(config)
-        if is_redundant:
-            print(f"SKIPPING redundant config: {reason}")
-            return float("inf")  # Return sentinel for Optuna compatibility
-
-    # Input path
+    # Input path (determined early for redundancy check)
     if input_override:
         input_path = Path(input_override)
     elif config.get("input_override"):
         input_path = Path(config["input_override"])
     else:
         input_path = Path(config["input"]["path"])
+
+    # Check for redundant configuration (skip early to save time)
+    skip_redundant = config.get("skip_redundant_configs", False)
+    if skip_redundant:
+        is_redundant, reason = is_redundant_config(config, input_path=input_path)
+        if is_redundant:
+            print(f"SKIPPING redundant config: {reason}")
+            return float("inf")  # Return sentinel for Optuna compatibility
 
     # Output directory
     output_name = generate_output_name(config)
@@ -716,6 +956,7 @@ def run_pipeline(
         output_dir = base_output_path.parent / sweep_name / input_name / output_name
     else:
         output_dir = base_output_path.parent / input_name / output_name
+
     output_dir.mkdir(exist_ok=True, parents=True)
 
     output_path = output_dir / base_output_path.name
@@ -730,7 +971,18 @@ def run_pipeline(
 
     print(f"Pipeline: {output_name}")
     print(f"Output directory: {output_dir}")
-    print(f"Config saved to: {config_copy_path}\n")
+    print(f"Config saved to: {config_copy_path}")
+
+    # Print key sweep parameters for verification
+    if batch_method is not None:
+        print(f"  batch_method: {batch_method}")
+    if "norm_method" in config:
+        print(f"  norm_method: {config['norm_method']}")
+    if "norm_fit_controls" in config:
+        print(f"  norm_fit_controls: {config['norm_fit_controls']}")
+    elif "fit_controls" in config:
+        print(f"  fit_controls: {config['fit_controls']}")
+    print()
 
     # Load input
     print(f"Loading: {input_path}")
@@ -750,11 +1002,14 @@ def run_pipeline(
             print(f"WARNING: Unknown step '{step_name}'")
             continue
 
-        # Update evaluate_metrics output_dir
+        # Update evaluate_metrics output_dir and skip_visualization
         if step_name == "evaluate_metrics":
             if "params" not in step_config:
                 step_config["params"] = {}
             step_config["params"]["output_dir"] = output_dir / "results"
+            # Allow global config to override skip_visualization
+            if "skip_visualization" in config:
+                step_config["params"]["skip_visualization"] = config["skip_visualization"]
 
         # Validate before aggregation
         if step_name == "aggregate_wells":
@@ -817,6 +1072,8 @@ try:
     @hydra.main(version_base=None, config_path="conf", config_name="pipeline")
     def main(cfg: DictConfig) -> float:
         """Hydra entry point for running pipeline with sweeps."""
+        import time
+        print(f"[{time.strftime('%H:%M:%S')}] Job starting...")
         input_override = cfg.get("input_override", None)
         return run_pipeline(hydra_config=cfg, input_override=input_override)
 
@@ -836,5 +1093,6 @@ if __name__ == "__main__":
         run_pipeline(config_path=config_path, input_override=input_override)
     else:
         # Hydra mode
-        print("Running in Hydra mode")
+        import time
+        print(f"Running in Hydra mode (starting at {time.strftime('%H:%M:%S')})")
         main()

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Aggregate metrics directly from data/features output directories."""
 
+import argparse
 import json
 from pathlib import Path
 import pandas as pd
@@ -22,15 +23,17 @@ warnings.filterwarnings('ignore', message='.*identical.*ylims.*')
 # Import from norm_2
 from norm_2.io import infer_columns
 from norm_2.visualization import plot_dimensionality_reduction_extended
+from norm_2.metrics import calculate_batch_metrics
 
 
-def generate_visualization_for_result(result_dir: Path, skip_umap: bool = False) -> bool:
+def generate_visualization_for_result(result_dir: Path, skip_umap: bool = False, calculate_batch: bool = True) -> bool:
     """
-    Generate PCA/UMAP visualization for a sweep result directory.
+    Generate PCA/UMAP visualization and batch metrics for a sweep result directory.
 
     Args:
         result_dir: Path to the sweep result directory (contains processed parquet and results/)
         skip_umap: If True, skip UMAP computation (faster, PCA only)
+        calculate_batch: If True, calculate batch metrics (kBET, Silhouette) and update metrics.json
 
     Returns:
         True if visualization was generated successfully, False otherwise
@@ -81,6 +84,27 @@ def generate_visualization_for_result(result_dir: Path, skip_umap: bool = False)
         # Set output path
         results_dir.mkdir(exist_ok=True)
         output_path = results_dir / "dimreduction.png"
+
+        # Calculate batch metrics if requested (kBET, Silhouette)
+        if calculate_batch:
+            metrics_path = results_dir / "metrics.json"
+            try:
+                print(f"  Calculating batch metrics (kBET, Silhouette)...")
+                batch_metrics = calculate_batch_metrics(df, numeric_features)
+                print(f"    Silhouette: {batch_metrics['silhouette_batch']:.4f}")
+                print(f"    kBET: {batch_metrics['kbet_score']:.4f}")
+
+                # Update metrics.json with batch metrics
+                if metrics_path.exists():
+                    with open(metrics_path) as f:
+                        metrics = json.load(f)
+                    metrics["Silhouette"] = batch_metrics["silhouette_batch"]
+                    metrics["kBET"] = batch_metrics["kbet_score"]
+                    with open(metrics_path, "w") as f:
+                        json.dump(metrics, f, indent=2)
+                    print(f"  ✓ Updated metrics.json with batch metrics")
+            except Exception as e:
+                print(f"  Warning: Could not calculate batch metrics: {e}")
 
         # Generate visualization
         plot_dimensionality_reduction_extended(
@@ -157,6 +181,30 @@ def extract_params_from_config(config: dict) -> dict:
     """
     params = {}
 
+    # Extract top-level parameters
+    if "batch_method" in config:
+        params["batch_method"] = config["batch_method"]
+    if "norm_method" in config:
+        params["norm_method"] = config["norm_method"]
+    # Support both norm_fit_controls (new) and fit_controls (legacy)
+    if "norm_fit_controls" in config:
+        params["norm_fit_controls"] = config["norm_fit_controls"]
+    elif "fit_controls" in config:
+        params["norm_fit_controls"] = config["fit_controls"]
+    # Spherize and TVN fit controls from top-level
+    if "spherize_fit_controls" in config:
+        params["sph_fit_ctrl"] = config["spherize_fit_controls"]
+    if "tvn_fit_controls" in config:
+        params["tvn_fit_ctrl"] = config["tvn_fit_controls"]
+    if "use_spherize" in config:
+        params["spherize"] = config["use_spherize"]
+    if "agg_method" in config:
+        params["agg"] = config["agg_method"]
+    if "corr_thresh" in config:
+        params["corr_thresh"] = config["corr_thresh"]
+    if "tvn_alpha" in config:
+        params["tvn_alpha"] = config["tvn_alpha"]
+
     for step in config.get("steps", []):
         step_name = step.get("name")
         step_params = step.get("params", {})
@@ -210,6 +258,16 @@ def extract_params_from_config(config: dict) -> dict:
                 if "batch_col" in step_params:
                     batch = step_params["batch_col"]
                     params["tvn_batch"] = "plate" if batch else "global"
+
+        # Extract TVN_EFAAR parameters
+        elif step_name == "normalize_tvn_efaar":
+            params["tvn_efaar"] = step_enabled
+            if step_enabled:
+                if "epsilon" in step_params:
+                    params["tvn_efaar_eps"] = step_params["epsilon"]
+                if "batch_col" in step_params:
+                    batch = step_params["batch_col"]
+                    params["tvn_efaar_batch"] = "plate" if batch else "global"
 
         # Extract Spherize parameters
         elif step_name == "normalize_spherize":
@@ -521,12 +579,23 @@ def create_heatmaps(df: pd.DataFrame, output_dir: Path):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python aggregate_results.py <data_dir>")
-        print("Example: python aggregate_results.py data/features/zstd_raw_features")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(
+        description="Aggregate metrics from data/features output directories."
+    )
+    parser.add_argument(
+        "data_dir",
+        type=Path,
+        help="Path to data/features directory (e.g., data/features/zstd_raw_features)"
+    )
+    parser.add_argument(
+        "--suffix",
+        type=str,
+        default="",
+        help="Suffix to append to the preset name (e.g., --suffix zstd produces dinov2_zstd.yaml)"
+    )
+    args = parser.parse_args()
 
-    data_dir = Path(sys.argv[1])
+    data_dir = args.data_dir
     if not data_dir.exists():
         print(f"Error: Directory {data_dir} does not exist")
         sys.exit(1)
@@ -550,6 +619,8 @@ if __name__ == "__main__":
 
     # All possible parameter columns (in logical order)
     all_param_cols = [
+        # Top-level batch method
+        "batch_method",
         # Sample norm
         "sample_norm", "sample_norm_type",
         # Filter
@@ -557,9 +628,11 @@ if __name__ == "__main__":
         # Prune
         "prune_enabled", "corr_thresh",
         # Standard normalization
-        "norm_method", "norm_fit_ctrl", "norm_batch",
-        # TVN
+        "norm_method", "norm_fit_controls", "norm_fit_ctrl", "norm_batch",
+        # TVN (legacy)
         "tvn", "tvn_alpha", "tvn_eps", "tvn_fit_ctrl", "tvn_batch",
+        # TVN_EFAAR
+        "tvn_efaar", "tvn_efaar_eps", "tvn_efaar_batch",
         # Spherize
         "spherize", "sph_method", "sph_fit_ctrl", "sph_batch",
         # Aggregation
@@ -715,7 +788,8 @@ if __name__ == "__main__":
 
             # Load, clean, and save pipeline_config.yaml
             src_config = Path(config_to_save) / "pipeline_config.yaml"
-            dst_config = best_settings_dir / f"{feature_type}.yaml"
+            preset_name = f"{feature_type}_{args.suffix}" if args.suffix else feature_type
+            dst_config = best_settings_dir / f"{preset_name}.yaml"
 
             if src_config.exists():
                 with open(src_config) as f:

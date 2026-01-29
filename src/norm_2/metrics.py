@@ -46,13 +46,23 @@ def calculate_phenotypic_activity(
     """
     from copairs import map as copairs_map
     from copairs.map.average_precision import p_values
-
+    from copairs.matching import assign_reference_index    
+    
     df_pd = df.to_pandas()
+    
+    # Define indexing for copairs
+    
+    df_pd = assign_reference_index(
+        df_pd,
+        "Metadata_pert_iname == 'DMSO'",  # condition to get reference profiles (neg controls)
+        reference_col="Metadata_reference_index",
+        default_value=-1,
+    )
 
-    pos_sameby = ["Metadata_pert_iname"]
+    pos_sameby = ["Metadata_pert_iname", "Metadata_reference_index"]
     pos_diffby = []
     neg_sameby = ["Metadata_Plate"]
-    neg_diffby = ["Metadata_pert_iname", "Metadata_negcon"]
+    neg_diffby = ["Metadata_pert_iname", "Metadata_negcon", "Metadata_reference_index"]
 
     metadata = df_pd.filter(regex="^Metadata")
     profiles = df_pd[features].values
@@ -391,15 +401,22 @@ def evaluate_all(
     except Exception as e:
         print(f"  PC ERROR: {e}")
 
-    # Batch metrics
-    try:
-        batch = calculate_batch_metrics(df, features)
-        results["Silhouette"] = batch["silhouette_batch"]
-        results["kBET"] = batch["kbet_score"]
-        print(f"  Silhouette: {batch['silhouette_batch']:.4f}")
-        print(f"  kBET: {batch['kbet_score']:.4f}")
-    except Exception as e:
-        print(f"  Batch ERROR: {e}")
+    # Batch metrics (skip if skip_visualization is True)
+    if not skip_visualization:
+        try:
+            batch = calculate_batch_metrics(df, features)
+            results["Silhouette"] = batch["silhouette_batch"]
+            results["kBET"] = batch["kbet_score"]
+            print(f"  Silhouette: {batch['silhouette_batch']:.4f}")
+            print(f"  kBET: {batch['kbet_score']:.4f}")
+        except Exception as e:
+            print(f"  Batch ERROR: {e}")
+            results["Silhouette"] = float("nan")
+            results["kBET"] = float("nan")
+    else:
+        print("  Skipping batch metrics (Silhouette, kBET)")
+        results["Silhouette"] = float("nan")
+        results["kBET"] = float("nan")
 
     # Add TVN ill-conditioning state to results
     from norm_2.core import get_tvn_state
