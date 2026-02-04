@@ -13,13 +13,12 @@ from itertools import groupby
 from pathlib import Path
 from pprint import pprint
 from shutil import rmtree
-
-from skimage.metrics import structural_similarity as ssim
 from time import perf_counter
 
 import numpy
 import zarr
 from joblib import Parallel, delayed
+from skimage.metrics import structural_similarity as ssim
 from tqdm import tqdm
 
 try:

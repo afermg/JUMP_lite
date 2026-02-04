@@ -1,0 +1,5 @@
+* Methods
+** Model deployment
+For each of our benchmarked models we deployed a fully reproducible environment using Nix in a NixOS server. Each model is deployed for inference and communicates with an orchestrator pipeline -- aliby (TODO cite aliby thesis) -- via Nahual, a tool introduced in this paper.
+** Cross-process communication
+For the reproducibly deplpoyed models to communicate with a central pipeline. We developed a Python library to connect Deep Learning models across environments.

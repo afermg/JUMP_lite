@@ -17,21 +17,23 @@ dependencies = [
     "pillow>=9.0.0",
     "pooch>=1.8.2",
     "polars>=0.19.0",
-    "rich>=13.0.0",
-    "scikit-image>=0.20.0,<=0.24",
-    "torch>=2.0.0",
-    "torchmetrics>=1.0.0",
-    "torchvision>=0.15.0",
+    "scikit-image>=0.20.0",
     "tqdm>=4.0.0",
     "zarr>=3.1.3",
+    "numcodecs>=0.16.5",
+    "nahual",
+    "jupytext>=1.19.1",
 ]
 
 [dependency-groups]
 dev = [
     "jupyter>=1.1.1",
+    "jupytext>=1.19.1",
+    "ruff>=0.14.6",
 ]
 
 [tool.uv.sources]
-aliby = { path = "../aliby" }
+aliby = { path = "../aliby" , editable=true}
+nahual = { path = "../nahual", editable = true }
 
 
