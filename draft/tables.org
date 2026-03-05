@@ -19,7 +19,7 @@ Tables to export to LaTeX with ease
 Note that this only takes the first and last parquet files for each directory. Also we may have used a different number of instances when running the models.
 #+begin_src sh :eval no-export :exports results
   ls -lU --time-style=+%s /work/datasets/aliby_output/*/jump_core_annotated/jpegxl_lossy_mq.zarr/profiles |
-    awk -f benchmark_time.awk
+    awk -f /home/amunoz/projects/JUMP_lite/draft/benchmark_time_ls.awk
 #+end_src
 
 #+RESULTS:

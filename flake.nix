@@ -73,7 +73,7 @@
                 #   source .venv/bin/activate
                 # fi
                 export PYTHONPATH=.venv/lib/python3.12/site-packages/
-                export LD_LIBRARY_PATH=$NIX_LD_LIBRARY_PATH:"/run/opengl-driver/lib":$LD_LIBRARY_PATH
+                [ -f /etc/os-release ] && grep -q "ID=nixos" /etc/os-release && echo export LD_LIBRARY_PATH=$NIX_LD_LIBRARY_PATH:"/run/opengl-driver/lib":$LD_LIBRARY_PATH
                 export PYTHON_KEYRING_BACKEND=keyring.backends.fail.Keyring
 
                 uv sync --all-groups

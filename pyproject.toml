@@ -23,6 +23,7 @@ dependencies = [
     "numcodecs>=0.16.5",
     "nahual",
     "jupytext>=1.19.1",
+    "cp-measure",
 ]
 
 [dependency-groups]
@@ -35,5 +36,6 @@ dev = [
 [tool.uv.sources]
 aliby = { path = "../aliby" , editable=true}
 nahual = { path = "../nahual", editable = true }
+cp-measure = { path = "../cp_measure", editable = true }
 
 
