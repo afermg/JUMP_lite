@@ -1,0 +1,77 @@
+# @package _global_
+
+# Focused Deep Learning Embeddings Sweep v10 — batch_method=none
+#
+# Target2 dataset with v9-style architecture (no INT, no outlier/corr).
+# Reduced dimension range vs v9: 64,96,128,256
+#
+# Sweep grid: 2 norm x 2 fit_ctrl x 2 pca x 4 pca_dim = 32 raw configs
+#   - use_pca=false configs collapse pca_dim (redundancy filter) → ~20 effective
+
+defaults:
+  - /preset/gpu_base_variance_first_v10_dl
+
+output:
+  path: "data/features/variance_first_v10/output.parquet"
+  compression: zstd
+
+input_override: null
+
+# === VALIDATION SETTINGS ===
+skip_redundant_configs: true
+skip_existing: true
+abort_on_invalid_features: true
+abort_on_ill_conditioned_tvn: true
+max_pc1_variance: 0.70
+
+# === DEFAULT VALUES ===
+batch_method: none
+norm_method: robustmad
+norm_fit_controls: true
+use_wellcorr: false
+use_int: false
+use_sample_norm: false
+use_pca: true
+pca_n_components: 256
+
+# Canonical defaults for non-swept method params (per is_redundant_config)
+tvn_efaar_epsilon: 0.5
+tvn_efaar_n_components: 128
+tvn_original_k: 64
+
+agg_method: median
+
+# Fixed params (not swept)
+tvn_cascade_k1: 128
+tvn_cascade_k2: 32
+spherize_epsilon: 0.1
+spherize_fit_controls: false
+spherize_remove_variance_threshold: null
+spherize_remove_variance_method: threshold
+
+# Dim/control ratio guard
+dim_ratio_threshold: 2.5
+dim_ratio_action: clamp
+
+# === FIXED PARAMETERS ===
+skip_visualization: true
+
+# Feature selection
+corr_thresh: 0.9
+use_prune_correlated: true
+
+# === HYDRA SWEEP ===
+# 2 x 2 x 2 x 2 x 4 = 64 raw, ~40 effective (use_pca=false collapses pca_dim)
+hydra:
+  sweeper:
+    params:
+      norm_method: robustmad,standardize
+      norm_fit_controls: true,false
+      use_prune_correlated: true,false
+      use_pca: true,false
+      pca_n_components: 64,96,128,256
+
+  launcher:
+    n_jobs: 32
+    prefer: processes
+    verbose: 1

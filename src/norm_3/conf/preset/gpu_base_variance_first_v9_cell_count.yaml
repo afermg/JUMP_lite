@@ -1,0 +1,171 @@
+# @package _global_
+
+# Base preset for norm_3 GPU sweeps — v9 Cell Count baseline (jump_lite)
+#
+# Minimal pipeline for the 2-feature cell-count baseline model.
+# Only NaN removal, metadata merge, normalization, and evaluation.
+# All feature selection, PCA, batch correction, and aggregation disabled.
+#
+# Uses v9/v11_lite evaluation params (JCP2022, RefChemDB_target, pc_groups).
+
+input:
+  path: null  # Override via command line
+
+output:
+  path: "data/features/gpu_sweep_variance_first_v9/output.parquet"
+  compression: zstd
+
+# Validation settings
+abort_on_invalid_features: true
+abort_on_ill_conditioned_tvn: true
+max_pc1_variance: 0.99
+skip_redundant_configs: true
+
+steps:
+  # Step 1: NaN removal
+  - name: clean_nans
+    enabled: true
+    params:
+      na_cutoff: 0.30
+
+  # Step 2: Low variance filtering — disabled (only 2 features)
+  - name: filter_features
+    enabled: false
+    params:
+      always_enabled: true
+      filters:
+        - name: variance_threshold
+          freq_cut: 0.05
+          unique_cut: 0.01
+
+  # Merge metadata (needed before normalization)
+  - name: merge_metadata
+    enabled: true
+    params:
+      metadata_path: /home/jfredinh/projects/JUMP_CORE_CLEAN/JUMP_core/metadata/metadata_dataset_filtered_4reps.parquet
+      skip_merge: false
+
+  # Step 3: Normalization (RobustMAD, Standardize, or None)
+  - name: normalize_robustmad
+    enabled: true
+    params:
+      batch_col: Metadata_Plate
+      fit_on_controls: true
+      epsilon: 1.0e-18
+
+  - name: normalize_standardize
+    enabled: false
+    params:
+      batch_col: Metadata_Plate
+      fit_on_controls: true
+
+  # Step 4: Outlier removal — disabled
+  - name: filter_features
+    enabled: false
+    params:
+      always_enabled: true
+      filters:
+        - name: drop_outliers
+          outlier_cutoff: 100
+
+  # Step 5: Inverse normal transform — disabled
+  - name: inverse_normal_transform
+    enabled: false
+    params: {}
+
+  # Well position correction — disabled
+  - name: well_position_correct
+    enabled: false
+    params:
+      well_col: Metadata_Well
+
+  # Sample normalization — disabled
+  - name: sample_norm
+    enabled: false
+    params:
+      norm: l2
+
+  # Correlation pruning — disabled (only 2 features)
+  - name: prune_correlated
+    enabled: false
+    params:
+      always_enabled: true
+      threshold: 0.9
+
+  # PCA — disabled (only 2 features)
+  - name: normalize_pca
+    enabled: false
+    params:
+      n_components: 256
+      variance_threshold: 0.95
+      whiten: false
+      fit_on_controls: false
+
+  # Batch correction — all disabled
+  - name: normalize_tvn_efaar
+    enabled: false
+    params:
+      batch_col: Metadata_Plate
+      epsilon: 0.5
+      dim_ratio_threshold: 2.5
+      dim_ratio_action: clamp
+
+  - name: normalize_spherize
+    enabled: false
+    params:
+      method: "ZCA-cor"
+      batch_col: ""
+      fit_on_controls: true
+      control_col: Metadata_control_type
+      control_key: negcon
+      epsilon: 0.1
+
+  - name: normalize_tvn
+    enabled: false
+    params:
+      batch_col: Metadata_Plate
+      alpha: 0.5
+      epsilon: 1.0
+      fit_on_controls: true
+
+  - name: normalize_tvn_original
+    enabled: false
+    params:
+      batch_col: Metadata_Plate
+      control_col: Metadata_control_type
+      control_key: negcon
+      k: 64
+      dim_ratio_threshold: 2.5
+      dim_ratio_action: clamp
+
+  - name: normalize_tvn_cascade
+    enabled: false
+    params:
+      batch_col: Metadata_Plate
+      control_col: Metadata_control_type
+      control_key: negcon
+      k1: 128
+      k2: 32
+
+  # Aggregation — disabled
+  - name: aggregate_wells
+    enabled: false
+    params:
+      strata:
+        - Metadata_Plate
+        - Metadata_Well
+      method: median
+
+  # Evaluation (v11_lite params: JCP2022, RefChemDB_target, pc_groups)
+  - name: evaluate_metrics
+    enabled: true
+    params:
+      skip_visualization: true
+      min_compounds_per_target: 3
+      compound_col: Metadata_JCP2022
+      target_col: Metadata_RefChemDB_target
+      negcon_col: Metadata_negcon
+      batch_col: Metadata_Plate
+      pc_groups:
+        - group_high
+        - group_low

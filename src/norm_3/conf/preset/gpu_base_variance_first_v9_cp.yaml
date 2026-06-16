@@ -1,0 +1,185 @@
+# @package _global_
+
+# Base preset for norm_3 GPU sweeps — v9 CP (jump_lite CellProfiler data)
+#
+# Based on v9 (jump_lite metadata/eval) but adds CP-specific feature
+# selection steps from v10_cp:
+#   - Outlier removal (drop_outliers, cutoff=100) after normalization
+#   - Correlation pruning (threshold=0.9) after INT, before PCA
+#
+# Pipeline order:
+# 1. NaN removal
+# 2. Low variance filtering
+# 3. Merge metadata
+# 4. Normalization
+# 5. Outlier removal
+# 6. Inverse normal transform
+# 7. Correlation pruning
+# 8. PCA dimensionality reduction
+# 9. Batch correction
+
+input:
+  path: null  # Override via command line
+
+output:
+  path: "data/features/gpu_sweep_variance_first_v9/output.parquet"
+  compression: zstd
+
+# Validation settings
+abort_on_invalid_features: true
+abort_on_ill_conditioned_tvn: true
+max_pc1_variance: 0.70
+skip_redundant_configs: true
+
+steps:
+  # Step 1: NaN removal
+  - name: clean_nans
+    enabled: true
+    params:
+      na_cutoff: 0.30
+
+  # Step 2: Low variance filtering (BEFORE normalization)
+  - name: filter_features
+    enabled: true
+    params:
+      always_enabled: true
+      filters:
+        - name: variance_threshold
+          freq_cut: 0.05
+          unique_cut: 0.01
+
+  # Merge metadata (needed before normalization)
+  - name: merge_metadata
+    enabled: true
+    params:
+      metadata_path: /home/jfredinh/projects/JUMP_CORE_CLEAN/JUMP_core/metadata/metadata_dataset_filtered_4reps.parquet
+      skip_merge: false
+
+  # Step 3: Normalization (RobustMAD, Standardize, or None)
+  - name: normalize_robustmad
+    enabled: true
+    params:
+      batch_col: Metadata_Plate
+      fit_on_controls: true
+      epsilon: 1.0e-18
+
+  - name: normalize_standardize
+    enabled: false
+    params:
+      batch_col: Metadata_Plate
+      fit_on_controls: true
+
+  # Step 4: Outlier removal (AFTER normalization, BEFORE INT)
+  - name: filter_features
+    enabled: true
+    params:
+      always_enabled: true
+      filters:
+        - name: drop_outliers
+          outlier_cutoff: 100
+
+  # Step 5: Inverse normal transform (AFTER outlier removal)
+  - name: inverse_normal_transform
+    enabled: false
+    params: {}
+
+  # Optional: well position correction
+  - name: well_position_correct
+    enabled: false
+    params:
+      well_col: Metadata_Well
+
+  # Optional: sample normalization
+  - name: sample_norm
+    enabled: false
+    params:
+      norm: l2
+
+  # Step 7: Correlation pruning (AFTER INT, BEFORE PCA)
+  - name: prune_correlated
+    enabled: true
+    params:
+      always_enabled: true
+      threshold: 0.9
+
+  # Step 8: PCA dimensionality reduction (BEFORE batch correction)
+  - name: normalize_pca
+    enabled: true
+    params:
+      n_components: 256
+      variance_threshold: 0.95
+      whiten: false
+      fit_on_controls: false
+
+  # Step 6a: Batch correction - TVN_EFAAR (AFTER PCA)
+  - name: normalize_tvn_efaar
+    enabled: false
+    params:
+      batch_col: Metadata_Batch
+      epsilon: 0.5
+      dim_ratio_threshold: 2.5
+      dim_ratio_action: clamp
+
+  # Step 6b: Batch correction - Spherize/ZCA whitening (AFTER PCA)
+  - name: normalize_spherize
+    enabled: false
+    params:
+      method: "ZCA-cor"
+      batch_col: ""  # Global scope
+      fit_on_controls: true
+      control_col: Metadata_control_type
+      control_key: negcon
+      epsilon: 0.1
+
+  # Other batch correction methods (not used in this sweep)
+  - name: normalize_tvn
+    enabled: false
+    params:
+      batch_col: Metadata_Batch
+      alpha: 0.5
+      epsilon: 1.0
+      fit_on_controls: true
+
+  # Step 6c: Batch correction - TVN Original (Caicedo et al. 2017)
+  - name: normalize_tvn_original
+    enabled: false
+    params:
+      batch_col: Metadata_Batch
+      control_col: Metadata_control_type
+      control_key: negcon
+      k: 64
+      dim_ratio_threshold: 2.5
+      dim_ratio_action: clamp
+
+  # Step 6d: Batch correction - Cascade TVN
+  - name: normalize_tvn_cascade
+    enabled: false
+    params:
+      batch_col: Metadata_Batch
+      control_col: Metadata_control_type
+      control_key: negcon
+      k1: 128
+      k2: 32
+
+  # Aggregation (disabled - data already at well level)
+  - name: aggregate_wells
+    enabled: false
+    params:
+      strata:
+        - Metadata_Plate
+        - Metadata_Well
+      method: median
+
+  # Evaluation
+  - name: evaluate_metrics
+    enabled: true
+    params:
+      skip_visualization: true
+      min_compounds_per_target: 3
+      compound_col: Metadata_JCP2022
+      target_col: Metadata_RefChemDB_target
+      negcon_col: Metadata_negcon
+      batch_col: Metadata_Plate
+      pc_groups:
+        - group_high
+        - group_low

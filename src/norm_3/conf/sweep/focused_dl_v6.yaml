@@ -26,9 +26,7 @@
 #   none:            2 norm × 2 fit_ctrl × 2 int × 2 pca              = 16
 #   tvn_efaar:       2 norm × 2 fit_ctrl × 2 int × 2 pca × 5 eps × 2 n_comp = 160
 #   tvn_original:    2 norm × 2 fit_ctrl × 2 int × 2 pca × 5 k       = 80
-#   spherize_global: 2 norm × 2 fit_ctrl × 2 int × 2 pca × 5 eps     = 80
-#   Total: 336 configs per dataset
-#   110 DL datasets × 336 = 36,960 runs
+#   Total: 256 configs per dataset (spherize_global removed)
 
 defaults:
   - /preset/gpu_base_variance_first
@@ -81,7 +79,7 @@ dim_ratio_action: clamp     # "clamp" = reduce to min_controls-1, "abort" = fail
 skip_visualization: true
 
 # === HYDRA SWEEP ===
-# After redundancy filtering: 336 configs per dataset
+# After redundancy filtering: 256 configs per dataset (no spherize)
 hydra:
   sweeper:
     params:
@@ -89,11 +87,10 @@ hydra:
       norm_fit_controls: true,false
       use_int: true,false
       use_pca: true,false
-      batch_method: tvn_efaar,tvn_original,spherize_global,none
+      batch_method: tvn_efaar,tvn_original,none
       tvn_efaar_epsilon: 0.1,0.25,0.5,1.0,2.0
       tvn_efaar_n_components: 128
       tvn_original_k: 16,32,64,128
-      spherize_epsilon: 0.0001,0.01,0.1,100.0
 
   launcher:
     n_jobs: 32
