@@ -20,25 +20,35 @@ import matplotlib.pyplot as plt
 from scipy import stats
 
 # Add project root to path so we can import the mapper
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+SCRIPT_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = SCRIPT_DIR.parents[1]  # Two levels up from analysis/feature_similarity/
+
+sys.path.insert(0, str(PROJECT_ROOT))
 from src.utils.map_cellprofiler_features import FeatureMapper
 
 
 # --- Paths ---
-RAW_CP_PATH = Path("/home/jfredinh/projects/JUMP_core/output/raw_jump_cp_profiles_reformatted_filtered.parquet")
-FILTERED_DIR = Path("/home/jfredinh/projects/JUMP_core/data/features/jump_target2_4plate_filtered")
-NONFILTERED_DIR = Path("/home/jfredinh/projects/JUMP_core/data/features/jump_target2_4plate")
-OUTPUT_DIR = Path("/home/jfredinh/projects/JUMP_core/analysis/feature_similarity/output_figures")
+RAW_CP_PATH = PROJECT_ROOT / "output" / "raw_jump_cp_profiles_reformatted_filtered.parquet"
+FILTERED_DIR = PROJECT_ROOT / "data" / "features" / "jump_target2_4plate_filtered"
+NONFILTERED_DIR = PROJECT_ROOT / "data" / "features" / "jump_target2_4plate"
+OUTPUT_DIR = SCRIPT_DIR / "output"
 
-COMPRESSIONS = [
-    "zstd",
-    "jpegxl_lossy_lq",
-    "jpegxl_lossy_mq",
-    "jpegxl_lossy_effort_3",
-    "jpegxl_lossy_hq",
-    "jpegxl_lossy_d2_e8",
-    "jpegxl_lossy_d10",
-]
+def discover_compressions(base_dir: Path, dataset: str = "jump_target2_4plate") -> list[str]:
+    """Discover available compressions from feature files."""
+    pattern = f"cp_measure_{dataset}_*_raw_features.parquet"
+    files = list(base_dir.glob(pattern))
+    compressions = []
+    for f in files:
+        # Extract compression name: cp_measure_{dataset}_{compression}_raw_features.parquet
+        name = f.stem  # e.g., cp_measure_jump_target2_4plate_zstd_raw_features
+        prefix = f"cp_measure_{dataset}_"
+        suffix = "_raw_features"
+        if name.startswith(prefix) and name.endswith(suffix):
+            compression = name[len(prefix):-len(suffix)]
+            compressions.append(compression)
+    # Sort: zstd first, then others alphabetically
+    compressions.sort(key=lambda x: (x != "zstd", x))
+    return compressions
 
 # Features of special interest for the focused analysis (exact feature name matches)
 FOCUS_CP_FEATURES = {
@@ -143,6 +153,10 @@ def is_focus_feature(cp_measure_feat: str, cp_feat: str) -> bool:
 
 
 def main():
+    # Discover available compressions dynamically
+    COMPRESSIONS = discover_compressions(NONFILTERED_DIR)
+    print(f"Discovered {len(COMPRESSIONS)} compressions: {COMPRESSIONS}")
+
     # Load raw CP reference
     print("Loading raw CellProfiler reference...")
     raw_cp = pl.read_parquet(RAW_CP_PATH)

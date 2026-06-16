@@ -7,6 +7,7 @@ Analyzes correlation between features extracted from compressed vs uncompressed 
 
 from utils_cp_measure_name_mapping import get_cpm_to_measurement_mapper as get_name_mapper
 
+import argparse
 import warnings
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
@@ -25,6 +26,8 @@ import pandas as pd
 import seaborn as sns
 
 import os
+
+SCRIPT_DIR = Path(__file__).resolve().parent
 
 
 def get_features(profiles_dir, workspace_dir, cache_dir):
@@ -112,8 +115,8 @@ def find_profiles_dirs(top_dir):
     """
     top_level_dirs = list(top_dir.glob("*"))
 
-    
-    
+
+
     profiles_dirs = []
     for x in top_level_dirs:
         found = next(x.rglob("profiles"), None)
@@ -130,11 +133,11 @@ def find_profiles_dirs(top_dir):
 def extract_metadata_from_site(df, path, output_dir, df_name="clean"):
     """
     Extract metadata columns from site string and rename columns.
-    
+
     Args:
         df: Polars DataFrame with 'site' column
         path: Path object to extract compression name from
-        
+
     Returns:
         pd.DataFrame: Pandas DataFrame with metadata columns added
     """
@@ -144,15 +147,15 @@ def extract_metadata_from_site(df, path, output_dir, df_name="clean"):
         "Metadata_Plate",
         "Metadata_Well",
         "Metadata_Site"]] = df.site.str.split("__", expand=True)
-    
+
     name = str(path).split("/")[-2]
     df = df.rename(columns={"site": "Metadata_id"})
-    
+
     # Save to parquet
     output_path = Path(output_dir) / f"{name.split('.')[0]}_{df_name}.parquet"
     df.to_parquet(output_path)
     print(f"Saved features to: {output_path}")
-    
+
     return df, name
 
 def process_all_compressions(profiles_dirs, workspace_dir, cache_dir, output_dir):
@@ -173,13 +176,13 @@ def process_all_compressions(profiles_dirs, workspace_dir, cache_dir, output_dir
     for path in profiles_dirs:
         _clean, _pivoted_pl, _ndropped = get_features(path, workspace_dir, cache_dir)
 
-        # Extract and save 
+        # Extract and save
         _clean, name = extract_metadata_from_site(_clean, path, output_dir)
-        
+
         # In process_all_compressions function:
         _, name = extract_metadata_from_site(_pivoted_pl, path, output_dir, df_name="raw_features")
-        
-        
+
+
         features_per_compression[name] = {
             "clean": _clean,
             "pivoted_pl": _pivoted_pl.to_pandas(),
@@ -256,11 +259,29 @@ def parse_feature_names(df):
     """
     df["full_feature_name"] = df["feature"]
     df[["compartment", "mode", "feature"]] = df.feature.str.split("/", expand=True)
-    
+
     return df
 
 
-def plot_correlation_violinplot(df, output_path="../output_figures/correlation_violinplot.png"):
+def _prepare_codec_data(df):
+    """Prepare codec-filtered data with labels and ordering.
+
+    Returns (df_filtered, label_order, codec_labels).
+    """
+    df_filtered = df[df['key'] != 'zstd.zarr'].copy()
+    df_filtered['codec'] = df_filtered['key'].str.replace('.zarr', '').str.replace('jpegxl_lossy_', 'jxl_')
+    codec_mean_corr = df_filtered.groupby('codec')['corr'].mean().sort_values(ascending=False)
+    label_order = list(codec_mean_corr.index)
+    _known_labels = {
+        'jxl_lq': 'Low', 'jxl_mq': 'Medium', 'jxl_effort_3': 'Mid-High',
+        'jxl_hq': 'High', 'jxl_d2_e8': 'D2 E8', 'jxl_d10': 'D10',
+        'jxl_d15': 'D15', 'jxl_d20_e2': 'D20 E2', 'jxl_d30': 'D30',
+    }
+    codec_labels = {c: _known_labels.get(c, c.replace('jxl_', '').upper()) for c in label_order}
+    return df_filtered, label_order, codec_labels
+
+
+def plot_correlation_violinplot(df, output_path=SCRIPT_DIR / "output" / "correlation_violinplot.png"):
     """
     Create violin + strip plot of feature correlations across compression methods.
 
@@ -268,56 +289,78 @@ def plot_correlation_violinplot(df, output_path="../output_figures/correlation_v
         df: DataFrame with correlation results
         output_path: Path to save plot
     """
-    # Filter to lossy codecs only (exclude zstd reference)
-    codec_order = [
-        "jpegxl_lossy_lq.zarr",
-        "jpegxl_lossy_mq.zarr",
-        "jpegxl_lossy_effort_3.zarr",
-        "jpegxl_lossy_hq.zarr",
-    ]
-    df_filtered = df[df['key'].isin(codec_order)].copy()
-    df_filtered['codec'] = df_filtered['key'].str.replace('.zarr', '').str.replace('jpegxl_lossy_', 'jxl_')
+    df_filtered, label_order, codec_labels = _prepare_codec_data(df)
 
-    display_order = ['jxl_lq', 'jxl_mq', 'jxl_effort_3', 'jxl_hq']
-
-    # Nice display names
-    codec_labels = {
-        'jxl_lq': 'Low',
-        'jxl_mq': 'Medium',
-        'jxl_effort_3': 'Mid-High',
-        'jxl_hq': 'High'
-    }
-    label_order = [c for c in display_order if c in df_filtered['codec'].unique()]
-
-    fig, ax = plt.subplots(figsize=(12, 12))
+    fig, ax = plt.subplots(figsize=(7, 7))
 
     sns.violinplot(
         data=df_filtered,
         x='codec',
         y='corr',
+        hue='codec',
         order=label_order,
+        hue_order=label_order,
         palette='viridis',
         inner='box',
         cut=0,
+        legend=False,
         ax=ax
     )
 
     ax.set_xlabel('Compression Quality', fontsize=24, fontweight='bold')
     ax.set_ylabel('Feature Correlation', fontsize=24, fontweight='bold')
-    ax.set_title('Feature Correlation', fontsize=26, fontweight='bold')
+    ax.set_title('Feature Correlation', fontsize=24, fontweight='bold')
 
     ax.set_xticks(range(len(label_order)))
-    ax.set_xticklabels([codec_labels[c] for c in label_order], fontsize=20)
+    ax.set_xticklabels([codec_labels[c] for c in label_order], fontsize=20, rotation=45, ha='right')
     ax.tick_params(axis='both', labelsize=20)
 
     plt.tight_layout()
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
     print(f"Saved correlation plot to: {output_path}")
-    plt.show()
+    plt.close(fig)
+
+
+def plot_correlation_boxenplot(df, output_path=SCRIPT_DIR / "output" / "correlation_boxenplot.png"):
+    """
+    Create boxenplot (letter-value plot) of feature correlations across compression methods.
+
+    Args:
+        df: DataFrame with correlation results
+        output_path: Path to save plot
+    """
+    df_filtered, label_order, codec_labels = _prepare_codec_data(df)
+
+    fig, ax = plt.subplots(figsize=(7, 7))
+
+    sns.boxenplot(
+        data=df_filtered,
+        x='codec',
+        y='corr',
+        hue='codec',
+        order=label_order,
+        hue_order=label_order,
+        palette='viridis',
+        legend=False,
+        ax=ax
+    )
+
+    ax.set_xlabel('Compression Quality', fontsize=24, fontweight='bold')
+    ax.set_ylabel('Feature Correlation', fontsize=24, fontweight='bold')
+    ax.set_title('Feature Correlation', fontsize=24, fontweight='bold')
+
+    ax.set_xticks(range(len(label_order)))
+    ax.set_xticklabels([codec_labels[c] for c in label_order], fontsize=20, rotation=45, ha='right')
+    ax.tick_params(axis='both', labelsize=20)
+
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    print(f"Saved correlation boxenplot to: {output_path}")
+    plt.close(fig)
 
 
 def plot_feature_heatmap(df, compression_key="jpegxl_lossy_effort_3.zarr",
-                        output_path="../output_figures/feature_heatmap.png"):
+                        output_path=SCRIPT_DIR / "output" / "feature_heatmap.png"):
     """
     Create heatmap of correlations by feature and compartment.
 
@@ -329,7 +372,7 @@ def plot_feature_heatmap(df, compression_key="jpegxl_lossy_effort_3.zarr",
     perf = df[df.key == compression_key].groupby(["feature", "compartment"], as_index=False)["corr"].mean()
     pivot_df = perf.pivot(index="feature", columns="compartment", values="corr")
 
-    plt.figure(figsize=(30, 60))
+    fig = plt.figure(figsize=(30, 60))
     sns.heatmap(pivot_df, cmap="viridis", cbar_kws={'label': 'Correlation Coefficient'}, vmin=0, vmax=1)
     plt.title("Feature Correlation Across Compression Methods")
     plt.xlabel("Compartment")
@@ -337,10 +380,10 @@ def plot_feature_heatmap(df, compression_key="jpegxl_lossy_effort_3.zarr",
     plt.tight_layout()
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
     print(f"Saved feature heatmap to: {output_path}")
-    plt.show()
+    plt.close(fig)
 
 
-def plot_compression_heatmap(df, output_path="../output_figures/compression_heatmap.png"):
+def plot_compression_heatmap(df, output_path=SCRIPT_DIR / "output" / "compression_heatmap.png"):
     """
     Create heatmap of median correlations by feature and compression method.
 
@@ -350,15 +393,14 @@ def plot_compression_heatmap(df, output_path="../output_figures/compression_heat
     """
     perf = df.groupby(["feature", "key"], as_index=False)["corr"].median()
 
-    order = ["jpegxl_lossy_lq.zarr",
-             "jpegxl_lossy_mq.zarr",
-             "jpegxl_lossy_effort_3.zarr",
-             "jpegxl_lossy_hq.zarr",
-             "zstd.zarr"]
+    # Dynamic codec discovery (include zstd)
+    non_zstd_keys = [k for k in df['key'].unique() if k != 'zstd.zarr']
+    key_mean_corr = df[df['key'].isin(non_zstd_keys)].groupby('key')['corr'].mean().sort_values()
+    order = list(key_mean_corr.index) + (['zstd.zarr'] if 'zstd.zarr' in df['key'].unique() else [])
 
     pivot_df = perf.pivot(index="feature", columns="key", values="corr").reindex(columns=order)
 
-    plt.figure(figsize=(30, 60))
+    fig = plt.figure(figsize=(30, 60))
     sns.heatmap(pivot_df, cmap="viridis", cbar_kws={'label': 'Correlation Coefficient'}, vmin=0, vmax=1)
     plt.title("Feature Correlation Across Compression Methods")
     plt.xlabel("Compression strategy")
@@ -366,10 +408,10 @@ def plot_compression_heatmap(df, output_path="../output_figures/compression_heat
     plt.tight_layout()
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
     print(f"Saved compression heatmap to: {output_path}")
-    plt.show()
+    plt.close(fig)
 
 
-def plot_compartment_heatmap(df, output_path="../output_figures/compartment_heatmap.png"):
+def plot_compartment_heatmap(df, output_path=SCRIPT_DIR / "output" / "compartment_heatmap.png"):
     """
     Create heatmap of median correlations by compartment and compression method.
 
@@ -379,15 +421,14 @@ def plot_compartment_heatmap(df, output_path="../output_figures/compartment_heat
     """
     perf = df.groupby(["compartment", "key"], as_index=False)["corr"].median()
 
-    order = ["jpegxl_lossy_lq.zarr",
-             "jpegxl_lossy_mq.zarr",
-             "jpegxl_lossy_effort_3.zarr",
-             "jpegxl_lossy_hq.zarr",
-             "zstd.zarr"]
+    # Dynamic codec discovery (include zstd)
+    non_zstd_keys = [k for k in df['key'].unique() if k != 'zstd.zarr']
+    key_mean_corr = df[df['key'].isin(non_zstd_keys)].groupby('key')['corr'].mean().sort_values()
+    order = list(key_mean_corr.index) + (['zstd.zarr'] if 'zstd.zarr' in df['key'].unique() else [])
 
     pivot_df = perf.pivot(index="compartment", columns="key", values="corr").reindex(columns=order)
 
-    plt.figure(figsize=(5, 10))
+    fig = plt.figure(figsize=(5, 10))
     sns.heatmap(pivot_df, cmap="viridis", cbar_kws={'label': 'Correlation Coefficient'},
                 vmin=0, vmax=1, annot=True)
     plt.title("Feature Correlation Across Compression Methods")
@@ -396,7 +437,7 @@ def plot_compartment_heatmap(df, output_path="../output_figures/compartment_heat
     plt.tight_layout()
     plt.savefig(output_path, dpi=150)
     print(f"Saved compartment heatmap to: {output_path}")
-    plt.show()
+    plt.close(fig)
 
 
 def map_features_to_groups(df):
@@ -409,14 +450,14 @@ def map_features_to_groups(df):
     Returns:
         pd.DataFrame: DataFrame with added 'feature_group' column
     """
-    
+
     # Get string before first upper case letter as key
     df['feature_group'] = df['feature'].str.extract(r'^([a-z]+)', expand=False)
 
     return df
 
 
-def plot_feature_group_boxplot(df, output_path="../output_figures/feature_group_boxplot.png"):
+def plot_feature_group_boxplot(df, output_path=SCRIPT_DIR / "output" / "feature_group_boxplot.png"):
     """
     Create boxplot of median feature correlations grouped by feature group.
 
@@ -426,19 +467,17 @@ def plot_feature_group_boxplot(df, output_path="../output_figures/feature_group_
         df: DataFrame with correlation results (must have 'feature_group' column)
         output_path: Path to save plot
     """
-    # Define codec order (excluding zstd since we're comparing against it)
-    codec_order = [
-        "jpegxl_lossy_lq.zarr",
-        "jpegxl_lossy_mq.zarr",
-        "jpegxl_lossy_effort_3.zarr",
-        "jpegxl_lossy_hq.zarr",
-    ]
-
-    # Filter to only include codecs we want to compare (exclude zstd)
-    df_filtered = df[df['key'].isin(codec_order)].copy()
-
-    # Clean up codec names for display
+    # Dynamic codec discovery (excluding zstd since we're comparing against it)
+    df_filtered = df[df['key'] != 'zstd.zarr'].copy()
     df_filtered['codec'] = df_filtered['key'].str.replace('.zarr', '').str.replace('jpegxl_lossy_', 'jxl_')
+    codec_mean_corr = df_filtered.groupby('codec')['corr'].mean().sort_values(ascending=False)
+    label_order = list(codec_mean_corr.index)
+    _known_labels = {
+        'jxl_lq': 'Low', 'jxl_mq': 'Medium', 'jxl_effort_3': 'Mid-High',
+        'jxl_hq': 'High', 'jxl_d2_e8': 'D2 E8', 'jxl_d10': 'D10',
+        'jxl_d15': 'D15', 'jxl_d20_e2': 'D20 E2', 'jxl_d30': 'D30',
+    }
+    codec_labels = {c: _known_labels.get(c, c.replace('jxl_', '').upper()) for c in label_order}
 
     # Get unique feature groups sorted by median correlation
     group_stats = df_filtered.groupby('feature_group').agg(
@@ -479,7 +518,7 @@ def plot_feature_group_boxplot(df, output_path="../output_figures/feature_group_
         y='corr',
         hue='codec',
         order=group_order,
-        hue_order=['jxl_lq', 'jxl_mq', 'jxl_effort_3', 'jxl_hq'],
+        hue_order=label_order,
         palette='viridis',
         ax=ax
     )
@@ -502,10 +541,10 @@ def plot_feature_group_boxplot(df, output_path="../output_figures/feature_group_
     plt.tight_layout()
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
     print(f"Saved feature group boxplot to: {output_path}")
-    plt.show()
+    plt.close(fig)
 
 
-def plot_feature_group_violinplot(df, output_path="../output_figures/feature_group_violinplot.png"):
+def plot_feature_group_violinplot(df, output_path=SCRIPT_DIR / "output" / "feature_group_violinplot.png"):
     """
     Create violinplot of feature correlations grouped by feature group.
 
@@ -516,19 +555,17 @@ def plot_feature_group_violinplot(df, output_path="../output_figures/feature_gro
         df: DataFrame with correlation results (must have 'feature_group' column)
         output_path: Path to save plot
     """
-    # Define codec order (excluding zstd since we're comparing against it)
-    codec_order = [
-        "jpegxl_lossy_lq.zarr",
-        "jpegxl_lossy_mq.zarr",
-        "jpegxl_lossy_effort_3.zarr",
-        "jpegxl_lossy_hq.zarr",
-    ]
-
-    # Filter to only include codecs we want to compare (exclude zstd)
-    df_filtered = df[df['key'].isin(codec_order)].copy()
-
-    # Clean up codec names for display
+    # Dynamic codec discovery (excluding zstd since we're comparing against it)
+    df_filtered = df[df['key'] != 'zstd.zarr'].copy()
     df_filtered['codec'] = df_filtered['key'].str.replace('.zarr', '').str.replace('jpegxl_lossy_', 'jxl_')
+    codec_mean_corr = df_filtered.groupby('codec')['corr'].mean().sort_values(ascending=False)
+    label_order = list(codec_mean_corr.index)
+    _known_labels = {
+        'jxl_lq': 'Low', 'jxl_mq': 'Medium', 'jxl_effort_3': 'Mid-High',
+        'jxl_hq': 'High', 'jxl_d2_e8': 'D2 E8', 'jxl_d10': 'D10',
+        'jxl_d15': 'D15', 'jxl_d20_e2': 'D20 E2', 'jxl_d30': 'D30',
+    }
+    codec_labels = {c: _known_labels.get(c, c.replace('jxl_', '').upper()) for c in label_order}
 
     # Get unique feature groups sorted by median correlation
     group_stats = df_filtered.groupby('feature_group').agg(
@@ -557,7 +594,7 @@ def plot_feature_group_violinplot(df, output_path="../output_figures/feature_gro
         y='corr',
         hue='codec',
         order=group_order,
-        hue_order=['jxl_lq', 'jxl_mq', 'jxl_effort_3', 'jxl_hq'],
+        hue_order=label_order,
         palette='viridis',
         inner='box',
         cut=0,
@@ -582,10 +619,10 @@ def plot_feature_group_violinplot(df, output_path="../output_figures/feature_gro
     plt.tight_layout()
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
     print(f"Saved feature group violinplot to: {output_path}")
-    plt.show()
+    plt.close(fig)
 
 
-def plot_feature_group_by_compartment(df, output_path="../output_figures/feature_group_by_compartment.png"):
+def plot_feature_group_by_compartment(df, output_path=SCRIPT_DIR / "output" / "feature_group_by_compartment.png"):
     """
     Create boxplots for SizeShape, RadialDistribution, and Zernike (AreaShape) features,
     with separation by both codec and compartment.
@@ -594,19 +631,17 @@ def plot_feature_group_by_compartment(df, output_path="../output_figures/feature
         df: DataFrame with correlation results (must have 'feature_group' and 'compartment' columns)
         output_path: Path to save plot
     """
-    # Define codec order (excluding zstd since we're comparing against it)
-    codec_order = [
-        "jpegxl_lossy_lq.zarr",
-        "jpegxl_lossy_mq.zarr",
-        "jpegxl_lossy_effort_3.zarr",
-        "jpegxl_lossy_hq.zarr",
-    ]
-
-    # Filter to only include codecs we want to compare (exclude zstd)
-    df_filtered = df[df['key'].isin(codec_order)].copy()
-
-    # Clean up codec names for display
+    # Dynamic codec discovery (excluding zstd since we're comparing against it)
+    df_filtered = df[df['key'] != 'zstd.zarr'].copy()
     df_filtered['codec'] = df_filtered['key'].str.replace('.zarr', '').str.replace('jpegxl_lossy_', 'jxl_')
+    codec_mean_corr = df_filtered.groupby('codec')['corr'].mean().sort_values(ascending=False)
+    label_order = list(codec_mean_corr.index)
+    _known_labels = {
+        'jxl_lq': 'Low', 'jxl_mq': 'Medium', 'jxl_effort_3': 'Mid-High',
+        'jxl_hq': 'High', 'jxl_d2_e8': 'D2 E8', 'jxl_d10': 'D10',
+        'jxl_d15': 'D15', 'jxl_d20_e2': 'D20 E2', 'jxl_d30': 'D30',
+    }
+    codec_labels = {c: _known_labels.get(c, c.replace('jxl_', '').upper()) for c in label_order}
 
     # Define the three feature groups to plot
     feature_groups = ['sizeshape', 'radial', 'zernike']
@@ -653,7 +688,7 @@ def plot_feature_group_by_compartment(df, output_path="../output_figures/feature
             y='corr',
             hue='codec',
             order=compartment_order,
-            hue_order=['jxl_lq', 'jxl_mq', 'jxl_effort_3', 'jxl_hq'],
+            hue_order=label_order,
             palette='viridis',
             ax=ax
         )
@@ -683,7 +718,7 @@ def plot_feature_group_by_compartment(df, output_path="../output_figures/feature
     plt.tight_layout()
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
     print(f"Saved feature group by compartment plot to: {output_path}")
-    plt.show()
+    plt.close(fig)
 
 
 def extract_feature_subcategory(feature_name):
@@ -740,7 +775,7 @@ def extract_feature_subcategory(feature_name):
     return feature_name
 
 
-def plot_feature_subgroups_by_compartment(df, output_path="../output_figures/feature_subgroups_by_compartment.png"):
+def plot_feature_subgroups_by_compartment(df, output_path=SCRIPT_DIR / "output" / "feature_subgroups_by_compartment.png"):
     """
     Create boxplots with rows for cell/nuclei compartments and columns for feature groups,
     grouped by feature subcategory within each subplot.
@@ -749,19 +784,17 @@ def plot_feature_subgroups_by_compartment(df, output_path="../output_figures/fea
         df: DataFrame with correlation results
         output_path: Path to save plot
     """
-    # Define codec order (excluding zstd since we're comparing against it)
-    codec_order = [
-        "jpegxl_lossy_lq.zarr",
-        "jpegxl_lossy_mq.zarr",
-        "jpegxl_lossy_effort_3.zarr",
-        "jpegxl_lossy_hq.zarr",
-    ]
-
-    # Filter to only include codecs we want to compare (exclude zstd)
-    df_filtered = df[df['key'].isin(codec_order)].copy()
-
-    # Clean up codec names for display
+    # Dynamic codec discovery (excluding zstd since we're comparing against it)
+    df_filtered = df[df['key'] != 'zstd.zarr'].copy()
     df_filtered['codec'] = df_filtered['key'].str.replace('.zarr', '').str.replace('jpegxl_lossy_', 'jxl_')
+    codec_mean_corr = df_filtered.groupby('codec')['corr'].mean().sort_values(ascending=False)
+    label_order = list(codec_mean_corr.index)
+    _known_labels = {
+        'jxl_lq': 'Low', 'jxl_mq': 'Medium', 'jxl_effort_3': 'Mid-High',
+        'jxl_hq': 'High', 'jxl_d2_e8': 'D2 E8', 'jxl_d10': 'D10',
+        'jxl_d15': 'D15', 'jxl_d20_e2': 'D20 E2', 'jxl_d30': 'D30',
+    }
+    codec_labels = {c: _known_labels.get(c, c.replace('jxl_', '').upper()) for c in label_order}
 
     # Clean up compartment names (e.g., 'nuclei_1' -> 'nuclei')
     df_filtered['compartment_clean'] = df_filtered['compartment'].str.extract(r'^([a-zA-Z]+)', expand=False)
@@ -778,7 +811,7 @@ def plot_feature_subgroups_by_compartment(df, output_path="../output_figures/fea
     }
     compartments = ['cell', 'nuclei']
 
-    # Create figure with 2 rows (compartments) × 3 columns (feature groups)
+    # Create figure with 2 rows (compartments) x 3 columns (feature groups)
     fig, axes = plt.subplots(2, 3, figsize=(22, 12), sharey=True)
 
     for row_idx, compartment in enumerate(compartments):
@@ -828,7 +861,7 @@ def plot_feature_subgroups_by_compartment(df, output_path="../output_figures/fea
                 y='corr',
                 hue='codec',
                 order=subcat_order,
-                hue_order=['jxl_lq', 'jxl_mq', 'jxl_effort_3', 'jxl_hq'],
+                hue_order=label_order,
                 palette='viridis',
                 ax=ax
             )
@@ -866,11 +899,11 @@ def plot_feature_subgroups_by_compartment(df, output_path="../output_figures/fea
     plt.tight_layout()
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
     print(f"Saved feature subgroups by compartment plot to: {output_path}")
-    plt.show()
+    plt.close(fig)
 
 
 def plot_features_ordered_by_noise(df, noisy_features_path="/work/datasets/aliby_output/tables/noisy_features.parquet",
-                                    output_path="../output_figures/features_ordered_by_noise.png"):
+                                    output_path=SCRIPT_DIR / "output" / "features_ordered_by_noise.png"):
     """
     Create 3 subplots showing correlation values with features ordered by noise metrics.
 
@@ -887,20 +920,13 @@ def plot_features_ordered_by_noise(df, noisy_features_path="/work/datasets/aliby
     # Load noisy features data
     noisy_df = pd.read_parquet(noisy_features_path)
 
-    # Define codec order (including zstd)
-    codec_order = [
-        "jpegxl_lossy_lq.zarr",
-        "jpegxl_lossy_mq.zarr",
-        "jpegxl_lossy_effort_3.zarr",
-        "jpegxl_lossy_hq.zarr",
-        "zstd.zarr",
-    ]
-
-    # Filter to only include codecs we want
-    df_filtered = df[df['key'].isin(codec_order)].copy()
-
-    # Clean up codec names for display
+    # Dynamic codec discovery (including zstd)
+    df_filtered = df.copy()
     df_filtered['codec'] = df_filtered['key'].str.replace('.zarr', '').str.replace('jpegxl_lossy_', 'jxl_')
+    codec_mean_corr = df_filtered.groupby('codec')['corr'].mean().sort_values(ascending=False)
+    codec_display_order = list(codec_mean_corr.index)
+    palette = sns.color_palette('viridis', n_colors=len(codec_display_order))
+    color_map = dict(zip(codec_display_order, palette))
 
     # Merge correlation data with noisy features
     # Use 'feature' column (not full_feature_name) as it matches the noisy features naming
@@ -926,10 +952,6 @@ def plot_features_ordered_by_noise(df, noisy_features_path="/work/datasets/aliby
 
     # Create figure with 4 stacked subplots
     fig, axes = plt.subplots(4, 1, figsize=(20, 24), sharex=True)
-
-    codec_display_order = ['jxl_lq', 'jxl_mq', 'jxl_effort_3', 'jxl_hq', 'zstd']
-    palette = sns.color_palette('viridis', n_colors=len(codec_display_order))
-    color_map = dict(zip(codec_display_order, palette))
 
     for idx, order_col in enumerate(order_columns):
         ax = axes[idx]
@@ -984,12 +1006,12 @@ def plot_features_ordered_by_noise(df, noisy_features_path="/work/datasets/aliby
     plt.tight_layout()
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
     print(f"Saved features ordered by noise plot to: {output_path}")
-    plt.show()
+    plt.close(fig)
 
 
 def plot_feature_similarity_vs_correlation(df,
                                             raw_features_path="/home/jfredinh/projects/JUMP_core/output/cp_measure_jump_target2_4plate_zstd_raw_features.parquet",
-                                            output_path="../output_figures/feature_similarity_vs_correlation.png"):
+                                            output_path=SCRIPT_DIR / "output" / "feature_similarity_vs_correlation.png"):
     """
     Create scatter plots of feature cosine similarity stats vs correlation.
 
@@ -1049,20 +1071,13 @@ def plot_feature_similarity_vs_correlation(df,
 
     print(f"Calculated similarity stats for {len(feature_sim_stats)} unique features (after grouping)")
 
-    # Define codec order (including zstd)
-    codec_order = [
-        "jpegxl_lossy_lq.zarr",
-        "jpegxl_lossy_mq.zarr",
-        "jpegxl_lossy_effort_3.zarr",
-        "jpegxl_lossy_hq.zarr",
-        "zstd.zarr",
-    ]
-
-    # Filter to only include codecs we want
-    df_filtered = df[df['key'].isin(codec_order)].copy()
-
-    # Clean up codec names for display
+    # Dynamic codec discovery (including zstd)
+    df_filtered = df.copy()
     df_filtered['codec'] = df_filtered['key'].str.replace('.zarr', '').str.replace('jpegxl_lossy_', 'jxl_')
+    codec_mean_corr = df_filtered.groupby('codec')['corr'].mean().sort_values(ascending=False)
+    codec_display_order = list(codec_mean_corr.index)
+    palette = sns.color_palette('viridis', n_colors=len(codec_display_order))
+    color_map = dict(zip(codec_display_order, palette))
 
     # Merge correlation data with similarity stats
     df_merged = df_filtered.merge(feature_sim_stats, on='feature', how='inner')
@@ -1078,10 +1093,6 @@ def plot_feature_similarity_vs_correlation(df,
     # Create figure with 4 subplots (2x2)
     fig, axes = plt.subplots(2, 2, figsize=(16, 14))
     axes = axes.flatten()
-
-    codec_display_order = ['jxl_lq', 'jxl_mq', 'jxl_effort_3', 'jxl_hq', 'zstd']
-    palette = sns.color_palette('viridis', n_colors=len(codec_display_order))
-    color_map = dict(zip(codec_display_order, palette))
 
     stat_columns = ['sim_mean', 'sim_std', 'sim_max', 'sim_min']
     stat_titles = {
@@ -1121,11 +1132,11 @@ def plot_feature_similarity_vs_correlation(df,
     plt.tight_layout()
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
     print(f"Saved feature similarity vs correlation plot to: {output_path}")
-    plt.show()
+    plt.close(fig)
 
 
 def plot_noise_ratio_vs_correlation(df, noisy_features_path="/work/datasets/aliby_output/tables/noisy_features.parquet",
-                                     output_path="../output_figures/noise_ratio_vs_correlation.png",
+                                     output_path=SCRIPT_DIR / "output" / "noise_ratio_vs_correlation.png",
                                      abs_ratio_threshold=1000):
     """
     Create scatter plots of noise ratio vs correlation (with and without absolute value).
@@ -1139,20 +1150,13 @@ def plot_noise_ratio_vs_correlation(df, noisy_features_path="/work/datasets/alib
     # Load noisy features data
     noisy_df = pd.read_parquet(noisy_features_path)
 
-    # Define codec order (including zstd)
-    codec_order = [
-        "jpegxl_lossy_lq.zarr",
-        "jpegxl_lossy_mq.zarr",
-        "jpegxl_lossy_effort_3.zarr",
-        "jpegxl_lossy_hq.zarr",
-        "zstd.zarr",
-    ]
-
-    # Filter to only include codecs we want
-    df_filtered = df[df['key'].isin(codec_order)].copy()
-
-    # Clean up codec names for display
+    # Dynamic codec discovery (including zstd)
+    df_filtered = df.copy()
     df_filtered['codec'] = df_filtered['key'].str.replace('.zarr', '').str.replace('jpegxl_lossy_', 'jxl_')
+    codec_mean_corr = df_filtered.groupby('codec')['corr'].mean().sort_values(ascending=False)
+    codec_display_order = list(codec_mean_corr.index)
+    palette = sns.color_palette('viridis', n_colors=len(codec_display_order))
+    color_map = dict(zip(codec_display_order, palette))
 
     # Merge correlation data with noisy features
     feature_col = 'feature'
@@ -1171,10 +1175,6 @@ def plot_noise_ratio_vs_correlation(df, noisy_features_path="/work/datasets/alib
 
     # Create figure with 2 subplots
     fig, axes = plt.subplots(1, 2, figsize=(20, 8))
-
-    codec_display_order = ['jxl_lq', 'jxl_mq', 'jxl_effort_3', 'jxl_hq', 'zstd']
-    palette = sns.color_palette('viridis', n_colors=len(codec_display_order))
-    color_map = dict(zip(codec_display_order, palette))
 
     # Subplot 1: Ratio
     ax = axes[0]
@@ -1221,25 +1221,140 @@ def plot_noise_ratio_vs_correlation(df, noisy_features_path="/work/datasets/alib
     plt.tight_layout()
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
     print(f"Saved noise ratio vs correlation plot to: {output_path}")
-    plt.show()
+    plt.close(fig)
+
+
+def filter_by_greenlist(df, greenlist_dir=None):
+    """Filter correlation DataFrame to only include green-listed features.
+
+    Loads cell and nuclei greenlist CSVs, maps their feature names to the
+    correlation data's naming convention, and returns only matching rows.
+
+    The greenlist features use the format ``{channel}_{Measurement}``
+    (e.g. ``0_Intensity_IntegratedIntensity``) while the correlation data
+    uses ``{object}_{channel}/{mode}/{branch}{Measurement}`` for
+    ``full_feature_name``.  The mapping strips the channel prefix from the
+    greenlist and the lowercase branch prefix from the correlation feature,
+    then matches on (object_type, channel, core_measurement).
+
+    Args:
+        df: Correlation DataFrame with ``full_feature_name`` and
+            ``compartment`` columns.
+        greenlist_dir: Directory containing ``cell/greenlist_features_cell.csv``
+            and ``nuclei/greenlist_features_nuclei.csv``.  Defaults to
+            ``SCRIPT_DIR / "output"``.
+
+    Returns:
+        Filtered DataFrame containing only green-listed features.
+    """
+    import re
+
+    if greenlist_dir is None:
+        greenlist_dir = SCRIPT_DIR / "output"
+    greenlist_dir = Path(greenlist_dir)
+
+    # channel-specific greenlist: (obj_type, channel, core_measurement)
+    green_set = set()
+    # channel-agnostic greenlist (SizeShape features without channel prefix):
+    # (obj_type, core_measurement) — matches any channel for that object type
+    green_any_channel = set()
+
+    for obj_type, subdir, filename in [
+        ("cell", "cell", "greenlist_features_cell.csv"),
+        ("nuclei", "nuclei", "greenlist_features_nuclei.csv"),
+    ]:
+        path = greenlist_dir / subdir / filename
+        if not path.exists():
+            print(f"  WARNING: greenlist not found at {path}, skipping {obj_type}")
+            continue
+        gdf = pd.read_csv(path)
+        for feat in gdf["feature"]:
+            m = re.match(r"^(\d+)_(.*)", feat)
+            if m:
+                green_set.add((obj_type, m.group(1), m.group(2)))
+            else:
+                # SizeShape features (Area, Compactness, etc.) have no channel
+                green_any_channel.add((obj_type, feat))
+
+    if not green_set and not green_any_channel:
+        print("  WARNING: no greenlist features loaded, returning empty DataFrame")
+        return df.iloc[:0]
+
+    # Advanced moment/tensor features to exclude (noise-sensitive, not
+    # meaningful for downstream profiling).
+    _EXCLUDED_PREFIXES = (
+        "InertiaTensor_",
+        "InertiaTensorEigenvalues_",
+        "SpatialMoment_",
+        "HuMoment_",
+        "CentralMoment_",
+        "NormalizedMoment_",
+    )
+
+    def _is_excluded(core_name):
+        return any(core_name.startswith(p) for p in _EXCLUDED_PREFIXES)
+
+    # Filter greenlist sets
+    n_before_channel = len(green_set)
+    n_before_any = len(green_any_channel)
+    green_set = {t for t in green_set if not _is_excluded(t[2])}
+    green_any_channel = {t for t in green_any_channel if not _is_excluded(t[1])}
+    n_excluded = (n_before_channel - len(green_set)) + (n_before_any - len(green_any_channel))
+    print(f"  Excluded {n_excluded} advanced moment/tensor features from greenlist")
+
+    def _strip_branch(name):
+        m = re.match(r"^[a-z][a-z_]*([A-Z].*)", name)
+        return m.group(1) if m else name
+
+    mask = []
+    for ffn in df["full_feature_name"]:
+        parts = ffn.split("/")
+        if len(parts) < 3:
+            mask.append(False)
+            continue
+        compartment, _mode, feature = parts[0], parts[1], parts[2]
+        m_comp = re.match(r"(cell|nuclei)_(\d+)", compartment)
+        if not m_comp:
+            mask.append(False)
+            continue
+        obj_type = m_comp.group(1)
+        channel = m_comp.group(2)
+        core = _strip_branch(feature)
+        mask.append(
+            (obj_type, channel, core) in green_set
+            or (obj_type, core) in green_any_channel
+        )
+
+    df_filtered = df[mask].copy()
+    n_total = df["full_feature_name"].nunique()
+    n_kept = df_filtered["full_feature_name"].nunique()
+    print(f"  Greenlist filter: {n_kept}/{n_total} unique features kept "
+          f"({len(green_set) + len(green_any_channel)} greenlist entries after exclusion)")
+    return df_filtered
 
 
 def main():
     """Main pipeline for feature correlation analysis."""
-    # Configuration
-    workspace_dir = Path("/work") / "datasets" / "aliby_output" / "cp_measure" /"jump_target2_4plate"
-    cache_dir = Path(workspace_dir) / "db_cache"
-    output_dir = Path("../output_figures")
+    parser = argparse.ArgumentParser(description="Feature Correlation Analysis for CellProfiler Measures")
+    parser.add_argument('--workspace-dir', type=str,
+                        default='/work/datasets/aliby_output/cp_measure/jump_target2_4plate',
+                        help='Path to workspace directory')
+    parser.add_argument('--overwrite', action='store_true',
+                        help='Rerun analysis even if cached results exist')
+    args = parser.parse_args()
 
-    # If output_dir / "feature_correlations.parquet" exists, ask if to rerun or load and skip
-    if (output_dir / "feature_correlations.parquet").exists():
-        rerun = input(f"{output_dir / 'feature_correlations.parquet'} exists. Rerun analysis? (y/n): ")
-        if rerun.lower() != 'y':
-            df = pd.read_parquet(output_dir / "feature_correlations.parquet")
-            print("Loaded existing correlation results.")
-            rerun = False
-        else:
-            rerun = True
+    # Configuration
+    workspace_dir = Path(args.workspace_dir)
+    cache_dir = Path(workspace_dir) / "db_cache"
+    output_dir = SCRIPT_DIR / "output"
+
+    output_dir.mkdir(exist_ok=True, parents=True)
+
+    # If output_dir / "feature_correlations.parquet" exists, check --overwrite flag
+    if (output_dir / "feature_correlations.parquet").exists() and not args.overwrite:
+        df = pd.read_parquet(output_dir / "feature_correlations.parquet")
+        print("Loaded existing correlation results.")
+        rerun = False
     else:
         rerun = True
 
@@ -1277,7 +1392,7 @@ def main():
 
         df.to_parquet(output_dir / "feature_correlations.parquet")
         print(f"Saved correlation results to: {output_dir / 'feature_correlations.parquet'}")
-    
+
     # Map features to groups
     print("\nMapping features to groups...")
     df = map_features_to_groups(df)
@@ -1285,6 +1400,7 @@ def main():
     # Create visualizations
     print("\nCreating visualizations...")
     plot_correlation_violinplot(df)
+    plot_correlation_boxenplot(df)
     plot_feature_heatmap(df)
     plot_compression_heatmap(df)
     plot_compartment_heatmap(df)
@@ -1295,6 +1411,21 @@ def main():
     plot_features_ordered_by_noise(df)
     plot_noise_ratio_vs_correlation(df)
     plot_feature_similarity_vs_correlation(df)
+
+    # Greenlist-filtered violin plot
+    print("\nFiltering to greenlist features...")
+    df_green = filter_by_greenlist(df)
+    if len(df_green) > 0:
+        plot_correlation_violinplot(
+            df_green,
+            output_path=output_dir / "correlation_violinplot_greenlist.png",
+        )
+        plot_correlation_boxenplot(
+            df_green,
+            output_path=output_dir / "correlation_boxenplot_greenlist.png",
+        )
+    else:
+        print("  No greenlist features matched, skipping greenlist violin plot.")
 
     print("\nAnalysis complete!")
 

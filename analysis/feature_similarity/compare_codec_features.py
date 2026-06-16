@@ -23,6 +23,27 @@ import time
 from tqdm import tqdm
 
 
+# Known quality order for JPEG XL codecs (worst to best quality)
+# Based on JPEG XL distance parameter: higher distance = lower quality
+CODEC_QUALITY_ORDER = {
+    'jpegxl_lossy_d30.zarr': 0,
+    'jpegxl_lossy_d20_e2.zarr': 1,
+    'jpegxl_lossy_d15.zarr': 2,
+    'jpegxl_lossy_d10.zarr': 3,
+    'jpegxl_lossy_lq.zarr': 4,
+    'jpegxl_lossy_mq.zarr': 5,
+    'jpegxl_lossy_effort_3.zarr': 6,
+    'jpegxl_lossy_d2_e8.zarr': 7,
+    'jpegxl_lossy_hq.zarr': 8,
+}
+
+
+def sort_codecs_by_quality(codecs: list[str]) -> list[str]:
+    """Sort codecs by known quality order (worst to best). Unknown codecs go at the end."""
+    max_order = max(CODEC_QUALITY_ORDER.values()) + 1
+    return sorted(codecs, key=lambda c: CODEC_QUALITY_ORDER.get(c, max_order))
+
+
 @lru_cache(maxsize=1024)  # Increased cache for better performance with many sources
 def load_cell_features_cached(path_str: str, object_type: str = "cell") -> pl.DataFrame:
     """Cached version of load_cell_features."""
@@ -606,20 +627,18 @@ def plot_correlation_violinplots(
         hq_codec: Reference codec for quality filtering
         hq_threshold: Correlation threshold for quality filter
     """
-    # Prepare data
-    codec_order = ['jpegxl_lossy_lq.zarr', 'jpegxl_lossy_mq.zarr', 'jpegxl_lossy_effort_3.zarr', 'jpegxl_lossy_hq.zarr']
-    codec_order = [c for c in codec_order if c in codecs]
-
-    codec_labels = {
-        'jpegxl_lossy_lq.zarr': 'Low',
-        'jpegxl_lossy_mq.zarr': 'Medium',
-        'jpegxl_lossy_effort_3.zarr': 'Mid-High',
-        'jpegxl_lossy_hq.zarr': 'High'
+    # Dynamic codec labeling
+    codec_short_map = {c: c.replace('.zarr', '').replace('jpegxl_lossy_', 'jxl_') for c in codecs}
+    _known_labels = {
+        'jxl_lq': 'Low', 'jxl_mq': 'Medium', 'jxl_effort_3': 'Mid-High',
+        'jxl_hq': 'High', 'jxl_d2_e8': 'D2 E8', 'jxl_d10': 'D10',
+        'jxl_d15': 'D15', 'jxl_d20_e2': 'D20 E2', 'jxl_d30': 'D30',
     }
+    codec_labels = {c: _known_labels.get(codec_short_map[c], codec_short_map[c]) for c in codecs}
 
-    # Build DataFrame
+    # Build DataFrame with all codecs present in input
     data = []
-    for codec in codec_order:
+    for codec in codecs:
         for feature in features:
             corr = correlations[codec].get(feature, np.nan)
             if not np.isnan(corr):
@@ -634,7 +653,10 @@ def plot_correlation_violinplots(
         return
 
     df = pd.DataFrame(data)
-    label_order = [codec_labels[c] for c in codec_order]
+
+    # Order codecs by ascending mean correlation (worst -> best left to right)
+    codec_mean_corr = df.groupby('codec')['correlation'].mean().sort_values(ascending=False)
+    label_order = list(codec_mean_corr.index)
 
     # Version 1: All features
     fig, ax = plt.subplots(figsize=(10, 8))
@@ -766,9 +788,8 @@ def main():
     parser.add_argument("--gt-codec", type=str, default="zstd.zarr",
                         help="Ground truth codec")
     parser.add_argument("--codecs", nargs="+",
-                        default=["jpegxl_lossy_hq.zarr", "jpegxl_lossy_effort_3.zarr",
-                                 "jpegxl_lossy_mq.zarr", "jpegxl_lossy_lq.zarr"],
-                        help="Comparison codecs")
+                        default=None,
+                        help="Comparison codecs (default: auto-discover from features-base)")
     parser.add_argument("--object-type", type=str, default="cell",
                         choices=["cell", "nuclei"], help="Object type")
     parser.add_argument("--thresh", type=float, default=0.5,
@@ -800,6 +821,14 @@ def main():
     mappings_dir = Path(args.mappings_dir)
     features_base = Path(args.features_base)
     segment_step = "segment_cell" if args.object_type == "cell" else "segment_nuclei"
+
+    # Auto-discover codecs if not specified
+    if args.codecs is None:
+        gt_codec = args.gt_codec
+        all_codec_dirs = [d.name for d in features_base.iterdir()
+                         if d.is_dir() and d.name.endswith(".zarr") and d.name != gt_codec]
+        args.codecs = sort_codecs_by_quality(all_codec_dirs)
+        print(f"Auto-discovered {len(args.codecs)} codecs: {args.codecs}")
 
     # Load mapping files for each codec
     codec_mappings = {}
