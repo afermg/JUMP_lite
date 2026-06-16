@@ -1222,6 +1222,9 @@ def evaluate_metrics(df: pl.DataFrame, config: dict) -> pl.DataFrame:
         negcon_col=config.get("negcon_col", "Metadata_negcon"),
         batch_col=config.get("batch_col", "Metadata_Plate"),
         pc_groups=config.get("pc_groups", None),
+        skip_batch_effects=config.get("skip_batch_effects", True),
+        well_col=config.get("well_col", "Metadata_Well"),
+        distance=config.get("distance", None),
     )
 
     return df
@@ -1340,6 +1343,13 @@ def generate_output_name(config: dict) -> str:
         elif step_name == "aggregate_wells":
             method = params.get("method", "median")
             parts.append(f"agg_{method}" if method != "median" else "agg")
+
+    # When use_prune_correlated is explicitly swept to false, mark it in the name
+    # to distinguish from prune=true configs (which get "prune{thresh}" from above)
+    if config.get("use_prune_correlated") is False:
+        has_prune_part = any(p.startswith("prune") for p in parts)
+        if not has_prune_part:
+            parts.append("noprune")
 
     return "__".join(parts) if parts else "default"
 
@@ -1519,6 +1529,10 @@ def apply_sweep_overrides(config: dict) -> dict:
                     if filter_op.get("name") == "drop_outliers":
                         filter_op["outlier_cutoff"] = config["outlier_cutoff"]
 
+        elif step_name == "evaluate_metrics":
+            if "skip_batch_effects" in config:
+                step["params"]["skip_batch_effects"] = config["skip_batch_effects"]
+
     return config
 
 
@@ -1579,10 +1593,10 @@ def is_redundant_config(config: dict) -> tuple[bool, str | None]:
                 return True, f"spherize_remove_variance_method={spherize_rvm} ignores threshold={spherize_rvt}"
 
     # When use_pca=false, pca params don't matter
-    # Accept both 64 and 128 as valid defaults (different sweeps)
+    # Only accept 64 (smallest/first sweep value) as canonical default
     if not use_pca and batch_method != "tvn":
         pca_n_components = config.get("pca_n_components", 64)
-        if pca_n_components not in (64, 128, 256):
+        if pca_n_components != 64:
             return True, f"use_pca=false ignores pca_n_components={pca_n_components}"
 
     # When use_prune_correlated=false AND prune step isn't always_enabled, corr_thresh doesn't matter

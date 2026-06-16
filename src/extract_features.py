@@ -32,7 +32,12 @@ def discover_profile_directories(
     dataset_filter: str | None = None,
 ) -> list[dict]:
     """
-    Discover all MODEL/DATASET/COMPRESSION/profiles directories.
+    Discover profile directories in two supported layouts:
+
+    3-level: base_dir/MODEL/DATASET/COMPRESSION.zarr/profiles/
+    2-level: base_dir/DATASET/MODEL/COMPRESSION.zarr/profiles/
+
+    The function tries 3-level first, then falls back to 2-level.
 
     Args:
         base_dir: Base aliby_output directory
@@ -45,47 +50,54 @@ def discover_profile_directories(
     """
     results = []
 
-    # Iterate over model directories (cp_measure, dinov2, etc.)
-    for model_dir in base_dir.iterdir():
-        if not model_dir.is_dir():
-            continue
-        # Skip cache directories
-        if "cache" in model_dir.name.lower():
+    # Try 3-level layout: base_dir/MODEL/DATASET/COMPRESSION.zarr/profiles/
+    for level1_dir in base_dir.iterdir():
+        if not level1_dir.is_dir() or "cache" in level1_dir.name.lower():
             continue
 
-        model_name = model_dir.name
-        if model_filter and model_name != model_filter:
-            continue
-
-        # Iterate over dataset directories
-        for dataset_dir in model_dir.iterdir():
-            if not dataset_dir.is_dir():
+        for level2_dir in level1_dir.iterdir():
+            if not level2_dir.is_dir():
                 continue
 
-            dataset_name = dataset_dir.name
-            if dataset_filter and dataset_name != dataset_filter:
-                continue
-
-            # Iterate over compression directories (*.zarr)
-            for compression_dir in dataset_dir.iterdir():
-                if not compression_dir.is_dir():
-                    continue
-                if not compression_dir.name.endswith(".zarr"):
+            for compression_dir in level2_dir.iterdir():
+                if not compression_dir.is_dir() or not compression_dir.name.endswith(".zarr"):
                     continue
 
-                compression_name = compression_dir.name
-                if compression_filter and compression_name != compression_filter:
-                    continue
-
-                # Check for profiles subdirectory
                 profiles_path = compression_dir / "profiles"
-                if profiles_path.exists() and profiles_path.is_dir():
-                    results.append({
-                        "model": model_name,
-                        "dataset": dataset_name,
-                        "compression": compression_name,
-                        "profiles_path": profiles_path,
-                    })
+                if not profiles_path.exists() or not profiles_path.is_dir():
+                    continue
+
+                # Determine which layout: check if level1 is model or dataset
+                # In 3-level: level1=model, level2=dataset
+                # In 2-level: level1=dataset, level2=model
+                # Heuristic: if model_filter matches level1, it's 3-level
+                #            if model_filter matches level2, it's 2-level
+                if model_filter:
+                    if level1_dir.name == model_filter:
+                        model_name, dataset_name = level1_dir.name, level2_dir.name
+                    elif level2_dir.name == model_filter:
+                        model_name, dataset_name = level2_dir.name, level1_dir.name
+                    else:
+                        continue
+                else:
+                    # No model filter — try to detect layout by checking
+                    # if level2 contains .zarr dirs (then level1=model/dataset, level2=dataset/model)
+                    # Default to 3-level (model/dataset)
+                    model_name, dataset_name = level1_dir.name, level2_dir.name
+
+                if model_filter and model_name != model_filter:
+                    continue
+                if dataset_filter and dataset_name != dataset_filter:
+                    continue
+                if compression_filter and compression_dir.name != compression_filter:
+                    continue
+
+                results.append({
+                    "model": model_name,
+                    "dataset": dataset_name,
+                    "compression": compression_dir.name,
+                    "profiles_path": profiles_path,
+                })
 
     return results
 
@@ -148,7 +160,21 @@ def get_features(profiles_dir: Path, cache_dir: Path | None = None, filter_borde
         # Check if this is CellProfiler-style data (has branch, metric, object columns)
         columns = [col[0] for col in raw.description]
 
+        # Determine if data is CellProfiler by checking actual object values,
+        # not just column presence. Aliby outputs both CP and DL models in the
+        # same long format (branch/metric/object/value), but CP has
+        # object='cell'/'nuclei' while DL models have object='morphem'/'dinov2'/etc.
+        is_cellprofiler = False
         if branch_name in columns and metric_name in columns and "object" in columns:
+            known_cp_objects = {"cell", "nuclei"}
+            actual_objects = set(
+                row[0] for row in con.sql("SELECT DISTINCT object FROM raw").fetchall()
+            )
+            is_cellprofiler = actual_objects.issubset(known_cp_objects)
+            if not is_cellprofiler:
+                print(f"  Detected DL model (objects: {actual_objects}), using median aggregation")
+
+        if is_cellprofiler:
             # CellProfiler measure format
             # Handle old datasets with column name "values" as list type
             value_dtype = [x[1] for x in raw.description if x[0] == value_name]
@@ -257,10 +283,36 @@ def get_features(profiles_dir: Path, cache_dir: Path | None = None, filter_borde
             if cell_counts_pl is not None:
                 pivoted_pl = pivoted_pl.join(cell_counts_pl, on="well_id", how="left")
 
+        elif branch_name in columns and metric_name in columns and "object" in columns:
+            # DL model in long format (e.g., morphem, dinov2 from aliby)
+            # Same schema as CellProfiler but with model-specific object values
+            # Use median aggregation (consistent with CellProfiler branch)
+
+            # Handle old datasets with column name "values" as list type
+            value_dtype = [x[1] for x in raw.description if x[0] == value_name]
+            if len(value_dtype) and value_dtype[0] == "list":
+                raw = con.sql(f"SELECT *, UNNEST({value_name}) AS value FROM raw")
+
+            con.sql(f"""
+                CREATE OR REPLACE TABLE well_level AS (
+                    SELECT
+                        well_id,
+                        {branch_name} || {metric_name} AS full_metric_name,
+                        object,
+                        median(value) AS cvalue
+                    FROM raw
+                    GROUP BY {tp_name}, well_id, {branch_name}, {metric_name}, object
+                )
+            """)
+
+            pivoted = con.sql(
+                f"PIVOT well_level ON object, full_metric_name USING any_value(cvalue)"
+            )
+            pivoted_pl = pivoted.pl()
+
         else:
-            # Embedding-based format (e.g., dinov2) - simpler structure
+            # Wide embedding format (no branch/metric/object columns)
             # Just aggregate to well level
-            # Get feature columns (numeric columns that aren't metadata)
             feature_cols = [
                 col for col in columns
                 if col not in [site_col, "filename", tp_name, "well_id"]

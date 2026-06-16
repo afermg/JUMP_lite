@@ -31,6 +31,7 @@ def calculate_phenotypic_activity(
     negcon_value: str = "DMSO",
     batch_col: str = "Metadata_Plate",
     group_col: str = "Metadata_Group",
+    distance: str = "cosine",
 ) -> dict[str, Any]:
     """Calculate Phenotypic Activity (compound replicate retrieval).
 
@@ -94,7 +95,8 @@ def calculate_phenotypic_activity(
             grp_profiles = grp_df[features].values
             print(f"  PA {grp}: {len(grp_df)} rows")
             grp_ap = copairs_map.average_precision(
-                grp_meta, grp_profiles, pos_sameby, pos_diffby, neg_sameby, neg_diffby
+                grp_meta, grp_profiles, pos_sameby, pos_diffby, neg_sameby, neg_diffby,
+                distance=distance,
             )
             activity_ap_parts.append(grp_ap)
         activity_ap = pd.concat(activity_ap_parts, ignore_index=True)
@@ -112,7 +114,8 @@ def calculate_phenotypic_activity(
         metadata = df_pd.filter(regex="^Metadata")
         profiles = df_pd[features].values
         activity_ap = copairs_map.average_precision(
-            metadata, profiles, pos_sameby, pos_diffby, neg_sameby, neg_diffby
+            metadata, profiles, pos_sameby, pos_diffby, neg_sameby, neg_diffby,
+            distance=distance,
         )
 
     # Filter out negative controls
@@ -243,6 +246,7 @@ def calculate_phenotypic_consistency(
     negcon_col: str = "Metadata_negcon",
     group_col: str = "Metadata_Group",
     pc_groups: list[str] | None = None,
+    distance: str = "cosine",
 ) -> dict[str, Any]:
     """Calculate Phenotypic Consistency (target-level retrieval).
 
@@ -346,6 +350,7 @@ def calculate_phenotypic_consistency(
                     pos_sameby_target, pos_diffby_target,
                     neg_sameby_target, neg_diffby_target,
                     multilabel_col="Metadata_target",
+                    distance=distance,
                 )
                 target_ap_parts.append(grp_ap)
             target_ap = pd.concat(target_ap_parts, ignore_index=True)
@@ -357,6 +362,7 @@ def calculate_phenotypic_consistency(
                 pos_sameby_target, pos_diffby_target,
                 neg_sameby_target, neg_diffby_target,
                 multilabel_col="Metadata_target",
+                distance=distance,
             )
 
         target_map = copairs_map.mean_average_precision(
@@ -411,6 +417,324 @@ def calculate_phenotypic_consistency(
         }
 
 
+def calculate_batch_effects(
+    df: pl.DataFrame,
+    features: list[str],
+    null_size: int = 10_000,
+    p_threshold: float = 0.05,
+    seed: int = 0,
+    n_random_groups: int = 15,
+    compound_col: str = "Metadata_pert_iname",
+    negcon_col: str = "Metadata_negcon",
+    batch_col: str = "Metadata_Plate",
+    well_col: str = "Metadata_Well",
+    group_col: str = "Metadata_Group",
+    distance: str = "cosine",
+) -> dict[str, Any]:
+    """Calculate batch effect metrics using random sampling for speed.
+
+    Based on scripts/analyze_batch_effects.py::calculate_batch_effects_fast().
+
+    Two metrics are computed (both on treatments only, negcons excluded):
+    1. Well Position Effect: Do wells at the same position cluster across plates?
+       Positive: same group + same well + different plate + different compound
+       Negative: same group + same plate + same _random_index + different well + different compound
+    2. Plate Batch Effect: Are plates distinguishable?
+       Positive: same group + same plate + same _random_index_pos + different compound
+       Negative: same group + same _random_index_neg + different plate + different well + different compound
+
+    Args:
+        df: Profiles with metadata
+        features: Feature column names
+        null_size: Size of null distribution
+        p_threshold: Significance threshold
+        seed: Random seed
+        n_random_groups: Max random groups for well effect subsampling
+        compound_col: Column containing compound identifier
+        negcon_col: Column containing negative control flag
+        batch_col: Column containing plate identifier
+        well_col: Column containing well identifier
+        group_col: Column containing group identifier
+
+    Returns:
+        Dictionary with well_position_effect and plate_batch_effect results
+    """
+    import pandas as pd
+    from copairs import map as copairs_map
+
+    results = {}
+    rng = np.random.default_rng(seed)
+    df_pd = df.to_pandas()
+
+    if well_col not in df_pd.columns:
+        print(f"  Warning: {well_col} not found, skipping batch effect analysis")
+        return {"well_position_effect": None, "plate_batch_effect": None}
+
+    has_groups = group_col in df_pd.columns
+
+    # Filter out negative controls for both analyses
+    if negcon_col in df_pd.columns:
+        df_treatments = df_pd[df_pd[negcon_col] == False].copy()
+    else:
+        df_treatments = df_pd.copy()
+
+    if len(df_treatments) < 10:
+        print(f"    Not enough treatment samples ({len(df_treatments)})")
+        _empty = {"pct_active": 0.0, "n_active": 0, "n_total": 0, "mean_map": 0.0, "mean_nap": 0.0}
+        return {"well_position_effect": _empty, "plate_batch_effect": _empty}
+
+    # Compute adaptive plate effect random indices on df_treatments
+    n_plates = df_treatments[batch_col].nunique()
+    n_groups = df_treatments[group_col].nunique() if has_groups else 1
+    rows_per_plate_group = len(df_treatments) / max(n_plates * n_groups, 1)
+    rows_per_group = len(df_treatments) / max(n_groups, 1)
+
+    n_pos_groups = max(2, int(rows_per_plate_group / 15))
+    n_neg_groups = max(2, int(rows_per_group / 25))
+
+    df_treatments["_random_index_pos"] = rng.integers(1, n_pos_groups + 1, size=len(df_treatments))
+    df_treatments["_random_index_neg"] = rng.integers(1, n_neg_groups + 1, size=len(df_treatments))
+
+    # =========================================
+    # 1. Well Position Effect
+    # =========================================
+    # Positive: same well + different plate + different compound
+    # Negative: same plate + same _random_index + different well + different compound
+    # When groups exist, split by group first to avoid O(n^2) on the full dataset.
+    print("  Calculating Well Position Effect...")
+    try:
+        pos_sameby_well = [well_col]
+        neg_sameby_well = [batch_col, "_random_index"]
+        if has_groups:
+            pos_sameby_well = [group_col] + pos_sameby_well
+            neg_sameby_well = [group_col] + neg_sameby_well
+        pos_diffby_well = [batch_col, compound_col]
+        neg_diffby_well = [well_col, compound_col]
+
+        if has_groups:
+            import pandas as pd
+            groups = sorted(df_treatments[group_col].unique())
+            well_ap_parts = []
+            for grp in groups:
+                grp_df = df_treatments[df_treatments[group_col] == grp].copy().reset_index(drop=True)
+                well_plate_counts = grp_df.groupby(well_col)[batch_col].nunique()
+                valid_wells = well_plate_counts[well_plate_counts >= 2].index.tolist()
+                if len(valid_wells) < 2:
+                    continue
+                grp_well = grp_df[grp_df[well_col].isin(valid_wells)].copy()
+                n_well_plates = grp_well[batch_col].nunique()
+                rows_per_pg = len(grp_well) / max(n_well_plates, 1)
+                n_ri = max(2, int(rows_per_pg / 15))
+                grp_well["_random_index"] = rng.integers(1, n_ri + 1, size=len(grp_well))
+                print(f"    Well {grp}: {len(grp_well)} samples, {len(valid_wells)} wells, {n_well_plates} plates")
+                grp_meta = grp_well.filter(regex="^Metadata|^_random_index")
+                grp_profiles = grp_well[features].values
+                grp_ap = copairs_map.average_precision(
+                    grp_meta, grp_profiles,
+                    pos_sameby_well, pos_diffby_well,
+                    neg_sameby_well, neg_diffby_well,
+                    distance=distance,
+                )
+                well_ap_parts.append(grp_ap)
+
+            if well_ap_parts:
+                well_ap = pd.concat(well_ap_parts, ignore_index=True)
+            else:
+                well_ap = pd.DataFrame()
+        else:
+            well_plate_counts = df_treatments.groupby(well_col)[batch_col].nunique()
+            valid_wells = well_plate_counts[well_plate_counts >= 2].index.tolist()
+            if len(valid_wells) >= 2:
+                df_well = df_treatments[df_treatments[well_col].isin(valid_wells)].copy()
+                n_well_plates = df_well[batch_col].nunique()
+                rows_per_pg = len(df_well) / max(n_well_plates, 1)
+                n_ri = max(2, int(rows_per_pg / 15))
+                df_well["_random_index"] = rng.integers(1, n_ri + 1, size=len(df_well))
+                print(f"    {len(df_well)} samples, {len(valid_wells)} wells, {n_well_plates} plates")
+                metadata_well = df_well.filter(regex="^Metadata|^_random_index")
+                profiles_well = df_well[features].values
+                well_ap = copairs_map.average_precision(
+                    metadata_well, profiles_well,
+                    pos_sameby_well, pos_diffby_well,
+                    neg_sameby_well, neg_diffby_well,
+                    distance=distance,
+                )
+            else:
+                well_ap = pd.DataFrame()
+
+        if len(well_ap) > 0:
+            well_map = copairs_map.mean_average_precision(
+                well_ap, pos_sameby_well,
+                null_size=null_size, threshold=p_threshold, seed=seed
+            )
+            well_map["below_corrected_p"] = well_map["corrected_p_value"] < p_threshold
+
+            pct_active = (well_map["below_corrected_p"].sum() / len(well_map)) * 100 if len(well_map) > 0 else 0
+            mean_map_val = well_map["mean_average_precision"].mean() if len(well_map) > 0 else 0
+            mean_nap_val = well_map["mean_normalized_average_precision"].mean() if len(well_map) > 0 else 0
+
+            result_dict = {
+                "pct_active": float(pct_active),
+                "n_active": int(well_map["below_corrected_p"].sum()),
+                "n_total": int(len(well_map)),
+                "mean_map": float(mean_map_val),
+                "mean_nap": float(mean_nap_val),
+            }
+
+            if has_groups and group_col in well_map.columns:
+                per_group_stats = {}
+                for grp in well_map[group_col].unique():
+                    grp_data = well_map[well_map[group_col] == grp]
+                    grp_active = grp_data["below_corrected_p"].sum()
+                    grp_total = len(grp_data)
+                    grp_pct = (grp_active / grp_total * 100) if grp_total > 0 else 0
+                    per_group_stats[grp] = {
+                        "pct_active": float(grp_pct),
+                        "n_active": int(grp_active),
+                        "n_total": int(grp_total),
+                        "mean_map": float(grp_data["mean_average_precision"].mean()),
+                        "mean_nap": float(grp_data["mean_normalized_average_precision"].mean()),
+                    }
+                result_dict["per_group"] = per_group_stats
+
+            results["well_position_effect"] = result_dict
+            print(f"    Well Position Effect: {pct_active:.2f}%")
+            if has_groups:
+                for grp, stats in result_dict.get("per_group", {}).items():
+                    print(f"      {grp}: {stats['pct_active']:.2f}%")
+        else:
+            results["well_position_effect"] = {
+                "pct_active": 0.0, "n_active": 0, "n_total": 0, "mean_map": 0.0, "mean_nap": 0.0
+            }
+
+    except Exception as e:
+        print(f"    Warning: Well position effect failed: {e}")
+        results["well_position_effect"] = {
+            "pct_active": 0.0, "n_active": 0, "n_total": 0, "mean_map": 0.0, "mean_nap": 0.0, "error": str(e)
+        }
+
+    # =========================================
+    # 2. Plate Batch Effect (treatments, random sampling)
+    # =========================================
+    # Positive: same plate + same _random_index_pos + different compound
+    # Negative: same _random_index_neg + different plate + different well + different compound
+    # When groups exist, split by group first for performance.
+    print("  Calculating Plate Batch Effect...")
+    try:
+        if n_plates < 2:
+            print(f"    Not enough plates ({n_plates})")
+            results["plate_batch_effect"] = {
+                "pct_active": 0.0, "n_active": 0, "n_total": 0, "mean_map": 0.0, "mean_nap": 0.0
+            }
+        else:
+            if has_groups:
+                pos_sameby_plate = [group_col, batch_col, "_random_index_pos"]
+                neg_sameby_plate = [group_col, "_random_index_neg"]
+            else:
+                pos_sameby_plate = [batch_col, "_random_index_pos"]
+                neg_sameby_plate = ["_random_index_neg"]
+
+            pos_diffby_plate = [compound_col]
+            neg_diffby_plate = [batch_col, well_col, compound_col]
+
+            if has_groups:
+                import pandas as pd
+                groups = sorted(df_treatments[group_col].unique())
+                plate_ap_parts = []
+                for grp in groups:
+                    grp_df = df_treatments[df_treatments[group_col] == grp].copy().reset_index(drop=True)
+                    grp_n_plates = grp_df[batch_col].nunique()
+                    if grp_n_plates < 2:
+                        continue
+                    grp_rows_per_plate = len(grp_df) / max(grp_n_plates, 1)
+                    grp_n_pos = max(2, int(grp_rows_per_plate / 15))
+                    grp_n_neg = max(2, int(len(grp_df) / 25))
+                    grp_df["_random_index_pos"] = rng.integers(1, grp_n_pos + 1, size=len(grp_df))
+                    grp_df["_random_index_neg"] = rng.integers(1, grp_n_neg + 1, size=len(grp_df))
+                    print(f"    Plate {grp}: {len(grp_df)} treatments, {grp_n_plates} plates")
+                    grp_meta = grp_df.filter(regex="^Metadata|^_random_index")
+                    grp_profiles = grp_df[features].values
+                    grp_ap = copairs_map.average_precision(
+                        grp_meta, grp_profiles,
+                        pos_sameby_plate, pos_diffby_plate,
+                        neg_sameby_plate, neg_diffby_plate,
+                        distance=distance,
+                    )
+                    plate_ap_parts.append(grp_ap)
+
+                if plate_ap_parts:
+                    plate_ap = pd.concat(plate_ap_parts, ignore_index=True)
+                else:
+                    plate_ap = pd.DataFrame()
+            else:
+                print(f"    {len(df_treatments)} treatments, {n_plates} plates, pos_groups={n_pos_groups}, neg_groups={n_neg_groups}")
+                metadata_treat = df_treatments.filter(regex="^Metadata|^_random_index")
+                profiles_treat = df_treatments[features].values
+                plate_ap = copairs_map.average_precision(
+                    metadata_treat, profiles_treat,
+                    pos_sameby_plate, pos_diffby_plate,
+                    neg_sameby_plate, neg_diffby_plate,
+                    distance=distance,
+                )
+
+            if len(plate_ap) > 0:
+                map_groupby = [group_col, batch_col] if has_groups else [batch_col]
+                plate_map = copairs_map.mean_average_precision(
+                    plate_ap, map_groupby,
+                    null_size=null_size, threshold=p_threshold, seed=seed
+                )
+                plate_map["below_corrected_p"] = plate_map["corrected_p_value"] < p_threshold
+
+                pct_active = (plate_map["below_corrected_p"].sum() / len(plate_map)) * 100 if len(plate_map) > 0 else 0
+                mean_map_val = plate_map["mean_average_precision"].mean() if len(plate_map) > 0 else 0
+                mean_nap_val = plate_map["mean_normalized_average_precision"].mean() if len(plate_map) > 0 else 0
+
+                result_dict = {
+                    "pct_active": float(pct_active),
+                    "n_active": int(plate_map["below_corrected_p"].sum()),
+                    "n_total": int(len(plate_map)),
+                    "mean_map": float(mean_map_val),
+                    "mean_nap": float(mean_nap_val),
+                    "n_plates": int(n_plates),
+                    "n_samples": int(len(df_treatments)),
+                }
+
+                if has_groups and group_col in plate_map.columns:
+                    per_group_stats = {}
+                    for grp in plate_map[group_col].unique():
+                        grp_data = plate_map[plate_map[group_col] == grp]
+                        grp_active = grp_data["below_corrected_p"].sum()
+                        grp_total = len(grp_data)
+                        grp_pct = (grp_active / grp_total * 100) if grp_total > 0 else 0
+                        per_group_stats[grp] = {
+                            "pct_active": float(grp_pct),
+                            "n_active": int(grp_active),
+                            "n_total": int(grp_total),
+                            "mean_map": float(grp_data["mean_average_precision"].mean()),
+                            "mean_nap": float(grp_data["mean_normalized_average_precision"].mean()),
+                        }
+                    result_dict["per_group"] = per_group_stats
+
+                results["plate_batch_effect"] = result_dict
+                print(f"    Plate Batch Effect: {pct_active:.2f}% ({n_plates} plates)")
+            else:
+                results["plate_batch_effect"] = {
+                    "pct_active": 0.0, "n_active": 0, "n_total": 0, "mean_map": 0.0, "mean_nap": 0.0
+                }
+
+    except Exception as e:
+        error_msg = str(e)
+        if "No data left" in error_msg:
+            print("    Warning: Plate batch effect failed: not enough valid pairs")
+        else:
+            print(f"    Warning: Plate batch effect failed: {e}")
+        results["plate_batch_effect"] = {
+            "pct_active": 0.0, "n_active": 0, "n_total": 0, "mean_map": 0.0, "mean_nap": 0.0, "error": error_msg
+        }
+
+    return results
+
+
 def evaluate_all(
     df: pl.DataFrame,
     features: list[str],
@@ -425,6 +749,9 @@ def evaluate_all(
     batch_col: str = "Metadata_Plate",
     group_col: str = "Metadata_Group",
     pc_groups: list[str] | None = None,
+    skip_batch_effects: bool = True,
+    well_col: str = "Metadata_Well",
+    distance: str | None = None,
 ) -> dict[str, Any]:
     """Run all metrics and optionally save results.
 
@@ -441,11 +768,20 @@ def evaluate_all(
         negcon_col: Boolean column for negative control flag
         batch_col: Column for batch/plate identifier
         group_col: Column for group identifier (for per-group PA and PC statistics)
+        skip_batch_effects: Skip batch effect calculation (default True for backward compat)
+        well_col: Column for well position identifier
         pc_groups: If set, only compute PC for these groups (e.g. ["group_high", "group_low"])
+        distance: Distance metric for copairs ("cosine", "euclidean", etc.).
+            If None, auto-selects: "euclidean" for <=2 features, "cosine" otherwise.
 
     Returns:
         Dictionary with all metrics including per-group summaries
     """
+    # Auto-select distance metric: cosine degenerates to sign(a)*sign(b) with
+    # <=2 features (especially when highly correlated), so use euclidean instead.
+    if distance is None:
+        distance = "euclidean" if len(features) <= 2 else "cosine"
+        print(f"  Distance metric: {distance} (auto, {len(features)} features)")
     if output_dir is not None:
         output_dir = Path(output_dir)
         output_dir.mkdir(exist_ok=True, parents=True)
@@ -461,6 +797,7 @@ def evaluate_all(
             negcon_col=negcon_col,
             batch_col=batch_col,
             group_col=group_col,
+            distance=distance,
         )
         results["PA"] = pa["pct_compounds_active"]
         results["n_compounds"] = pa["n_compounds"]
@@ -497,6 +834,7 @@ def evaluate_all(
             negcon_col=negcon_col,
             group_col=group_col,
             pc_groups=pc_groups,
+            distance=distance,
         )
         results["PC"] = pc["pct_targets_active"]
         results["n_targets_active"] = pc["n_targets_active"]
@@ -549,6 +887,7 @@ def evaluate_all(
                     negcon_col=negcon_col,
                     group_col=group_col,
                     pc_groups=pc_groups,
+                    distance=distance,
                 )
                 results["PC_replicable"] = pc_rep["pct_targets_active"]
                 results["PC_replicable_n_targets_active"] = pc_rep["n_targets_active"]
@@ -624,6 +963,63 @@ def evaluate_all(
         print(f"  PCA variance ERROR: {e}")
         results["PC1_variance"] = None
         results["PC2_variance"] = None
+
+    # Batch effects (well position + plate)
+    _batch_defaults = {
+        "well_effect_pct": None,
+        "well_effect_mean_nap": None,
+        "well_effect_n_active": None,
+        "well_effect_n_total": None,
+        "plate_effect_pct": None,
+        "plate_effect_mean_nap": None,
+        "plate_effect_n_active": None,
+        "plate_effect_n_total": None,
+    }
+    if skip_batch_effects:
+        print("  Batch effects: skipped")
+        results.update(_batch_defaults)
+    else:
+        try:
+            batch_results = calculate_batch_effects(
+                df, features,
+                null_size=10_000,
+                p_threshold=0.05,
+                seed=0,
+                compound_col=compound_col,
+                negcon_col=negcon_col,
+                batch_col=batch_col,
+                well_col=well_col,
+                group_col=group_col,
+                distance=distance,
+            )
+
+            well_effect = batch_results.get("well_position_effect") or {}
+            plate_effect = batch_results.get("plate_batch_effect") or {}
+
+            results["well_effect_pct"] = well_effect.get("pct_active")
+            results["well_effect_mean_nap"] = well_effect.get("mean_nap")
+            results["well_effect_n_active"] = well_effect.get("n_active")
+            results["well_effect_n_total"] = well_effect.get("n_total")
+
+            results["plate_effect_pct"] = plate_effect.get("pct_active")
+            results["plate_effect_mean_nap"] = plate_effect.get("mean_nap")
+            results["plate_effect_n_active"] = plate_effect.get("n_active")
+            results["plate_effect_n_total"] = plate_effect.get("n_total")
+
+            # Flatten per-group batch effects
+            for effect_name, effect_data in [("well_effect", well_effect), ("plate_effect", plate_effect)]:
+                per_group = effect_data.get("per_group", {})
+                if per_group:
+                    results[f"{effect_name}_group_summary"] = per_group
+
+            if output_dir is not None:
+                batch_path = output_dir / "batch_effects.json"
+                with open(batch_path, "w") as f:
+                    json.dump(batch_results, f, indent=2)
+
+        except Exception as e:
+            print(f"  Batch effects ERROR: {e}")
+            results.update(_batch_defaults)
 
     # Add feature space size
     results["n_features"] = len(features)
