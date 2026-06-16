@@ -19,10 +19,7 @@ Pipeline Steps:
 
 Dependencies:
     - polars: DataFrame operations
-    - duckdb: SQL-based joins on broad_babel tables
-    - broad_babel: JUMP metadata lookup tables (well, plate, compound, crispr, orf)
-    - jump_portrait: Perturbation location metadata lookup
-    - pooch: File retrieval from URLs
+    - duckdb: SQL queries on jump_metadata.duckdb (well, plate, compound, crispr, orf tables)
 
 Usage:
     # Full pipeline from scratch:
@@ -53,25 +50,10 @@ from typing import Optional
 import duckdb
 import polars as pl
 
-# ---------------------------------------------------------------------------
-# broad_babel provides JUMP metadata lookup tables (well, plate, compound,
-# crispr, orf). It is a community package maintained by the Broad Institute.
-# Install: pip install broad-babel
-# ---------------------------------------------------------------------------
-from broad_babel.data import get_table
 
-# ---------------------------------------------------------------------------
-# jump_portrait provides functions to resolve JCP2022 IDs to their physical
-# location (source, batch, plate, well) in the Cell Painting Gallery.
-# Install: pip install jump-portrait
-# ---------------------------------------------------------------------------
-from jump_portrait.fetch import get_item_location_metadata
-
-# ---------------------------------------------------------------------------
-# pooch is used to download CSV files from the JUMP datasets GitHub repo
-# with hash verification for reproducibility.
-# ---------------------------------------------------------------------------
-from pooch import retrieve
+# All JUMP metadata (well, plate, compound, crispr, orf) is loaded from the
+# local jump_metadata.duckdb database, eliminating the need for broad_babel,
+# jump_portrait, or pooch network downloads.
 
 
 # ============================================================================
@@ -374,33 +356,29 @@ def _match_inchikeys_to_jcp(
 # ============================================================================
 # Step 2: Generate Raw JUMP Metadata
 # ============================================================================
-# Source: src/download_images.py (metadata-generation portion only)
-#
 # This step builds the raw metadata file that maps each JCP2022 ID to its
 # physical location in the Cell Painting Gallery (source, batch, plate, well).
-# It fetches perturbation lists for CRISPR, ORF, and compounds from the
-# JUMP datasets GitHub repository, then queries jump_portrait for their
-# location metadata.
-#
-# NOTE: This step requires network access to download CRISPR/ORF lists from
-# GitHub and to query the Cell Painting Gallery metadata service via
-# jump_portrait.
+# It reads perturbation lists (CRISPR, ORF) from the DuckDB and resolves
+# locations via a well+plate join — all local, no network access needed.
 # ============================================================================
 
 
 def step2_generate_raw_metadata(
     jcp_mapping: pl.DataFrame,
+    db_path: str,
     output_dir: Path,
     save_intermediates: bool = False,
 ) -> pl.DataFrame:
     """Build the raw JUMP metadata mapping JCP2022 IDs to plate/well locations.
 
     This resolves every perturbation (CRISPR genes, ORF genes, annotated
-    compounds) to its physical address in the Cell Painting Gallery.
+    compounds) to its physical address in the Cell Painting Gallery using
+    the local DuckDB database.
 
     Args:
         jcp_mapping: DataFrame from Step 1 with column ``Metadata_JCP2022``
             containing the annotated compound JCP IDs.
+        db_path: Path to jump_metadata.duckdb.
         output_dir: Directory for intermediate outputs.
         save_intermediates: Whether to write the raw metadata parquet.
 
@@ -413,42 +391,24 @@ def step2_generate_raw_metadata(
     print("STEP 2: Generate Raw JUMP Metadata")
     print("=" * 70)
 
+    con = duckdb.connect(db_path, read_only=True)
+
     # ------------------------------------------------------------------
-    # Fetch CRISPR perturbation list from JUMP datasets repo
+    # Load CRISPR perturbation list from DuckDB
     # ------------------------------------------------------------------
-    print("  Downloading CRISPR perturbation list...")
-    crispr_jcps = (
-        pl.scan_csv(
-            retrieve(
-                "https://github.com/jump-cellpainting/datasets/raw/"
-                "refs/heads/main/metadata/crispr.csv.gz",
-                known_hash="55e36e6802c6fc5f8e5d5258554368d64601f1847205e0fceb28a2c246c8d1ed",
-            ),
-        )
-        .select("Metadata_JCP2022")
-        .collect()
-        .to_series()
-        .unique()
-    )
+    print("  Loading CRISPR perturbation list from DuckDB...")
+    crispr_jcps = pl.from_pandas(
+        con.execute("SELECT DISTINCT Metadata_JCP2022 FROM crispr").df()
+    ).to_series()
     print(f"    CRISPR perturbations: {len(crispr_jcps):,}")
 
     # ------------------------------------------------------------------
-    # Fetch ORF perturbation list from JUMP datasets repo
+    # Load ORF perturbation list from DuckDB
     # ------------------------------------------------------------------
-    print("  Downloading ORF perturbation list...")
-    orf_jcps = (
-        pl.scan_csv(
-            retrieve(
-                "https://github.com/jump-cellpainting/datasets/raw/"
-                "refs/heads/main/metadata/orf.csv.gz",
-                known_hash="9c7ec4b0fa460a3a30f270a15f11b5e85cef9dd105c8a0ab8ab50f6cc98894b8",
-            ),
-        )
-        .select("Metadata_JCP2022")
-        .collect()
-        .to_series()
-        .unique()
-    )
+    print("  Loading ORF perturbation list from DuckDB...")
+    orf_jcps = pl.from_pandas(
+        con.execute("SELECT DISTINCT Metadata_JCP2022 FROM orf").df()
+    ).to_series()
     print(f"    ORF perturbations: {len(orf_jcps):,}")
 
     # ------------------------------------------------------------------
@@ -459,33 +419,32 @@ def step2_generate_raw_metadata(
     print(f"    Compound perturbations (after excluding controls): {len(compound_jcps):,}")
 
     # ------------------------------------------------------------------
-    # Resolve each JCP2022 ID to (source, batch, plate, well) using
-    # jump_portrait.  This queries the Cell Painting Gallery metadata.
+    # Collect all JCP IDs to resolve
     # ------------------------------------------------------------------
-    print("\n  Resolving gene perturbation locations (CRISPR + ORF)...")
-    gene_jcps = list(crispr_jcps) + list(orf_jcps)
-    gene_rows = _get_metadata_batch(gene_jcps)
-    print(f"    Resolved {len(gene_rows):,} gene perturbation DataFrames")
-
-    print("  Resolving compound perturbation locations...")
-    compound_rows = _get_metadata_batch(list(compound_jcps))
-    print(f"    Resolved {len(compound_rows):,} compound perturbation DataFrames")
+    all_jcps = list(set(crispr_jcps.to_list() + orf_jcps.to_list() + compound_jcps.to_list()))
+    print(f"\n  Resolving locations for {len(all_jcps):,} unique JCP IDs via DuckDB...")
 
     # ------------------------------------------------------------------
-    # Concatenate all location metadata
+    # Resolve all JCP2022 IDs to (source, batch, plate, well) via a
+    # single well+plate join in DuckDB — replaces the slow sequential
+    # jump_portrait lookups.
     # ------------------------------------------------------------------
-    all_rows = gene_rows + compound_rows
-    if not all_rows:
-        print("  WARNING: No location metadata resolved. Returning empty DataFrame.")
-        return pl.DataFrame(schema={
-            "Metadata_Source": pl.Utf8,
-            "Metadata_Batch": pl.Utf8,
-            "Metadata_Plate": pl.Utf8,
-            "Metadata_Well": pl.Utf8,
-            "Metadata_JCP2022": pl.Utf8,
-        })
+    metadata_all_pd = con.execute("""
+        SELECT
+            w.Metadata_Source,
+            p.Metadata_Batch,
+            w.Metadata_Plate,
+            w.Metadata_Well,
+            w.Metadata_JCP2022
+        FROM well w
+        JOIN plate p
+            ON w.Metadata_Source = p.Metadata_Source
+            AND w.Metadata_Plate = p.Metadata_Plate
+        WHERE w.Metadata_JCP2022 IN (SELECT UNNEST($1::VARCHAR[]))
+    """, [all_jcps]).df()
+    con.close()
 
-    metadata_all = pl.concat(all_rows)
+    metadata_all = pl.from_pandas(metadata_all_pd)
 
     print(f"\n  Total metadata rows: {metadata_all.height:,}")
     print(f"  Unique plates: {metadata_all.select('Metadata_Plate').n_unique():,}")
@@ -499,40 +458,6 @@ def step2_generate_raw_metadata(
     return metadata_all
 
 
-def _get_metadata_batch(
-    perturbations: list[str],
-    cols: tuple[str, ...] = (
-        "Metadata_Source",
-        "Metadata_Batch",
-        "Metadata_Plate",
-        "Metadata_Well",
-    ),
-) -> list[pl.DataFrame]:
-    """Resolve a list of JCP2022 IDs to their location metadata.
-
-    Uses ``jump_portrait.fetch.get_item_location_metadata`` to look up each
-    perturbation sequentially.
-
-    Args:
-        perturbations: List of JCP2022 ID strings.
-        cols: Metadata columns to select from the result.
-
-    Returns:
-        List of single-perturbation DataFrames, each with the requested
-        columns plus ``Metadata_JCP2022``.
-    """
-    results = []
-    for jcp_id in perturbations:
-        try:
-            df = get_item_location_metadata(jcp_id, input_column="JCP2022")
-            results.append(df.select(*cols, "Metadata_JCP2022"))
-        except Exception as e:
-            # Some JCP IDs may not have location metadata (e.g. deprecated IDs).
-            # Log and continue rather than aborting the whole pipeline.
-            print(f"    WARNING: Could not resolve {jcp_id}: {e}")
-    return results
-
-
 # ============================================================================
 # Step 3: Filter Metadata (25% Plate Fill Rate)
 # ============================================================================
@@ -540,16 +465,17 @@ def _get_metadata_batch(
 #
 # This step performs three filters on the raw metadata:
 #   1. Remove source_9 (1536-well plates, incompatible format)
-#   2. Remove TARGET2 plates (identified via broad_babel plate metadata)
+#   2. Remove TARGET2 plates (identified via DuckDB plate metadata)
 #   3. Remove plates with < 25% fill rate (fewer than 96 of 384 wells present)
 #
 # It also classifies each well by perturbation type (CRISPR, ORF, COMPOUND)
-# using the broad_babel lookup tables.
+# using the DuckDB lookup tables.
 # ============================================================================
 
 
 def step3_filter_metadata(
     metadata_all: pl.DataFrame,
+    db_path: str,
     output_dir: Path,
     min_fill_rate: float = 25.0,
     save_intermediates: bool = False,
@@ -558,6 +484,7 @@ def step3_filter_metadata(
 
     Args:
         metadata_all: Raw metadata from Step 2.
+        db_path: Path to jump_metadata.duckdb.
         output_dir: Directory for intermediate outputs.
         min_fill_rate: Minimum plate fill rate percentage (default 25%).
         save_intermediates: Whether to write the filtered metadata parquet.
@@ -569,6 +496,8 @@ def step3_filter_metadata(
     print("STEP 3: Filter Metadata (Plate Fill Rate)")
     print("=" * 70)
 
+    con = duckdb.connect(db_path, read_only=True)
+
     # ------------------------------------------------------------------
     # 3a. Remove source_9 (1536-well plates)
     # ------------------------------------------------------------------
@@ -577,15 +506,14 @@ def step3_filter_metadata(
     print(f"  After removing {sources_to_exclude}: {df.height:,} rows")
 
     # ------------------------------------------------------------------
-    # 3b. Remove TARGET2 plates using broad_babel plate metadata
+    # 3b. Remove TARGET2 plates using DuckDB plate metadata
     # ------------------------------------------------------------------
-    print("  Loading plate metadata from broad_babel...")
-    plate_meta_pd = get_table("plate").to_pandas()
+    print("  Loading plate metadata from DuckDB...")
     plates_target2 = set(
-        plate_meta_pd[
-            plate_meta_pd["Metadata_PlateType"]
-            .str.contains("TARGET2", case=False, na=False)
-        ]["Metadata_Plate"]
+        con.execute("""
+            SELECT Metadata_Plate FROM plate
+            WHERE Metadata_PlateType ILIKE '%TARGET2%'
+        """).df()["Metadata_Plate"]
     )
     print(f"  TARGET2 plates to exclude: {len(plates_target2):,}")
 
@@ -595,16 +523,17 @@ def step3_filter_metadata(
     # ------------------------------------------------------------------
     # 3c. Classify perturbation types
     # ------------------------------------------------------------------
-    print("  Classifying perturbation types via broad_babel...")
+    print("  Classifying perturbation types via DuckDB...")
     crispr_jcps = set(
-        get_table("crispr").to_pandas()["Metadata_JCP2022"].dropna().unique()
+        con.execute("SELECT DISTINCT Metadata_JCP2022 FROM crispr WHERE Metadata_JCP2022 IS NOT NULL").df()["Metadata_JCP2022"]
     )
     orf_jcps = set(
-        get_table("orf").to_pandas()["Metadata_JCP2022"].dropna().unique()
+        con.execute("SELECT DISTINCT Metadata_JCP2022 FROM orf WHERE Metadata_JCP2022 IS NOT NULL").df()["Metadata_JCP2022"]
     )
     compound_jcps = set(
-        get_table("compound").to_pandas()["Metadata_JCP2022"].dropna().unique()
+        con.execute("SELECT DISTINCT Metadata_JCP2022 FROM compound WHERE Metadata_JCP2022 IS NOT NULL").df()["Metadata_JCP2022"]
     )
+    con.close()
 
     # Build a mapping from JCP2022 -> perturbation type for all unique IDs.
     # The order of checks matters: CRISPR > ORF > COMPOUND > UNKNOWN.
@@ -683,7 +612,7 @@ def step3_filter_metadata(
 # Source: analysis/annotated_data_selection/well_downloading/prepare_negative_controls.py
 #
 # For each plate in the filtered metadata, this step retrieves its negative
-# control wells from the full JUMP well metadata (via broad_babel).  Negative
+# control wells from the full JUMP well metadata (via DuckDB).  Negative
 # controls are modality-specific:
 #   - COMPOUND plates: DMSO (JCP2022_033924)
 #   - CRISPR plates:   Non-targeting guide (JCP2022_800001)
@@ -696,6 +625,7 @@ def step3_filter_metadata(
 
 def step4_prepare_negative_controls(
     filtered_metadata: pl.DataFrame,
+    db_path: str,
     output_dir: Path,
     seed: int = 42,
     negcon_fraction: Optional[float] = None,
@@ -740,26 +670,23 @@ def step4_prepare_negative_controls(
         print(f"  {modality} plates: {len(plates):,}")
 
     # ------------------------------------------------------------------
-    # 4b. Load full JUMP well + plate metadata from broad_babel
+    # 4b. Load full JUMP well + plate metadata from DuckDB
     #
     # We need the full well table (not just our filtered subset) because
     # negative control wells were deliberately excluded from the treatment
     # metadata built in Steps 1-2.
     # ------------------------------------------------------------------
-    print("\n  Loading full JUMP well metadata from broad_babel...")
-    meta_wells = get_table("well")
-    meta_plate = get_table("plate")
-
-    con = duckdb.connect()
-    full_metadata_pd = con.sql("""
+    print("\n  Loading full JUMP well metadata from DuckDB...")
+    con = duckdb.connect(db_path, read_only=True)
+    full_metadata_pd = con.execute("""
         SELECT
             w.Metadata_Source,
             p.Metadata_Batch,
             w.Metadata_Plate,
             w.Metadata_Well,
             w.Metadata_JCP2022
-        FROM meta_wells w
-        JOIN meta_plate p
+        FROM well w
+        JOIN plate p
             ON w.Metadata_Source = p.Metadata_Source
             AND w.Metadata_Plate = p.Metadata_Plate
     """).df()
@@ -2019,6 +1946,7 @@ def main() -> None:
             sys.exit(1)
         metadata_all = step2_generate_raw_metadata(
             jcp_mapping=jcp_mapping,
+            db_path=args.annotations_db,
             output_dir=output_dir,
             save_intermediates=args.save_intermediates,
         )
@@ -2039,6 +1967,7 @@ def main() -> None:
             )
         filtered_metadata = step3_filter_metadata(
             metadata_all=metadata_all,
+            db_path=args.annotations_db,
             output_dir=output_dir,
             min_fill_rate=args.min_fill_rate,
             save_intermediates=args.save_intermediates,
@@ -2062,6 +1991,7 @@ def main() -> None:
     if skip_to <= 4:
         negative_controls = step4_prepare_negative_controls(
             filtered_metadata=filtered_metadata,
+            db_path=args.annotations_db,
             output_dir=output_dir,
             seed=args.seed,
             negcon_fraction=args.negcon_fraction,
