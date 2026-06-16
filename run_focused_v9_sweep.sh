@@ -60,20 +60,25 @@ CP_CONFIGS="focused_cp_v9_none focused_cp_v9_tvn_efaar focused_cp_v9_tvn_origina
 echo "  Started cellprofiler+subcell on GPU 0 (PID $!)"
 
 # ============================================================
-# GPU 1: morphem (background)
+# GPU 1: morphem mq + d20 (background)
 # ============================================================
 (
     cd src/norm_3
-    for cfg in $DL_CONFIGS; do
-        echo "--- ${cfg} --- $(date)"
-        CUDA_VISIBLE_DEVICES=1 pixi run python -m norm_3.pipeline --multirun \
-            +sweep="${cfg}" \
-            input.path="../../data/features/jump_lite/morphem_jump_lite_updated_jpegxl_lossy_mq_raw_features.parquet" \
-            hydra/launcher=joblib hydra.launcher.n_jobs=4
+    for input_file in \
+        "../../data/features/jump_lite/morphem_jump_lite_updated_jpegxl_lossy_mq_raw_features.parquet" \
+        "../../data/features/jump_lite/morphem_jump_lite_updated_jpegxl_lossy_d20_raw_features.parquet"; do
+        echo "=== morphem $(basename "$input_file") === $(date)"
+        for cfg in $DL_CONFIGS; do
+            echo "--- ${cfg} --- $(date)"
+            CUDA_VISIBLE_DEVICES=1 pixi run python -m norm_3.pipeline --multirun \
+                +sweep="${cfg}" \
+                input.path="${input_file}" \
+                hydra/launcher=joblib hydra.launcher.n_jobs=4
+        done
     done
     echo "=== morphem DONE === $(date)"
 ) > "${LOG_DIR}/morphem.log" 2>&1 &
-echo "  Started morphem on GPU 1 (PID $!)"
+echo "  Started morphem (mq + d20) on GPU 1 (PID $!)"
 
 # ============================================================
 # GPU 2: openphenom (background)
@@ -92,23 +97,28 @@ echo "  Started morphem on GPU 1 (PID $!)"
 echo "  Started openphenom on GPU 2 (PID $!)"
 
 # ============================================================
-# GPU 3: dinov2 (background)
+# GPU 3: dinov2 + dinov2_random (background)
 # ============================================================
 (
     cd src/norm_3
-    for cfg in $DL_CONFIGS; do
-        echo "--- ${cfg} --- $(date)"
-        CUDA_VISIBLE_DEVICES=3 pixi run python -m norm_3.pipeline --multirun \
-            +sweep="${cfg}" \
-            input.path="../../data/features/jump_lite/dinov2_jump_lite_updated_jpegxl_lossy_mq_raw_features.parquet" \
-            hydra/launcher=joblib hydra.launcher.n_jobs=4
+    for input_file in \
+        "../../data/features/jump_lite/dinov2_jump_lite_updated_jpegxl_lossy_mq_raw_features.parquet" \
+        "../../data/features/jump_lite/dinov2_random_jump_lite_updated_jpegxl_lossy_mq_raw_features.parquet"; do
+        echo "=== $(basename "$input_file") === $(date)"
+        for cfg in $DL_CONFIGS; do
+            echo "--- ${cfg} --- $(date)"
+            CUDA_VISIBLE_DEVICES=3 pixi run python -m norm_3.pipeline --multirun \
+                +sweep="${cfg}" \
+                input.path="${input_file}" \
+                hydra/launcher=joblib hydra.launcher.n_jobs=4
+        done
     done
-    echo "=== dinov2 DONE === $(date)"
+    echo "=== dinov2 + dinov2_random DONE === $(date)"
 ) > "${LOG_DIR}/dinov2.log" 2>&1 &
-echo "  Started dinov2 on GPU 3 (PID $!)"
+echo "  Started dinov2 + dinov2_random on GPU 3 (PID $!)"
 
 echo ""
-echo "All 5 models launched. Waiting for completion..."
+echo "All models launched. Waiting for completion..."
 echo "  Monitor with: tail -f ${LOG_DIR}/*.log"
 echo ""
 
