@@ -26,9 +26,11 @@ codec_mapping = {
     'jpegxl_lossy_effort_3': 'jpegxl_effort3',
 }
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+
 def load_segmentation_data(csv_path):
     """Load and process segmentation IoU data from CSV."""
-    summary_df = pd.read_csv(csv_path)
+    summary_df = pd.read_csv(SCRIPT_DIR / csv_path)
 
     # Extract median IoU values
     median_iou = {
@@ -148,7 +150,7 @@ def create_iou_plot(cell_iou_values, nuclei_iou_values, output_path):
 
 
 def main():
-    output_dir = Path('output')
+    output_dir = SCRIPT_DIR / 'output'
     output_dir.mkdir(exist_ok=True)
 
     print("Cell Segmentation - Median IoU values:")

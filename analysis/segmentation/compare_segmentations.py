@@ -858,18 +858,18 @@ def plot_iou_boxplot_combined(df_cell, df_nuclei, output_prefix):
     # Clean up method names for display
     df_combined['codec'] = df_combined['method'].str.replace('.zarr', '').str.replace('jpegxl_lossy_', 'jxl_')
 
-    # Define codec order
-    codec_order = ['jxl_lq', 'jxl_mq', 'jxl_effort_3', 'jxl_hq']
-    df_plot = df_combined[df_combined['codec'].isin(codec_order)]
+    # Use all codecs, ordered by mean IoU (lowest to highest quality)
+    codec_mean_iou = df_combined.groupby('codec')['iou'].mean().sort_values(ascending=False)
+    label_order = list(codec_mean_iou.index)
+    df_plot = df_combined
 
     # Nice display names
-    codec_labels = {
-        'jxl_lq': 'Low',
-        'jxl_mq': 'Medium',
-        'jxl_effort_3': 'Mid-High',
-        'jxl_hq': 'High'
+    _known_labels = {
+        'jxl_lq': 'Low', 'jxl_mq': 'Medium', 'jxl_effort_3': 'Mid-High',
+        'jxl_hq': 'High', 'jxl_d2_e8': 'D2 E8', 'jxl_d10': 'D10',
+        'jxl_d15': 'D15', 'jxl_d20_e2': 'D20 E2', 'jxl_d30': 'D30',
     }
-    label_order = [c for c in codec_order if c in df_plot['codec'].unique()]
+    codec_labels = {c: _known_labels.get(c, c.replace('jxl_', '').upper()) for c in label_order}
 
     # --- IoU Violin Plot ---
     fig, ax = plt.subplots(figsize=(7, 7))
@@ -892,7 +892,7 @@ def plot_iou_boxplot_combined(df_cell, df_nuclei, output_prefix):
     ax.set_title('IoU - Segmentation Similarity', fontsize=26, fontweight='bold')
 
     ax.set_xticks(range(len(label_order)))
-    ax.set_xticklabels([codec_labels[c] for c in label_order], fontsize=20)
+    ax.set_xticklabels([codec_labels[c] for c in label_order], fontsize=20, rotation=45, ha='right')
     ax.tick_params(axis='both', labelsize=20)
 
     ax.legend(title='Segmentation', fontsize=18, title_fontsize=18, loc='lower left')
@@ -924,7 +924,7 @@ def plot_iou_boxplot_combined(df_cell, df_nuclei, output_prefix):
     ax.set_title('IoU - Segmentation Similarity (95th percentile)', fontsize=26, fontweight='bold')
 
     ax.set_xticks(range(len(label_order)))
-    ax.set_xticklabels([codec_labels[c] for c in label_order], fontsize=20)
+    ax.set_xticklabels([codec_labels[c] for c in label_order], fontsize=20, rotation=45, ha='right')
     ax.tick_params(axis='both', labelsize=20)
 
     ax.legend(title='Segmentation', fontsize=18, title_fontsize=18, loc='lower left')
@@ -979,7 +979,7 @@ def plot_iou_boxplot_combined(df_cell, df_nuclei, output_prefix):
     ax.set_title('IoU - Segmentation Similarity', fontsize=26, fontweight='bold')
 
     ax.set_xticks(range(len(label_order)))
-    ax.set_xticklabels([codec_labels[c] for c in label_order], fontsize=20)
+    ax.set_xticklabels([codec_labels[c] for c in label_order], fontsize=20, rotation=45, ha='right')
     ax.tick_params(axis='both', labelsize=20)
 
     ax.legend(title='Segmentation', fontsize=18, title_fontsize=18, loc='lower left')
@@ -1011,7 +1011,7 @@ def plot_iou_boxplot_combined(df_cell, df_nuclei, output_prefix):
     ax.set_title('Dice - Segmentation Similarity', fontsize=26, fontweight='bold')
 
     ax.set_xticks(range(len(label_order)))
-    ax.set_xticklabels([codec_labels[c] for c in label_order], fontsize=20)
+    ax.set_xticklabels([codec_labels[c] for c in label_order], fontsize=20, rotation=45, ha='right')
     ax.tick_params(axis='both', labelsize=20)
 
     ax.legend(title='Segmentation', fontsize=18, title_fontsize=18, loc='lower left')
@@ -1043,7 +1043,7 @@ def plot_iou_boxplot_combined(df_cell, df_nuclei, output_prefix):
     ax.set_title('Dice - Segmentation Similarity (5th & 95th percentile)', fontsize=26, fontweight='bold')
 
     ax.set_xticks(range(len(label_order)))
-    ax.set_xticklabels([codec_labels[c] for c in label_order], fontsize=20)
+    ax.set_xticklabels([codec_labels[c] for c in label_order], fontsize=20, rotation=45, ha='right')
     ax.tick_params(axis='both', labelsize=20)
 
     ax.legend(title='Segmentation', fontsize=18, title_fontsize=18, loc='lower left')
@@ -1094,7 +1094,7 @@ def plot_iou_boxplot_combined(df_cell, df_nuclei, output_prefix):
     ax.set_title('Dice - Segmentation Similarity', fontsize=26, fontweight='bold')
 
     ax.set_xticks(range(len(label_order)))
-    ax.set_xticklabels([codec_labels[c] for c in label_order], fontsize=20)
+    ax.set_xticklabels([codec_labels[c] for c in label_order], fontsize=20, rotation=45, ha='right')
     ax.tick_params(axis='both', labelsize=20)
 
     ax.legend(title='Segmentation', fontsize=18, title_fontsize=18, loc='lower left')
@@ -1125,7 +1125,7 @@ def plot_iou_boxplot_combined(df_cell, df_nuclei, output_prefix):
         ax.set_ylabel('Instance F1 (IoU≥0.5)', fontsize=24, fontweight='bold')
         ax.set_title('Instance Matching F1 Score', fontsize=26, fontweight='bold')
         ax.set_xticks(range(len(label_order)))
-        ax.set_xticklabels([codec_labels[c] for c in label_order], fontsize=20)
+        ax.set_xticklabels([codec_labels[c] for c in label_order], fontsize=20, rotation=45, ha='right')
         ax.tick_params(axis='both', labelsize=20)
         ax.legend(title='Segmentation', fontsize=18, title_fontsize=18, loc='lower left')
         plt.tight_layout()
@@ -1152,7 +1152,7 @@ def plot_iou_boxplot_combined(df_cell, df_nuclei, output_prefix):
         ax.set_ylabel('Instance F1 (IoU≥0.7)', fontsize=24, fontweight='bold')
         ax.set_title('Instance Matching F1 Score', fontsize=26, fontweight='bold')
         ax.set_xticks(range(len(label_order)))
-        ax.set_xticklabels([codec_labels[c] for c in label_order], fontsize=20)
+        ax.set_xticklabels([codec_labels[c] for c in label_order], fontsize=20, rotation=45, ha='right')
         ax.tick_params(axis='both', labelsize=20)
         ax.legend(title='Segmentation', fontsize=18, title_fontsize=18, loc='lower left')
         plt.tight_layout()
@@ -1160,6 +1160,65 @@ def plot_iou_boxplot_combined(df_cell, df_nuclei, output_prefix):
         plt.savefig(output_path, dpi=150, bbox_inches='tight')
         print(f"Saved combined Instance F1 (IoU≥0.7) violinplot to: {output_path}")
         plt.close()
+
+        # Average Precision across IoU thresholds (COCO-style AP)
+        prec_cols = [c for c in df_plot.columns if c.startswith('inst_precision_')]
+        if len(prec_cols) >= 2:
+            df_plot['inst_ap'] = df_plot[prec_cols].mean(axis=1)
+            thresholds_str = ', '.join(c.replace('inst_precision_', '0.') for c in sorted(prec_cols))
+
+            fig, ax = plt.subplots(figsize=(7, 7))
+            sns.violinplot(
+                data=df_plot,
+                x='codec',
+                y='inst_ap',
+                hue='segmentation',
+                order=label_order,
+                hue_order=['Cell', 'Nuclei'],
+                palette=['tab:green', 'tab:blue'],
+                inner='box',
+                cut=0,
+                ax=ax
+            )
+            ax.set_xlabel('Compression Quality', fontsize=24, fontweight='bold')
+            ax.set_ylabel('Average Precision', fontsize=24, fontweight='bold')
+            ax.set_title('Instance Matching AP', fontsize=26, fontweight='bold')
+            ax.set_xticks(range(len(label_order)))
+            ax.set_xticklabels([codec_labels[c] for c in label_order], fontsize=20, rotation=45, ha='right')
+            ax.tick_params(axis='both', labelsize=20)
+            ax.legend(title='Segmentation', fontsize=18, title_fontsize=18, loc='lower left')
+            plt.tight_layout()
+            output_path = f"{output_prefix}_inst_ap_violinplot_combined.png"
+            plt.savefig(output_path, dpi=150, bbox_inches='tight')
+            print(f"Saved combined Instance AP ({thresholds_str}) violinplot to: {output_path}")
+            plt.close()
+
+        # Instance AP@0.5 — TP/(TP+FP+FN) at IoU=0.5
+        if 'inst_accuracy_50' in df_plot.columns:
+            fig, ax = plt.subplots(figsize=(7, 7))
+            sns.boxenplot(
+                data=df_plot,
+                x='codec',
+                y='inst_accuracy_50',
+                hue='segmentation',
+                order=label_order,
+                hue_order=['Cell', 'Nuclei'],
+                palette=['tab:green', 'tab:blue'],
+                ax=ax
+            )
+            ax.axhline(y=0.743, color='red', linestyle='--', alpha=0.6, linewidth=1.5)
+            ax.set_xlabel('Compression Quality', fontsize=24, fontweight='bold')
+            ax.set_ylabel('AP @ IoU=0.5', fontsize=24, fontweight='bold')
+            ax.set_title('Instance AP @ IoU=0.5', fontsize=24, fontweight='bold')
+            ax.set_xticks(range(len(label_order)))
+            ax.set_xticklabels([codec_labels[c] for c in label_order], fontsize=20, rotation=45, ha='right')
+            ax.tick_params(axis='both', labelsize=20)
+            ax.legend(title='Segmentation', fontsize=18, title_fontsize=18, loc='lower left')
+            plt.tight_layout()
+            output_path = f"{output_prefix}_inst_ap_iou50_boxenplot_combined.png"
+            plt.savefig(output_path, dpi=150, bbox_inches='tight')
+            print(f"Saved Instance AP@0.5 boxenplot to: {output_path}")
+            plt.close()
 
         # Cell count comparison (pred - true)
         df_plot['cell_count_diff'] = df_plot['n_pred'] - df_plot['n_true']
@@ -1180,7 +1239,7 @@ def plot_iou_boxplot_combined(df_cell, df_nuclei, output_prefix):
         ax.set_title('Cell Count Comparison', fontsize=26, fontweight='bold')
         ax.set_ylim(-50, 50)
         ax.set_xticks(range(len(label_order)))
-        ax.set_xticklabels([codec_labels[c] for c in label_order], fontsize=20)
+        ax.set_xticklabels([codec_labels[c] for c in label_order], fontsize=20, rotation=45, ha='right')
         ax.tick_params(axis='both', labelsize=20)
         ax.legend(title='Segmentation', fontsize=18, title_fontsize=18, loc='lower left')
         plt.tight_layout()
@@ -1231,7 +1290,7 @@ def plot_iou_boxplot_combined(df_cell, df_nuclei, output_prefix):
         ax.set_ylabel('Cell Count', fontsize=24, fontweight='bold')
         ax.set_title('Mean Cell Count per Compression Quality', fontsize=26, fontweight='bold')
         ax.set_xticks(range(len(label_order)))
-        ax.set_xticklabels([codec_labels[c] for c in label_order], fontsize=20)
+        ax.set_xticklabels([codec_labels[c] for c in label_order], fontsize=20, rotation=45, ha='right')
         ax.tick_params(axis='both', labelsize=20)
         ax.legend(title='Count Type', fontsize=18, title_fontsize=18, loc='upper right')
         plt.tight_layout()
@@ -1258,7 +1317,7 @@ def plot_iou_boxplot_combined(df_cell, df_nuclei, output_prefix):
         ax.set_ylabel('Panoptic Quality (IoU≥0.5)', fontsize=24, fontweight='bold')
         ax.set_title('Panoptic Quality Score', fontsize=26, fontweight='bold')
         ax.set_xticks(range(len(label_order)))
-        ax.set_xticklabels([codec_labels[c] for c in label_order], fontsize=20)
+        ax.set_xticklabels([codec_labels[c] for c in label_order], fontsize=20, rotation=45, ha='right')
         ax.tick_params(axis='both', labelsize=20)
         ax.legend(title='Segmentation', fontsize=18, title_fontsize=18, loc='lower left')
         plt.tight_layout()
@@ -1294,8 +1353,23 @@ def plot_cell_level_iou_combined(df_cell: pd.DataFrame, df_nuclei: pd.DataFrame,
     cell_wells = set(zip(df_cell['source_id'], df_cell['file']))
     nuclei_wells = set(zip(df_nuclei['source_id'], df_nuclei['file']))
 
+    # Cache paths for combined instance mappings
+    cache_cell = mappings_dir / "combined_cell_instances.parquet"
+    cache_nuclei = mappings_dir / "combined_nuclei_instances.parquet"
+
     # Load and filter instance mappings
-    def load_and_filter_mappings(segment_step: str, valid_wells: set) -> pd.DataFrame:
+    def load_and_filter_mappings(segment_step: str, valid_wells: set, cache_path: Path) -> pd.DataFrame:
+        # Try loading from cache first
+        if cache_path.exists():
+            print(f"  Loading cached {segment_step} from {cache_path.name}")
+            combined = pd.read_parquet(cache_path)
+            # Filter to valid wells
+            combined['well_key'] = list(zip(combined['source_id'], combined['file']))
+            combined = combined[combined['well_key'].isin(valid_wells)]
+            combined = combined.drop(columns=['well_key'])
+            print(f"  Loaded {len(combined):,} cell instances from cache for {segment_step}")
+            return combined
+
         parquet_files = list(mappings_dir.glob(f"{segment_step}_*.parquet"))
         if len(parquet_files) == 0:
             print(f"  No parquet files found for {segment_step}")
@@ -1306,39 +1380,46 @@ def plot_cell_level_iou_combined(df_cell: pd.DataFrame, df_nuclei: pd.DataFrame,
             method = pq_file.stem.replace(f"{segment_step}_", "")
             df = pd.read_parquet(pq_file)
             df['method'] = f"{method}.zarr"
-
-            # Filter to only wells in the valid set
-            df['well_key'] = list(zip(df['source_id'], df['file']))
-            df = df[df['well_key'].isin(valid_wells)]
-            df = df.drop(columns=['well_key'])
-
             dfs.append(df)
 
         combined = pd.concat(dfs, ignore_index=True)
+
+        # Save combined cache before filtering
+        combined.to_parquet(cache_path, index=False)
+        print(f"  Saved combined cache to {cache_path.name}")
+
+        # Filter to only wells in the valid set
+        combined['well_key'] = list(zip(combined['source_id'], combined['file']))
+        combined = combined[combined['well_key'].isin(valid_wells)]
+        combined = combined.drop(columns=['well_key'])
+
         print(f"  Loaded {len(combined):,} cell instances from {len(parquet_files)} files for {segment_step}")
         return combined
 
-    df_cell_inst = load_and_filter_mappings("segment_cell", cell_wells)
-    df_nuclei_inst = load_and_filter_mappings("segment_nuclei", nuclei_wells)
+    df_cell_inst = load_and_filter_mappings("segment_cell", cell_wells, cache_cell)
+    df_nuclei_inst = load_and_filter_mappings("segment_nuclei", nuclei_wells, cache_nuclei)
 
     if df_cell_inst is None or df_nuclei_inst is None:
         print("Skipping cell-level IoU plots")
         return
 
-    # Prepare data for both plot types
-    codec_order = ['jxl_lq', 'jxl_mq', 'jxl_effort_3', 'jxl_hq']
-    codec_labels = {
-        'jxl_lq': 'Low',
-        'jxl_mq': 'Medium',
-        'jxl_effort_3': 'Mid-High',
-        'jxl_hq': 'High'
+    # Prepare data for both plot types — derive codec order from all instance data
+    _all_codecs = pd.concat([df_cell_inst, df_nuclei_inst])
+    _all_codecs['codec'] = _all_codecs['method'].str.replace('.zarr', '').str.replace('jpegxl_lossy_', 'jxl_')
+    _codec_mean = _all_codecs.groupby('codec')['iou_score'].mean().sort_values(ascending=False)
+    codec_order = list(_codec_mean.index)
+    _known_labels = {
+        'jxl_lq': 'Low', 'jxl_mq': 'Medium', 'jxl_effort_3': 'Mid-High',
+        'jxl_hq': 'High', 'jxl_d2_e8': 'D2 E8', 'jxl_d10': 'D10',
+        'jxl_d15': 'D15', 'jxl_d20_e2': 'D20 E2', 'jxl_d30': 'D30',
     }
+    codec_labels = {c: _known_labels.get(c, c.replace('jxl_', '').upper()) for c in codec_order}
 
     # Create two versions: TP only and All matched (TP + BELOW_THRESH)
     plot_configs = [
         {
             'filter': ['TP'],
-            'title_suffix': 'True Positives (IoU≥0.5)',
+            'title_suffix': '',
             'file_suffix': 'tp_only',
             'description': 'TP cells only (IoU >= 0.5)'
         },
@@ -1368,7 +1449,7 @@ def plot_cell_level_iou_combined(df_cell: pd.DataFrame, df_nuclei: pd.DataFrame,
         # Clean up method names
         df_combined['codec'] = df_combined['method'].str.replace('.zarr', '').str.replace('jpegxl_lossy_', 'jxl_')
 
-        df_plot = df_combined[df_combined['codec'].isin(codec_order)]
+        df_plot = df_combined
         label_order = [c for c in codec_order if c in df_plot['codec'].unique()]
 
         print(f"\nCell-level statistics (threshold={thresh}, {config['description']}):")
@@ -1405,10 +1486,11 @@ def plot_cell_level_iou_combined(df_cell: pd.DataFrame, df_nuclei: pd.DataFrame,
 
         ax.set_xlabel('Compression Quality', fontsize=24, fontweight='bold')
         ax.set_ylabel('Cell-level IoU', fontsize=24, fontweight='bold')
-        ax.set_title(f'Cell-level IoU - {config["title_suffix"]}', fontsize=24, fontweight='bold')
+        _suffix = f' - {config["title_suffix"]}' if config["title_suffix"] else ''
+        ax.set_title(f'Cell-level IoU{_suffix}', fontsize=24, fontweight='bold')
 
         ax.set_xticks(range(len(label_order)))
-        ax.set_xticklabels([codec_labels[c] for c in label_order], fontsize=20)
+        ax.set_xticklabels([codec_labels[c] for c in label_order], fontsize=20, rotation=45, ha='right')
         ax.tick_params(axis='both', labelsize=20)
 
         ax.legend(title='Segmentation', fontsize=18, title_fontsize=18, loc='lower left')
@@ -1458,10 +1540,11 @@ def plot_cell_level_iou_combined(df_cell: pd.DataFrame, df_nuclei: pd.DataFrame,
 
         ax.set_xlabel('Compression Quality', fontsize=24, fontweight='bold')
         ax.set_ylabel('Cell-level IoU', fontsize=24, fontweight='bold')
-        ax.set_title(f'Cell-level IoU - {config["title_suffix"]}', fontsize=24, fontweight='bold')
+        _suffix = f' - {config["title_suffix"]}' if config["title_suffix"] else ''
+        ax.set_title(f'Cell-level IoU{_suffix}', fontsize=24, fontweight='bold')
 
         ax.set_xticks(range(len(label_order)))
-        ax.set_xticklabels([codec_labels[c] for c in label_order], fontsize=20)
+        ax.set_xticklabels([codec_labels[c] for c in label_order], fontsize=20, rotation=45, ha='right')
         ax.tick_params(axis='both', labelsize=20)
 
         ax.legend(title='Segmentation', fontsize=18, title_fontsize=18, loc='lower left')
@@ -1490,10 +1573,11 @@ def plot_cell_level_iou_combined(df_cell: pd.DataFrame, df_nuclei: pd.DataFrame,
 
         ax.set_xlabel('Compression Quality', fontsize=24, fontweight='bold')
         ax.set_ylabel('Cell-level Dice', fontsize=24, fontweight='bold')
-        ax.set_title(f'Cell-level Dice - {config["title_suffix"]}', fontsize=24, fontweight='bold')
+        _suffix = f' - {config["title_suffix"]}' if config["title_suffix"] else ''
+        ax.set_title(f'Cell-level Dice{_suffix}', fontsize=24, fontweight='bold')
 
         ax.set_xticks(range(len(label_order)))
-        ax.set_xticklabels([codec_labels[c] for c in label_order], fontsize=20)
+        ax.set_xticklabels([codec_labels[c] for c in label_order], fontsize=20, rotation=45, ha='right')
         ax.tick_params(axis='both', labelsize=20)
 
         ax.legend(title='Segmentation', fontsize=18, title_fontsize=18, loc='lower left')
@@ -1539,10 +1623,11 @@ def plot_cell_level_iou_combined(df_cell: pd.DataFrame, df_nuclei: pd.DataFrame,
 
         ax.set_xlabel('Compression Quality', fontsize=24, fontweight='bold')
         ax.set_ylabel('Cell-level Dice', fontsize=24, fontweight='bold')
-        ax.set_title(f'Cell-level Dice - {config["title_suffix"]}', fontsize=24, fontweight='bold')
+        _suffix = f' - {config["title_suffix"]}' if config["title_suffix"] else ''
+        ax.set_title(f'Cell-level Dice{_suffix}', fontsize=24, fontweight='bold')
 
         ax.set_xticks(range(len(label_order)))
-        ax.set_xticklabels([codec_labels[c] for c in label_order], fontsize=20)
+        ax.set_xticklabels([codec_labels[c] for c in label_order], fontsize=20, rotation=45, ha='right')
         ax.tick_params(axis='both', labelsize=20)
 
         ax.legend(title='Segmentation', fontsize=18, title_fontsize=18, loc='lower left')
@@ -1567,29 +1652,30 @@ def plot_iou_boxplot(df, output_prefix, segment_step="segment_cell"):
     df_plot = df.copy()
     df_plot['codec'] = df_plot['method'].str.replace('.zarr', '').str.replace('jpegxl_lossy_', 'jxl_')
 
-    # Define codec order
-    codec_order = ['jxl_lq', 'jxl_mq', 'jxl_effort_3', 'jxl_hq']
-    df_plot = df_plot[df_plot['codec'].isin(codec_order)]
-
-    # Nice display names
-    codec_labels = {
-        'jxl_lq': 'Low',
-        'jxl_mq': 'Medium',
-        'jxl_effort_3': 'Mid-High',
-        'jxl_hq': 'High'
+    # Order codecs by mean IoU (lowest to highest quality)
+    codec_mean_iou = df_plot.groupby('codec')['iou'].mean().sort_values(ascending=False)
+    label_order = list(codec_mean_iou.index)
+    _known_labels = {
+        'jxl_lq': 'Low', 'jxl_mq': 'Medium', 'jxl_effort_3': 'Mid-High',
+        'jxl_hq': 'High', 'jxl_d2_e8': 'D2 E8', 'jxl_d10': 'D10',
+        'jxl_d15': 'D15', 'jxl_d20_e2': 'D20 E2', 'jxl_d30': 'D30',
     }
-    label_order = [c for c in codec_order if c in df_plot['codec'].unique()]
+    codec_labels = {c: _known_labels.get(c, c.replace('jxl_', '').upper()) for c in label_order}
 
-    fig, ax = plt.subplots(figsize=(14, 7))
+    n_codecs = len(label_order)
+    fig, ax = plt.subplots(figsize=(max(14, n_codecs * 2), 7))
 
     sns.violinplot(
         data=df_plot,
         x='codec',
         y='iou',
+        hue='codec',
         order=label_order,
+        hue_order=label_order,
         palette='viridis',
         inner='box',
         cut=0,
+        legend=False,
         ax=ax
     )
 
@@ -1599,7 +1685,7 @@ def plot_iou_boxplot(df, output_prefix, segment_step="segment_cell"):
     ax.set_title(f'IoU - {step_nice} Segmentation Similarity', fontsize=22, fontweight='bold')
 
     ax.set_xticks(range(len(label_order)))
-    ax.set_xticklabels([codec_labels[c] for c in label_order], fontsize=18)
+    ax.set_xticklabels([codec_labels[c] for c in label_order], fontsize=18, rotation=45, ha='right')
     ax.tick_params(axis='both', labelsize=18)
 
     plt.tight_layout()

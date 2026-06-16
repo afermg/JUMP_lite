@@ -62,18 +62,18 @@ def plot_cell_level_iou_combined(df_cell: pd.DataFrame, df_nuclei: pd.DataFrame,
     # Clean up method names
     df_combined['codec'] = df_combined['method'].str.replace('.zarr', '').str.replace('jpegxl_lossy_', 'jxl_')
 
-    # Define codec order
-    codec_order = ['jxl_lq', 'jxl_mq', 'jxl_effort_3', 'jxl_hq']
-    df_plot = df_combined[df_combined['codec'].isin(codec_order)]
+    # Order codecs by mean IoU (lowest to highest quality)
+    codec_mean_iou = df_combined.groupby('codec')['iou_score'].mean().sort_values(ascending=False)
+    label_order = list(codec_mean_iou.index)
+    df_plot = df_combined
 
     # Nice display names
-    codec_labels = {
-        'jxl_lq': 'Low',
-        'jxl_mq': 'Medium',
-        'jxl_effort_3': 'Mid-High',
-        'jxl_hq': 'High'
+    _known_labels = {
+        'jxl_lq': 'Low', 'jxl_mq': 'Medium', 'jxl_effort_3': 'Mid-High',
+        'jxl_hq': 'High', 'jxl_d2_e8': 'D2 E8', 'jxl_d10': 'D10',
+        'jxl_d15': 'D15', 'jxl_d20_e2': 'D20 E2', 'jxl_d30': 'D30',
     }
-    label_order = [c for c in codec_order if c in df_plot['codec'].unique()]
+    codec_labels = {c: _known_labels.get(c, c.replace('jxl_', '').upper()) for c in label_order}
 
     print(f"\nCell-level IoU statistics (threshold={thresh}, all matched cells):")
     for seg in ['Cell', 'Nuclei']:
@@ -228,15 +228,18 @@ def plot_match_type_distribution(df_cell: pd.DataFrame, df_nuclei: pd.DataFrame,
     match_counts = match_counts.merge(totals, on=['codec', 'segmentation'])
     match_counts['percentage'] = (match_counts['count'] / match_counts['total']) * 100
 
-    codec_order = ['jxl_lq', 'jxl_mq', 'jxl_effort_3', 'jxl_hq']
-    codec_labels = {
-        'jxl_lq': 'Low',
-        'jxl_mq': 'Medium',
-        'jxl_effort_3': 'Mid-High',
-        'jxl_hq': 'High'
+    # Order codecs by mean IoU (lowest to highest)
+    codec_mean_iou = df_combined.groupby('codec')['iou_score'].mean().sort_values(ascending=False)
+    codec_order = list(codec_mean_iou.index)
+    _known_labels = {
+        'jxl_lq': 'Low', 'jxl_mq': 'Medium', 'jxl_effort_3': 'Mid-High',
+        'jxl_hq': 'High', 'jxl_d2_e8': 'D2 E8', 'jxl_d10': 'D10',
+        'jxl_d15': 'D15', 'jxl_d20_e2': 'D20 E2', 'jxl_d30': 'D30',
     }
+    codec_labels = {c: _known_labels.get(c, c.replace('jxl_', '').upper()) for c in codec_order}
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 7))
+    n_codecs = len(codec_order)
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(max(14, n_codecs * 2.5), 7))
 
     for ax, seg in zip([ax1, ax2], ['Cell', 'Nuclei']):
         subset = match_counts[match_counts['segmentation'] == seg]
