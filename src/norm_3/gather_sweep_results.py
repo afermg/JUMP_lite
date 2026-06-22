@@ -1240,6 +1240,7 @@ def generate_all_metrics_plot(pdf, output_dir: Path, model_colors: dict,
     with each model on the x-axis and its own color.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
+    np.random.seed(0)
 
     n_models = len(models)
     display_names = [get_display_name(m) for m in models]
@@ -1327,6 +1328,7 @@ def generate_group_nap_plot(pdf, output_dir: Path, model_colors: dict,
     Style matches generate_all_metrics_plot.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
+    np.random.seed(0)
 
     group_metrics = [
         ("PA CRISPR NAP", "NAP", "PA_group_crispr_mean_normalized_average_precision"),
@@ -1505,6 +1507,7 @@ def generate_group_nap_plot_compact(pdf, output_dir: Path, model_colors: dict,
     Same styling as generate_group_nap_plot.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
+    np.random.seed(0)
 
     group_metrics = [
         ("PA - CRISPR", "NAP", "PA_group_crispr_mean_normalized_average_precision"),
@@ -1951,6 +1954,7 @@ def generate_all_metrics_violin(pdf, output_dir: Path, model_colors: dict,
     """
     import pandas as pd
     output_dir.mkdir(parents=True, exist_ok=True)
+    np.random.seed(0)
 
     n_models = len(models)
     display_names = [get_display_name(m) for m in models]
@@ -3785,6 +3789,7 @@ def generate_codec_delta_from_raw_plot(pdf, output_dir: Path, model_colors: dict
     """
     import pandas as pd
     output_dir.mkdir(parents=True, exist_ok=True)
+    np.random.seed(0)
 
     # Identify families that have a raw codec
     family_models: dict[str, list[str]] = {}
@@ -4381,6 +4386,7 @@ def generate_codec_delta_from_raw_groups_plot(pdf, output_dir: Path, model_color
     """
     import pandas as pd
     output_dir.mkdir(parents=True, exist_ok=True)
+    np.random.seed(0)
 
     # Identify families that have a raw codec
     family_models: dict[str, list[str]] = {}
@@ -4537,7 +4543,7 @@ def generate_codec_delta_from_raw_groups_plot(pdf, output_dir: Path, model_color
     # Font sizes (slightly smaller for 6-col layout)
     fs_title = 14
     fs_axis = 11
-    fs_tick = 9
+    fs_tick = 12
     fs_family = 10
 
     # --- Plot: render delta rows (abs / pct) x n_metrics cols ---
@@ -4674,6 +4680,9 @@ def generate_codec_delta_from_raw_groups_plot(pdf, output_dir: Path, model_color
     _two_row_grid = (2, math.ceil(n_metrics / 2))
     _render([_ROW_ABS], "_abs_only", metric_grid=_two_row_grid)
     _render([_ROW_PCT], "_pct_only", metric_grid=_two_row_grid)
+    # Portrait (3x2) variant of the abs-only figure — same content, transposed grid.
+    _two_col_grid = (math.ceil(n_metrics / 2), 2)
+    _render([_ROW_ABS], "_abs_only_3x2", metric_grid=_two_col_grid)
 
     # --- LaTeX table: mean ± std of percentage delta per codec ---
     # Metric groups: PA (4 sub-groups + mean) and PC (2 sub-groups + mean)
