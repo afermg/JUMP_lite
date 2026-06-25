@@ -141,6 +141,33 @@ just sweep-validate-slice           morphem jpegxl_lossy_mq 0.05,0.1 0 3
 Each slice writes under `data/intermediate/sweep_v11_lite_validate/` so it
 doesn't collide with the real sweep.
 
+### Smoke variant (4 configs/(model, codec))
+
+For an end-to-end pipeline test that exercises the sweep without committing
+hours of GPU time, run the smoke variant. It collapses the per-(model, codec)
+grid from 48 → 4 by overriding `hydra.sweeper.params` on the CLI, and writes
+to a separate `_smoke` output dir so the full sweep is not clobbered.
+
+```bash
+just sweep-v11-lite-smoke 0 4   # GPU 0, 4 joblib workers
+just sweep-v11-smoke      0 4   # target2 (only needed if also regenerating results-v11)
+```
+
+Wall time: ~20–40 min for lite, ~1–2 h for target2. To feed the smoke output
+into `just reproduce`:
+
+```bash
+ln -sf ../../src/norm_3/data/features/variance_first_v11_lite_smoke \
+       data/intermediate/sweep_v11_lite
+ln -sf src/norm_3/data/features/variance_first_v11_smoke \
+       data/features/variance_first_v11
+just reproduce
+```
+
+Downstream figures (saturation plots, rank stability, etc.) will be
+qualitatively different from the paper because the underlying sweep is far
+smaller — this is a smoke test, not a result.
+
 ## 5. MOTIVE evaluation
 
 If you're regenerating motive outputs from a sweep (rather than reusing

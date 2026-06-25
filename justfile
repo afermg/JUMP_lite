@@ -1090,6 +1090,180 @@ sweep-status dataset="v11":
         echo "  ${name}: ${count} configs"
     done
 
+# Smoke variant of sweep-v11-lite: 4 configs per (model, codec) instead of 48.
+# Overrides hydra.sweeper.params on the CLI; writes to a *_smoke output dir so
+# it doesn't clobber the full sweep. Single-GPU sequential — ~20-40 min vs hours.
+# To plug into `just reproduce`, symlink the output dir as data/intermediate/sweep_v11_lite/.
+sweep-v11-lite-smoke gpu="0" jobs="4":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    export OMP_NUM_THREADS={{ omp_threads }}
+    export MKL_NUM_THREADS={{ omp_threads }}
+    export OPENBLAS_NUM_THREADS={{ omp_threads }}
+
+    SMOKE_OUT="data/features/variance_first_v11_lite_smoke/output.parquet"
+    LITE_CODECS="{{ lite_codecs_dl }}"
+    DL_FEATURE_DIR="../../{{ features_lite_dl }}"
+    CP_FEATURE_DIR="../../{{ features_lite_cp }}"
+
+    DL_OVERRIDES="hydra.sweeper.params.norm_method=robustmad hydra.sweeper.params.norm_fit_controls=true,false hydra.sweeper.params.use_prune_correlated=true,false hydra.sweeper.params.tvn_efaar_epsilon=0.5 hydra.sweeper.params.tvn_efaar_n_components=128"
+    CP_OVERRIDES="hydra.sweeper.params.norm_method=robustmad hydra.sweeper.params.norm_fit_controls=true,false hydra.sweeper.params.corr_thresh=0.9,0.95 hydra.sweeper.params.tvn_efaar_epsilon=0.5 hydra.sweeper.params.tvn_efaar_n_components=128"
+
+    echo "==================================================="
+    echo "Smoke Sweep v11 lite — 4 configs per (model, codec)"
+    echo "  GPU: {{ gpu }}, n_jobs: {{ jobs }}"
+    echo "  Output: {{ norm3_dir }}/${SMOKE_OUT%/output.parquet}"
+    echo "==================================================="
+    echo ""
+
+    cd {{ norm3_dir }}
+
+    feature_file="${CP_FEATURE_DIR}/cellprofiler_raw_jump_lite_raw_features.parquet"
+    if [ -f "${feature_file}" ]; then
+        echo "--- cellprofiler $(date) ---"
+        CUDA_VISIBLE_DEVICES={{ gpu }} pixi run python -m norm_3.pipeline --multirun \
+            +sweep=focused_cp_v11_lite_tvn_efaar \
+            input.path="${feature_file}" \
+            output.path="${SMOKE_OUT}" \
+            ${CP_OVERRIDES} \
+            hydra/launcher=joblib hydra.launcher.n_jobs={{ jobs }} || echo "  Warning: cellprofiler errors"
+    else
+        echo "  SKIPPING cellprofiler: ${feature_file} not found"
+    fi
+
+    feature_file="${CP_FEATURE_DIR}/cell_count_jump_lite_raw_features.parquet"
+    if [ -f "${feature_file}" ]; then
+        echo "--- cell_count $(date) ---"
+        CUDA_VISIBLE_DEVICES={{ gpu }} pixi run python -m norm_3.pipeline --multirun \
+            +sweep=focused_cell_count_v11_lite \
+            input.path="${feature_file}" \
+            output.path="${SMOKE_OUT}" \
+            hydra/launcher=joblib hydra.launcher.n_jobs={{ jobs }} || echo "  Warning: cell_count errors"
+    else
+        echo "  SKIPPING cell_count: ${feature_file} not found"
+    fi
+
+    for model in morphem subcell__clip01 openphenom dinov2; do
+        for codec in $LITE_CODECS; do
+            feature_file="${DL_FEATURE_DIR}/${model}_jump_lite_updated_${codec}_raw_features.parquet"
+            if [ -f "${feature_file}" ]; then
+                echo "--- ${model} codec: ${codec} $(date) ---"
+                CUDA_VISIBLE_DEVICES={{ gpu }} pixi run python -m norm_3.pipeline --multirun \
+                    +sweep=focused_dl_v11_lite_tvn_efaar \
+                    input.path="${feature_file}" \
+                    output.path="${SMOKE_OUT}" \
+                    ${DL_OVERRIDES} \
+                    hydra/launcher=joblib hydra.launcher.n_jobs={{ jobs }} || echo "  Warning: ${model}/${codec} errors"
+            else
+                echo "  SKIPPING ${model}/${codec}: ${feature_file} not found"
+            fi
+        done
+    done
+
+    for model_codec in "subcell:jpegxl_lossy_mq" "dinov2_random:jpegxl_lossy_mq"; do
+        model="${model_codec%:*}"
+        codec="${model_codec#*:}"
+        feature_file="${DL_FEATURE_DIR}/${model}_jump_lite_updated_${codec}_raw_features.parquet"
+        if [ -f "${feature_file}" ]; then
+            echo "--- ${model} codec: ${codec} $(date) ---"
+            CUDA_VISIBLE_DEVICES={{ gpu }} pixi run python -m norm_3.pipeline --multirun \
+                +sweep=focused_dl_v11_lite_tvn_efaar \
+                input.path="${feature_file}" \
+                output.path="${SMOKE_OUT}" \
+                ${DL_OVERRIDES} \
+                hydra/launcher=joblib hydra.launcher.n_jobs={{ jobs }} || echo "  Warning: ${model}/${codec} errors"
+        else
+            echo "  SKIPPING ${model}/${codec}: ${feature_file} not found"
+        fi
+    done
+
+    echo ""
+    echo "=== smoke sweep v11_lite DONE $(date) ==="
+    echo "Outputs: {{ norm3_dir }}/data/features/variance_first_v11_lite_smoke/"
+    echo ""
+    echo "To plug into reproduce:"
+    echo "  ln -sf ../../{{ norm3_dir }}/data/features/variance_first_v11_lite_smoke data/intermediate/sweep_v11_lite"
+
+# Smoke variant of sweep-v11 (target2): 4 configs per (model, codec).
+# Writes to data/features/variance_first_v11_smoke/. Single-GPU sequential.
+sweep-v11-smoke gpu="0" jobs="4":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    export OMP_NUM_THREADS={{ omp_threads }}
+    export MKL_NUM_THREADS={{ omp_threads }}
+    export OPENBLAS_NUM_THREADS={{ omp_threads }}
+
+    SMOKE_OUT="data/features/variance_first_v11_smoke/output.parquet"
+    DL_CODECS="{{ dl_codecs_target2 }}"
+    CP_CODECS="{{ cp_codecs_target2 }}"
+    DL_FEATURE_DIR="../../{{ features_target2_dl }}"
+    CP_FEATURE_DIR="../../{{ features_target2_cp }}"
+
+    DL_OVERRIDES="hydra.sweeper.params.norm_method=robustmad hydra.sweeper.params.norm_fit_controls=true,false hydra.sweeper.params.use_prune_correlated=true,false hydra.sweeper.params.tvn_efaar_epsilon=0.5 hydra.sweeper.params.tvn_efaar_n_components=128"
+    CP_OVERRIDES="hydra.sweeper.params.norm_method=robustmad hydra.sweeper.params.norm_fit_controls=true,false hydra.sweeper.params.corr_thresh=0.9,0.95 hydra.sweeper.params.tvn_efaar_epsilon=0.5 hydra.sweeper.params.tvn_efaar_n_components=128"
+
+    echo "==================================================="
+    echo "Smoke Sweep v11 target2 — 4 configs per (model, codec)"
+    echo "  GPU: {{ gpu }}, n_jobs: {{ jobs }}"
+    echo "  Output: {{ norm3_dir }}/${SMOKE_OUT%/output.parquet}"
+    echo "==================================================="
+    echo ""
+
+    cd {{ norm3_dir }}
+
+    for codec in $CP_CODECS; do
+        feature_file="${CP_FEATURE_DIR}/cellprofiler_raw_jump_target2_4plate_${codec}_raw_features.parquet"
+        if [ -f "${feature_file}" ]; then
+            echo "--- cellprofiler codec: ${codec} $(date) ---"
+            CUDA_VISIBLE_DEVICES={{ gpu }} pixi run python -m norm_3.pipeline --multirun \
+                +sweep=focused_cp_v11_tvn_efaar \
+                input.path="${feature_file}" \
+                output.path="${SMOKE_OUT}" \
+                ${CP_OVERRIDES} \
+                hydra/launcher=joblib hydra.launcher.n_jobs={{ jobs }} || echo "  Warning: cp/${codec} errors"
+        else
+            echo "  SKIPPING cellprofiler/${codec}: ${feature_file} not found"
+        fi
+    done
+
+    feature_file="${CP_FEATURE_DIR}/cell_count_jump_target2_4plate_raw_features.parquet"
+    if [ -f "${feature_file}" ]; then
+        echo "--- cell_count $(date) ---"
+        CUDA_VISIBLE_DEVICES={{ gpu }} pixi run python -m norm_3.pipeline --multirun \
+            +sweep=focused_cell_count_v11 \
+            input.path="${feature_file}" \
+            output.path="${SMOKE_OUT}" \
+            hydra/launcher=joblib hydra.launcher.n_jobs={{ jobs }} || echo "  Warning: cell_count errors"
+    else
+        echo "  SKIPPING cell_count: ${feature_file} not found"
+    fi
+
+    for model in morphem subcell__clip01 openphenom dinov2 subcell; do
+        for codec in $DL_CODECS; do
+            feature_file="${DL_FEATURE_DIR}/${model}_jump_target2_4plate_${codec}_raw_features.parquet"
+            if [ -f "${feature_file}" ]; then
+                echo "--- ${model} codec: ${codec} $(date) ---"
+                CUDA_VISIBLE_DEVICES={{ gpu }} pixi run python -m norm_3.pipeline --multirun \
+                    +sweep=focused_dl_v11_tvn_efaar \
+                    input.path="${feature_file}" \
+                    output.path="${SMOKE_OUT}" \
+                    ${DL_OVERRIDES} \
+                    hydra/launcher=joblib hydra.launcher.n_jobs={{ jobs }} || echo "  Warning: ${model}/${codec} errors"
+            else
+                echo "  SKIPPING ${model}/${codec}: ${feature_file} not found"
+            fi
+        done
+    done
+
+    echo ""
+    echo "=== smoke sweep v11 target2 DONE $(date) ==="
+    echo "Outputs: {{ norm3_dir }}/data/features/variance_first_v11_smoke/"
+    echo ""
+    echo "To plug into reproduce:"
+    echo "  ln -sf ../../{{ norm3_dir }}/data/features/variance_first_v11_smoke data/features/variance_first_v11"
+
 # ═══════════════════════════════════════════════════════════════
 # Section 10: Results Aggregation & Figures
 # ═══════════════════════════════════════════════════════════════
