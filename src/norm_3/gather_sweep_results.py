@@ -4374,6 +4374,218 @@ def generate_codec_delta_balanced_violin(pdf, output_dir: Path, model_colors: di
         print(f"Saved per-model {ylabel} plots → {per_model_dir}/")
 
 
+def generate_codec_balanced_absolute_violin(pdf, output_dir: Path, model_colors: dict,
+                                             models: list, best_idx: dict, best_col: str,
+                                             best_metric: str = "balanced",
+                                             best_selection: str = "per_codec"):
+    """Violin/boxen plots of absolute NAP Balanced per codec, including raw.
+
+    Sister to generate_codec_delta_balanced_violin: plots the raw metric value
+    (capped at zero) instead of a delta or % of raw. The raw/zstd baseline
+    appears as its own first column rather than being used to normalise.
+    """
+    import pandas as pd
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    metric_col = "nap_balanced"
+    if metric_col not in pdf.columns or pdf[metric_col].isna().all():
+        print(f"{metric_col} not available, skipping balanced absolute violin plot.")
+        return
+
+    records = []
+    for m in models:
+        m_df = pdf[pdf["model"] == m]
+        if m_df.empty:
+            continue
+        fam = _get_model_family(m)
+        codec_label = _get_codec_label(get_display_name(m))
+        if codec_label is None:
+            continue
+        for _, row in m_df.iterrows():
+            val = row[metric_col]
+            if hasattr(val, "__len__"):
+                val = val.iloc[0] if len(val) else np.nan
+            if np.isnan(val):
+                continue
+            records.append({
+                "family": fam,
+                "codec": codec_label,
+                "model": m,
+                "value": max(0.0, val),
+            })
+
+    if not records:
+        print("No records computed, skipping balanced absolute violin plot.")
+        return
+
+    df_plot = pd.DataFrame(records)
+
+    codec_rank: dict[str, int] = {}
+    for m in models:
+        cl = _get_codec_label(get_display_name(m))
+        if cl is None:
+            continue
+        rank = _get_codec_sort_rank(m)
+        if cl not in codec_rank or rank < codec_rank[cl]:
+            codec_rank[cl] = rank
+    codec_order = sorted(df_plot["codec"].unique(), key=lambda c: codec_rank.get(c, 9999))
+
+    _FAMILY_PLOT_ORDER = [
+        "cell_count", "cell_count_lite",
+        "cellprofiler", "cellprofiler_lite", "cp_measure", "cp_measure_filtered", "cp_measure_fbs",
+        "dinov2", "dinov2_rr", "dinov2_lite", "dinov2_490",
+        "morphem", "morphem_rr", "morphem_lite",
+        "openphenom", "openphenom_rr", "openphenom_lite",
+        "openphenom_stdscale", "openphenom_nonclip", "openphenom_stdscale_false",
+        "openphenom_8clip_std",
+        "subcell", "subcell_rr", "subcell_lite", "subcell__clip01", "subcell__clip01_lite",
+        "subcell__nonstd", "subcell_nonstd", "subcell_wrongchannels",
+        "dinov2_random", "dinov2_random_rr", "dinov2_random_lite",
+    ]
+    _fam_rank = {f: i for i, f in enumerate(_FAMILY_PLOT_ORDER)}
+    fam_order_keys = sorted(df_plot["family"].unique(),
+                             key=lambda f: _fam_rank.get(f, len(_FAMILY_PLOT_ORDER)))
+
+    _known_labels = {
+        "raw": "Raw", "zstd": "Raw",
+        "lq": "Low", "mq": "Medium", "e3": "Mid-High", "effort_3": "Mid-High", "hq": "High",
+        "d2_e8": "D2 E8", "d10": "D10", "d15": "D15",
+        "d20_e2": "D20 E2", "d25": "D25", "d30": "D30",
+    }
+    codec_labels = {c: _known_labels.get(c, c.upper()) for c in codec_order}
+
+    _sel_suffix = {
+        "zstd_reference": "_zstd_pinned",
+        "best_any_codec": "_best_any_codec",
+        "best_avg_codec": "_best_avg_codec",
+    }.get(best_selection, "")
+
+    fig_w = 7
+    fig_h = 7
+    value_col = "value"
+    ylabel = "NAP Balanced"
+    annot_fmt = "{:.3f}"
+
+    def _safe_name(s: str) -> str:
+        return "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in s)
+
+    def _violin(ax, data, order):
+        sns.violinplot(
+            data=data, x="codec", y=value_col,
+            hue="codec", order=order, hue_order=order,
+            palette="viridis", inner="box", cut=0,
+            legend=False, ax=ax,
+        )
+
+    def _boxen(ax, data, order):
+        sns.boxenplot(
+            data=data, x="codec", y=value_col,
+            hue="codec", order=order, hue_order=order,
+            palette="viridis", legend=False, ax=ax,
+        )
+
+    def _decorate(ax, order, title, ylim_bottom=None):
+        ax.set_xlabel("", fontsize=24, fontweight="bold")
+        ax.set_ylabel(ylabel, fontsize=24, fontweight="bold")
+        ax.set_title("", fontsize=26, fontweight="bold")
+        ax.set_xticks(range(len(order)))
+        ax.set_xticklabels([codec_labels[c] for c in order], fontsize=20,
+                           rotation=45, ha="right")
+        ax.tick_params(axis="both", labelsize=20)
+        if ylim_bottom is not None:
+            ax.set_ylim(bottom=ylim_bottom)
+
+    def _annotate_p5_p95(ax, data, order):
+        for i, codec in enumerate(order):
+            vals = data.loc[data["codec"] == codec, value_col].dropna().values
+            if len(vals) == 0:
+                continue
+            p5 = np.percentile(vals, 5)
+            p95 = np.percentile(vals, 95)
+            ax.scatter([i], [p95], marker="_", s=300, linewidths=3,
+                       color="black", zorder=10)
+            ax.annotate(annot_fmt.format(p95), (i, p95), textcoords="offset points",
+                        xytext=(0, 8), ha="center", fontsize=10, fontweight="bold",
+                        color="black")
+            ax.scatter([i], [p5], marker="_", s=300, linewidths=3,
+                       color="black", zorder=10)
+            ax.annotate(annot_fmt.format(p5), (i, p5), textcoords="offset points",
+                        xytext=(0, -14), ha="center", fontsize=10, fontweight="bold",
+                        color="black")
+
+    per_model_dir = output_dir / "codec_balanced_absolute_per_model"
+    per_model_dir.mkdir(parents=True, exist_ok=True)
+
+    # Two y-axis variants: data-driven (default) and pinned to start at 0.
+    YLIM_VARIANTS = [(None, ""), (0.0, "_y0")]
+
+    for ylim_bot, ylim_sfx in YLIM_VARIANTS:
+        fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+        _violin(ax, df_plot, codec_order)
+        _decorate(ax, codec_order, ylabel, ylim_bottom=ylim_bot)
+        plt.tight_layout()
+        out = output_dir / f"codec_balanced_absolute_violin{ylim_sfx}{_sel_suffix}.png"
+        plt.savefig(out, dpi=150, bbox_inches="tight")
+        plt.close()
+        print(f"Saved combined absolute NAP Balanced violin to: {out}")
+
+        fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+        _violin(ax, df_plot, codec_order)
+        _decorate(ax, codec_order, f"{ylabel} (5th & 95th percentile)", ylim_bottom=ylim_bot)
+        _annotate_p5_p95(ax, df_plot, codec_order)
+        plt.tight_layout()
+        out = output_dir / f"codec_balanced_absolute_violin_p5_p95{ylim_sfx}{_sel_suffix}.png"
+        plt.savefig(out, dpi=150, bbox_inches="tight")
+        plt.close()
+        print(f"Saved combined absolute NAP Balanced violin (p5/p95) to: {out}")
+
+        fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+        _boxen(ax, df_plot, codec_order)
+        _decorate(ax, codec_order, ylabel, ylim_bottom=ylim_bot)
+        plt.tight_layout()
+        out = output_dir / f"codec_balanced_absolute_boxen{ylim_sfx}{_sel_suffix}.png"
+        plt.savefig(out, dpi=150, bbox_inches="tight")
+        plt.close()
+        print(f"Saved combined absolute NAP Balanced boxen to: {out}")
+
+    for fam_key in fam_order_keys:
+        df_fam = df_plot[df_plot["family"] == fam_key]
+        if df_fam.empty:
+            continue
+        fam_codec_order = [c for c in codec_order if c in set(df_fam["codec"].unique())]
+        if not fam_codec_order:
+            continue
+        slug = _safe_name(fam_key)
+
+        for ylim_bot, ylim_sfx in YLIM_VARIANTS:
+            fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+            _violin(ax, df_fam, fam_codec_order)
+            _decorate(ax, fam_codec_order, ylabel, ylim_bottom=ylim_bot)
+            plt.tight_layout()
+            plt.savefig(per_model_dir / f"codec_balanced_absolute_violin{ylim_sfx}__{slug}{_sel_suffix}.png",
+                        dpi=150, bbox_inches="tight")
+            plt.close()
+
+            fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+            _violin(ax, df_fam, fam_codec_order)
+            _decorate(ax, fam_codec_order, f"{ylabel} (5th & 95th percentile)", ylim_bottom=ylim_bot)
+            _annotate_p5_p95(ax, df_fam, fam_codec_order)
+            plt.tight_layout()
+            plt.savefig(per_model_dir / f"codec_balanced_absolute_violin_p5_p95{ylim_sfx}__{slug}{_sel_suffix}.png",
+                        dpi=150, bbox_inches="tight")
+            plt.close()
+
+            fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+            _boxen(ax, df_fam, fam_codec_order)
+            _decorate(ax, fam_codec_order, ylabel, ylim_bottom=ylim_bot)
+            plt.tight_layout()
+            plt.savefig(per_model_dir / f"codec_balanced_absolute_boxen{ylim_sfx}__{slug}{_sel_suffix}.png",
+                        dpi=150, bbox_inches="tight")
+            plt.close()
+
+    print(f"Saved per-model absolute NAP Balanced plots → {per_model_dir}/")
+
+
 def generate_codec_delta_from_raw_groups_plot(pdf, output_dir: Path, model_colors: dict,
                                               models: list, best_idx: dict, best_col: str,
                                               best_metric: str = "balanced",
@@ -4417,9 +4629,9 @@ def generate_codec_delta_from_raw_groups_plot(pdf, output_dir: Path, model_color
     metrics = [
         ("PA CRISPR", "PA_group_crispr_mean_normalized_average_precision"),
         ("PA ORF", "PA_group_orf_mean_normalized_average_precision"),
-        ("PA Compound Diversity", "PA_group_high_mean_normalized_average_precision"),
+        ("PA Compound diverse", "PA_group_high_mean_normalized_average_precision"),
         ("PA Compound Bioactive-library", "PA_group_low_mean_normalized_average_precision"),
-        ("PC Compound Diversity", "PC_group_high_mean_normalized_average_precision"),
+        ("PC Compound diverse", "PC_group_high_mean_normalized_average_precision"),
         ("PC Compound Bioactive-library", "PC_group_low_mean_normalized_average_precision"),
     ]
     metrics = [(t, c) for t, c in metrics if c in pdf.columns and not pdf[c].isna().all()]
@@ -4689,11 +4901,11 @@ def generate_codec_delta_from_raw_groups_plot(pdf, output_dir: Path, model_color
     pa_metrics = [
         ("CRISPR", "PA CRISPR"),
         ("ORF", "PA ORF"),
-        ("Diversity", "PA Compound Diversity"),
+        ("Diversity", "PA Compound diverse"),
         ("Bioactive", "PA Compound Bioactive-library"),
     ]
     pc_metrics = [
-        ("Diversity", "PC Compound Diversity"),
+        ("Diversity", "PC Compound diverse"),
         ("Bioactive", "PC Compound Bioactive-library"),
     ]
     # Filter to metrics that were actually plotted
@@ -5149,6 +5361,7 @@ def main():
         _timed("codec_delta_from_raw", generate_codec_delta_from_raw_plot, pdf_plot, plot_dir, model_colors, **bkw)
         _timed("codec_delta_from_raw_groups", generate_codec_delta_from_raw_groups_plot, pdf_plot, plot_dir, model_colors, **bkw)
         _timed("codec_delta_balanced_violin", generate_codec_delta_balanced_violin, pdf_plot, plot_dir, model_colors, **bkw)
+        _timed("codec_balanced_absolute", generate_codec_balanced_absolute_violin, pdf_plot, plot_dir, model_colors, **bkw)
 
         if not args.pa_vs_pc:
             _timed("all_metrics", generate_all_metrics_plot, pdf_plot, plot_dir, model_colors, **bkw)

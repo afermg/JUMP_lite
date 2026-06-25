@@ -307,9 +307,9 @@ def plot_correlation_violinplot(df, output_path=SCRIPT_DIR / "output" / "correla
         ax=ax
     )
 
-    ax.set_xlabel('Compression Quality', fontsize=24, fontweight='bold')
+    ax.set_xlabel('', fontsize=24, fontweight='bold')
     ax.set_ylabel('Feature Correlation', fontsize=24, fontweight='bold')
-    ax.set_title('Feature Correlation', fontsize=24, fontweight='bold')
+    ax.set_title('', fontsize=24, fontweight='bold')
 
     ax.set_xticks(range(len(label_order)))
     ax.set_xticklabels([codec_labels[c] for c in label_order], fontsize=20, rotation=45, ha='right')
@@ -345,9 +345,9 @@ def plot_correlation_boxenplot(df, output_path=SCRIPT_DIR / "output" / "correlat
         ax=ax
     )
 
-    ax.set_xlabel('Compression Quality', fontsize=24, fontweight='bold')
+    ax.set_xlabel('', fontsize=24, fontweight='bold')
     ax.set_ylabel('Feature Correlation', fontsize=24, fontweight='bold')
-    ax.set_title('Feature Correlation', fontsize=24, fontweight='bold')
+    ax.set_title('', fontsize=24, fontweight='bold')
 
     ax.set_xticks(range(len(label_order)))
     ax.set_xticklabels([codec_labels[c] for c in label_order], fontsize=20, rotation=45, ha='right')
@@ -1408,9 +1408,12 @@ def main():
     plot_feature_group_violinplot(df)
     plot_feature_group_by_compartment(df)
     plot_feature_subgroups_by_compartment(df)
-    plot_features_ordered_by_noise(df)
-    plot_noise_ratio_vs_correlation(df)
-    plot_feature_similarity_vs_correlation(df)
+    try:
+        plot_features_ordered_by_noise(df)
+        plot_noise_ratio_vs_correlation(df)
+        plot_feature_similarity_vs_correlation(df)
+    except FileNotFoundError as _e:
+        print(f"  Skipping noise plots (missing input): {_e}")
 
     # Greenlist-filtered violin plot
     print("\nFiltering to greenlist features...")

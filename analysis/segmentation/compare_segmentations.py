@@ -1207,9 +1207,9 @@ def plot_iou_boxplot_combined(df_cell, df_nuclei, output_prefix):
                 ax=ax
             )
             ax.axhline(y=0.743, color='red', linestyle='--', alpha=0.6, linewidth=1.5)
-            ax.set_xlabel('Compression Quality', fontsize=24, fontweight='bold')
+            ax.set_xlabel('', fontsize=24, fontweight='bold')
             ax.set_ylabel('AP @ IoU=0.5', fontsize=24, fontweight='bold')
-            ax.set_title('Instance AP @ IoU=0.5', fontsize=24, fontweight='bold')
+            ax.set_title('', fontsize=24, fontweight='bold')
             ax.set_xticks(range(len(label_order)))
             ax.set_xticklabels([codec_labels[c] for c in label_order], fontsize=20, rotation=45, ha='right')
             ax.tick_params(axis='both', labelsize=20)
