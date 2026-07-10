@@ -1,13 +1,11 @@
 """
-Script to compress pulled tifs, grouping them by their site (bringing different channels into the same group).
+Script to compress pulled tifs with a single codec, grouping them by their site.
 
-Things to try:
-- Group also by sites
-- Try a more complex filter combination, such as delta and LZMA2
-- Support multiple processes encoding/decoding
-- Test GPU encoding
+Usage:
+    python compress_tif.py --input /path/to/raw --output /path/to/output --codec jpegxl_lossy_hq
 """
 
+import argparse
 import lzma
 from itertools import groupby
 from pathlib import Path
@@ -18,7 +16,6 @@ from time import perf_counter
 import numpy
 import zarr
 from joblib import Parallel, delayed
-from skimage.metrics import structural_similarity as ssim
 from tqdm import tqdm
 
 try:
@@ -36,50 +33,89 @@ from PIL import Image
 from zarr.codecs import BloscCodec
 
 
-def compress_single_group(key, items, store_name, compressor, zarr_format):
+# =============================================================================
+# Command line arguments
+# =============================================================================
+
+parser = argparse.ArgumentParser(description="Compress TIF images to zarr with a single codec")
+parser.add_argument("--input", type=str, default="data/raw/jump_target2_4plate/raw",
+                    help="Input directory containing .tif files (default: data/raw/jump_target2_4plate/raw)")
+parser.add_argument("--output", type=str, default="data/jump_target2_4plate/",
+                    help="Output directory for compressed zarr files (default: data/jump_target2_4plate/)")
+parser.add_argument("--codec", type=str, default="zstd",
+                    help="Codec to use: zstd, jpegxl_lossy_hq, jpegxl_lossy_mq, jpegxl_lossy_lq, jpegxl_lossy_effort_3 (default: zstd)")
+parser.add_argument("--overwrite", action="store_true",
+                    help="Overwrite existing zarr files")
+parser.add_argument("--n-jobs", type=int, default=16,
+                    help="Number of parallel workers for group compression (default: 16)")
+parser.add_argument("--no-skip-existing", action="store_true",
+                    help="Don't skip already compressed groups (recompress everything)")
+args = parser.parse_args()
+
+
+# =============================================================================
+# Compression functions
+# =============================================================================
+
+def compress_single_group(key, items, store_name, compressor, zarr_format, skip_existing=True):
     """
     Compress a single image group (site).
+
+    Returns:
+        tuple: (site_name, success, error_message)
     """
     site_name = "__".join(key)
-    nchannels = len(items)
-    example_arr = numpy.array(Image.open(items[0]))
-    shape = example_arr.shape
-    dtype = example_arr.dtype
 
-    store = zarr.storage.LocalStore(store_name)
+    # Check if already compressed
+    if skip_existing:
+        store = zarr.storage.LocalStore(store_name)
+        try:
+            root = zarr.open_group(store, mode="r")
+            if site_name in root:
+                return (site_name, "skipped", None)
+        except Exception:
+            pass  # Store doesn't exist yet, continue with compression
 
-    arr = zarr.create_array(
-        store=store,
-        name=site_name,
-        shape=(nchannels, *shape),
-        chunks=(nchannels, *shape),
-        dtype=dtype,
-        compressors=compressor,
-        zarr_format=zarr_format,
-    )
-    tmp_arr = numpy.zeros((nchannels, *shape))
-    for i, img_path in enumerate(items):
-        tmp_arr[i] = numpy.array(Image.open(img_path))
+    try:
+        nchannels = len(items)
+        example_arr = numpy.array(Image.open(items[0]))
+        shape = example_arr.shape
+        dtype = example_arr.dtype
 
-    arr[:] = tmp_arr
+        store = zarr.storage.LocalStore(store_name)
+
+        arr = zarr.create_array(
+            store=store,
+            name=site_name,
+            shape=(nchannels, *shape),
+            chunks=(nchannels, *shape),
+            dtype=dtype,
+            compressors=compressor,
+            zarr_format=zarr_format,
+        )
+        tmp_arr = numpy.zeros((nchannels, *shape))
+        for i, img_path in enumerate(items):
+            tmp_arr[i] = numpy.array(Image.open(img_path))
+
+        arr[:] = tmp_arr
+        return (site_name, "success", None)
+
+    except Exception as e:
+        return (site_name, "error", str(e))
 
 
-def compress_tif(name, compressor, output_dir, groups, overwrite=False, n_jobs_inner=16):
+def compress_tif(name, compressor, output_dir, groups, overwrite=False, n_jobs_inner=16, skip_existing=True):
     """
-    Compress tifs using different algorithms and record time taken and resulting file size.
     Uses parallel processing for group compression.
 
     Args:
         n_jobs_inner: Number of parallel jobs for group compression within each codec.
                       Default 16 to avoid over-parallelization when running multiple codecs.
+        skip_existing: Skip groups that have already been compressed (default: True)
     """
     store_name = Path(output_dir) / f"{name}.zarr"
-    if store_name.exists():  # To overwrite
-        if overwrite:
-            rmtree(store_name)
-        else:
-            print(f"Skipping {name}")
-            return {name: 0}
+    if store_name.exists() and overwrite:
+        rmtree(store_name)
 
     t_start = perf_counter()
 
@@ -89,36 +125,54 @@ def compress_tif(name, compressor, output_dir, groups, overwrite=False, n_jobs_i
     if not isinstance(compressor, zarr.codecs.blosc.BloscCodec):
         zarr_format = 2
 
-    subset = list(groups.items())#[:5]
+    subset = list(groups.items())
 
     # Compress groups in parallel with limited parallelism to avoid thrashing
-    Parallel(n_jobs=n_jobs_inner, prefer="threads")(
-        delayed(compress_single_group)(key, items, store_name, compressor, zarr_format)
+    results = Parallel(n_jobs=n_jobs_inner, prefer="threads")(
+        delayed(compress_single_group)(key, items, store_name, compressor, zarr_format, skip_existing)
         for key, items in tqdm(subset, total=len(subset), desc=name, leave=False)
     )
 
-    return {name: perf_counter() - t_start}
+    # Count results
+    success_count = sum(1 for r in results if r[1] == "success")
+    skipped_count = sum(1 for r in results if r[1] == "skipped")
+    error_count = sum(1 for r in results if r[1] == "error")
+
+    # Report errors
+    errors = [(r[0], r[2]) for r in results if r[1] == "error"]
+    if errors:
+        print(f"\n  Errors ({len(errors)}):")
+        for site_name, error_msg in errors[:10]:
+            print(f"    {site_name}: {error_msg[:80]}")
+        if len(errors) > 10:
+            print(f"    ... and {len(errors) - 10} more errors")
+
+    return {
+        "name": name,
+        "time": perf_counter() - t_start,
+        "success": success_count,
+        "skipped": skipped_count,
+        "errors": error_count,
+        "error_list": errors
+    }
 
 
-input_dir = Path("/work/datasets/jump_target2_4plate/raw")
-output_dir = input_dir.parent
+# =============================================================================
+# Main
+# =============================================================================
+
+input_dir = Path(args.input)
+output_dir = Path(args.output)
+overwrite = args.overwrite
 
 print("Input dir:", input_dir)
 print("Output dir:", output_dir)
-overwrite = True
 
 output_dir.mkdir(parents=True, exist_ok=True)
 
-
-filters = [
-    dict(id=lzma.FILTER_DELTA, dist=9),
-    dict(id=lzma.FILTER_LZMA2, preset=9),
-]
+# Define available codecs
 compressing_algs = {
-    # "lz4": {"clevel": 9}, # Too similar to lz4hc, but usually worse
-    # "lz4hc": {"clevel": 9},
-    "zstd": {"clevel": 9},
-    # "zlib": {"clevel": 9},
+    "zstd": {"clevel": 9}
 }
 compressors_blosc = {
     k: BloscCodec(cname=k, shuffle="bitshuffle", **v)
@@ -132,29 +186,23 @@ compressors = {
 # Add imagecodecs compressors if available
 if IMAGECODECS_AVAILABLE:
     compressors.update({
-        # "brotli": Brotli(level=11),
-        # "jpegxl_lossless": Jpegxl(lossless=True, level=9),
         "jpegxl_lossy_hq": Jpegxl(lossless=False, distance=1.0),
-        # "jpegxl_lossy_hmq": Jpegxl(lossless=False, distance=2.0),
         "jpegxl_lossy_mq": Jpegxl(lossless=False, distance=3.0),
-        # "jpegxl_lossy_mlq": Jpegxl(lossless=False, distance=4.0),
         "jpegxl_lossy_lq": Jpegxl(lossless=False, distance=5.0),
-        # "jpegxl_lossy_effort_1": Jpegxl(lossless=False, distance=1.0, effort=1),
-        "jpegxl_lossy_effort_3": Jpegxl(lossless=False, distance=1.0, effort=3),
-        # "jpegxl_lossy_effort_5": Jpegxl(lossless=False, distance=1.0, effort=5),
-        # "jpegxl_lossy_decompression_1": Jpegxl(lossless=False, distance=1.0, decodingspeed=1),
-        # "jpegxl_lossy_decompression_3": Jpegxl(lossless=False, distance=1.0, decodingspeed=3),
-        # "jpegxl_lossy_decompression_5": Jpegxl(lossless=False, distance=1.0, decodingspeed=5),
+        "jpegxl_lossy_effort_3": Jpegxl(lossless=False, distance=1.0, effort=3)
     })
-# for v in {
-#     "preset": {"preset": 9},
-#     "filters": {"filters": filters, "format": lzma.FORMAT_RAW},
-# }.values():
-#     compressors[k]append(LZMA(**v))
 
+# Select the specified codec
+if args.codec not in compressors:
+    print(f"Error: Unknown codec '{args.codec}'")
+    print(f"Available codecs: {list(compressors.keys())}")
+    exit(1)
 
-# %% Group files based on their name
+name = args.codec
+compressor = compressors[name]
+print(f"Using codec: {name}")
 
+# Group files based on their name
 key_fn = lambda x: (*(x.name.split("__"))[:4], (x.name.split("__"))[5])
 
 groups = {
@@ -162,101 +210,38 @@ groups = {
     for k, g in groupby(sorted(input_dir.glob("*.tif"), key=key_fn), key=key_fn)
 }
 
-# Subsample groups for testing
-# groups = dict(list(groups.items())[:5]) 
+print(f"Found {len(groups)} groups to compress")
 
-# %% Run compression and record time
-# Use limited parallelism: outer level = codecs (12), inner level = groups (16)
-# This prevents over-saturation: 12 * 16 = 192 max threads (matches CPU count)
-n_jobs_codecs = 32  # Number of codecs to compress in parallel
-n_jobs_groups = 16  # Number of groups to compress in parallel within each codec
+skip_existing = not args.no_skip_existing
+if skip_existing:
+    print("Skipping already compressed groups (use --no-skip-existing to recompress)")
 
-compression_time = Parallel(n_jobs=n_jobs_codecs, prefer="threads")(
-    delayed(compress_tif)(name, compressor, output_dir, groups, overwrite, n_jobs_groups)
-    for name, compressor in compressors.items()
-)
-compression_time = {k: v for d in list(compression_time) for k, v in d.items()}
+# Run compression for single codec
+result = compress_tif(name, compressor, output_dir, groups, overwrite, args.n_jobs, skip_existing)
 
-# %%
-decompression_time = {}
-for name in tqdm(compressors.keys(), desc="Decompression"):
-    # numcodecs.register_codec(compressor)
-    store_name = Path(output_dir) / f"{name}.zarr"
+print(f"\nCompression complete:")
+print(f"  Time: {result['time']:.1f} seconds")
+print(f"  Success: {result['success']}")
+print(f"  Skipped: {result['skipped']}")
+print(f"  Errors: {result['errors']}")
 
+# Measure file size
+store_name = output_dir / f"{name}.zarr"
+if store_name.exists():
+    filesize = sum(file.stat().st_size for file in store_name.rglob("*"))
+    print(f"Output size: {filesize / 1e9:.2f} GB")
+
+# Decompression test
+if store_name.exists():
+    print("\nTesting decompression...")
     store = zarr.storage.LocalStore(store_name)
-
-    # TODO add decompression test
     t_start = perf_counter()
-
     root = zarr.group(store)
-    for k in root.keys():
-        tmp = root[k][:]
-
-    duration = perf_counter() - t_start
-    decompression_time[name] = duration
-
-print("Decompression time (milliseconds)")
-pprint(
-    {
-        k: round(v * 1000, 1)
-        for k, v in sorted(decompression_time.items(), key=lambda x: x[1])
-    },
-    sort_dicts=False,
-)
-
-"""
-Decompression time (seconds)
-{'lz4hc': 1.33,
- 'lz4': 1.47,
- 'zstd': 1.95,
- 'zlib': 4.84,
- 'brotli': 8.89,
- 'jpegxl': 23.93}
-
-
-Decompression time (Milliseconds)
-{'lz4hc': 2194.9,
- 'zstd': 2992.9,
- 'zlib': 4841.3,
- 'jpegxl_lossy_hq': 9817.7,
- 'jpegxl_lossy_mq': 10320.9,
- 'jpegxl_lossy_lq': 22086.8,
- 'jpegxl_lossless': 37673.3}
-Filesize (fraction of raw)
-{'jpegxl_lossy_lq': 0.007,
- 'jpegxl_lossy_mq': 0.012,
- 'jpegxl_lossy_hq': 0.031,
- 'jpegxl_lossless': 0.481,
- 'zstd': 0.595,
- 'zlib': 0.607,
- 'lz4hc': 0.628,
- 'raw': 1.0}
-"""
-# %%
-filesize = {}
-
-for name in (*compressors.keys(), "raw"):
-    if name != "raw":
-        name = f"{name}.zarr"
-    filesize[name] = sum(file.stat().st_size for file in (output_dir / name).rglob("*"))
-print("Filesize (fraction of raw)")
-max_val = max([x for x in filesize.values()])
-pprint(
-    {
-        Path(k).stem: round(v / max_val, 3)
-        for k, v in sorted(filesize.items(), key=lambda x: x[1])
-    },
-    sort_dicts=False,
-)
-"""
-Filesize (fraction of raw)
-{'jpegxl': 0.46,
- 'zstd': 0.57,
- 'zlib': 0.58,
- 'brotli': 0.59,
- 'lz4hc': 0.6,
- 'lz4': 0.63,
- 'raw': 1.0}
-"""
-
-
+    keys = list(root.keys())
+    if keys:
+        for k in keys:
+            tmp = root[k][:]
+        decompression_time = perf_counter() - t_start
+        print(f"Decompression time: {decompression_time * 1000:.1f} ms")
+    else:
+        print("No data to decompress")

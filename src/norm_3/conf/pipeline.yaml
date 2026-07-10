@@ -1,0 +1,144 @@
+# norm_3 GPU-Accelerated Pipeline Configuration
+# =============================================
+# Usage: pixi run python -m norm_3.pipeline input.path=data/profiles.parquet
+
+defaults:
+  - _self_
+
+# Input/Output
+input:
+  path: "data/features/input.parquet"
+
+output:
+  path: "data/features/output.parquet"
+  compression: zstd
+
+# GPU Settings
+gpu:
+  device: 0                    # GPU device ID
+  memory_limit_gb: null        # Optional memory limit in GB (null = no limit)
+  fallback_to_cpu: true        # Fall back to CPU if GPU unavailable
+
+# Validation
+abort_on_invalid_features: true
+max_pc1_variance: 0.50
+abort_on_ill_conditioned_tvn: true
+
+# Pipeline Steps
+# ==============
+# Each step has:
+#   - name: step function name
+#   - enabled: whether to run this step
+#   - params: step-specific parameters
+
+steps:
+  # 1. Clean NaN/Inf values
+  - name: clean_nans
+    enabled: true
+    params:
+      na_cutoff: 0.30
+
+  # 2. Merge with metadata (optional)
+  - name: merge_metadata
+    enabled: false
+    params:
+      skip_merge: false
+      # metadata_path: "path/to/metadata.parquet"
+
+  # 3. Filter low-variance features (for CellProfiler data)
+  - name: filter_features
+    enabled: false
+    params:
+      operations:
+        - name: variance_threshold
+          freq_cut: 0.05
+          unique_cut: 0.01
+        - name: drop_outliers
+          outlier_cutoff: 500
+
+  # 4. Normalize using RobustMAD (recommended for Cell Painting)
+  - name: normalize_robustmad
+    enabled: true
+    params:
+      batch_col: Metadata_Plate
+      fit_on_controls: true
+      control_col: Metadata_control_type
+      control_key: negcon
+      epsilon: 1.0e-18
+
+  # 5. Optional: Standard normalization (alternative to RobustMAD)
+  - name: normalize_standardize
+    enabled: false
+    params:
+      batch_col: Metadata_Plate
+      fit_on_controls: true
+      control_col: Metadata_control_type
+      control_key: negcon
+
+  # 6. Optional: Spherize/whitening
+  - name: normalize_spherize
+    enabled: false
+    params:
+      method: ZCA-cor
+      batch_col: Metadata_Plate
+      fit_on_controls: false
+      epsilon: 1.0e-6
+
+  # 7. Optional: TVN (simple version)
+  - name: normalize_tvn
+    enabled: false
+    params:
+      alpha: 0.5
+      epsilon: 1.0
+      batch_col: Metadata_Plate
+      fit_on_controls: true
+      control_col: Metadata_control_type
+      control_key: negcon
+
+  # 8. Optional: TVN EFAAR (full CORAL implementation)
+  - name: normalize_tvn_efaar
+    enabled: false
+    params:
+      batch_col: Metadata_Plate
+      control_col: Metadata_control_type
+      control_key: negcon
+      epsilon: 0.5
+      n_components: 128
+
+  # 9. Optional: PCA dimensionality reduction
+  - name: normalize_pca
+    enabled: false
+    params:
+      n_components: 128
+      whiten: false
+      fit_on_controls: true
+      control_col: Metadata_control_type
+      control_key: negcon
+
+  # 10. Optional: Prune correlated features
+  - name: prune_correlated
+    enabled: false
+    params:
+      threshold: 0.9
+
+  # 11. Aggregate wells
+  - name: aggregate_wells
+    enabled: true
+    params:
+      strata:
+        - Metadata_Plate
+        - Metadata_Well
+      method: median
+
+  # 12. Evaluate metrics
+  - name: evaluate_metrics
+    enabled: true
+    params:
+      skip_visualization: true
+      skip_umap: true
+      n_top_compounds: 20
+      min_compounds_per_target: 3
+      compound_col: Metadata_pert_iname
+      target_col: Metadata_target_list
+      negcon_col: Metadata_negcon
+      batch_col: Metadata_Plate

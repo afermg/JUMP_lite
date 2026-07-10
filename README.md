@@ -1,30 +1,73 @@
-# Combined Compression and Quality Metrics
+# JUMP_lite
 
-Color Legend: 🟢 Best → 🟡 Average → 🔴 Worst
+Reproduction code for the WACV submission **"<paper title>"**, which evaluates
+how lossy image compression affects downstream cell-painting analysis (model
+ranking, MOTIVE retrieval, segmentation, feature stability).
 
-| codec | filesize_ratio | compression_time_sec | decompression_time_sec | psnr_mean | ssim_mean | lpips_mean |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| jpegxl_lossless | 🔴 0.4811 | 🔴 1140.4031 | 🔴 40.3422 | 🔴 inf | 🟢 1.0000 | 🟢 0.0000 |
-| jpegxl_lossy_decompression_1 | 🟢 0.0312 | 🔴 1130.3032 | 🟢 11.9842 | 🔴 60.5440 | 🟢 0.9992 | 🟢 0.0038 |
-| jpegxl_lossy_decompression_3 | 🟢 0.0313 | 🔴 1112.0025 | 🟢 10.4759 | 🔴 60.5103 | 🟢 0.9992 | 🟢 0.0036 |
-| jpegxl_lossy_decompression_5 | 🟢 0.0365 | 🔴 1053.8656 | 🟡 23.6609 | 🔴 60.4353 | 🟢 0.9992 | 🟢 0.0030 |
-| jpegxl_lossy_effort_1 | 🟢 0.0280 | 🟢 752.2647 | 🟢 11.7633 | 🔴 58.7934 | 🟢 0.9987 | 🟢 0.0048 |
-| jpegxl_lossy_effort_3 | 🟢 0.0261 | 🟢 751.9134 | 🟢 13.7266 | 🔴 58.7934 | 🟢 0.9987 | 🟢 0.0048 |
-| jpegxl_lossy_effort_5 | 🟢 0.0305 | 🔴 1124.7426 | 🟢 12.6818 | 🔴 60.5447 | 🟢 0.9992 | 🟢 0.0038 |
-| jpegxl_lossy_hmq | 🟢 0.0176 | 🔴 1132.2740 | 🟢 13.5133 | 🔴 57.5030 | 🟢 0.9983 | 🟢 0.0106 |
-| jpegxl_lossy_hq | 🟢 0.0305 | 🔴 1129.6467 | 🟢 12.6491 | 🔴 60.5447 | 🟢 0.9992 | 🟢 0.0038 |
-| jpegxl_lossy_lq | 🟢 0.0071 | 🔴 1127.0092 | 🟡 22.1623 | 🔴 52.3416 | 🔴 0.9948 | 🔴 0.0555 |
-| jpegxl_lossy_mlq | 🟢 0.0088 | 🔴 1124.0523 | 🟡 22.7159 | 🔴 53.4452 | 🔴 0.9959 | 🔴 0.0422 |
-| jpegxl_lossy_mq | 🟢 0.0118 | 🔴 1121.1329 | 🟡 16.6795 | 🔴 55.2753 | 🟡 0.9972 | 🟡 0.0217 |
-| lz4hc | 🔴 0.6282 | 🔴 1121.7081 | 🟢 2.1285 | 🔴 inf | 🟢 1.0000 | 🟢 0.0000 |
-| zlib | 🔴 0.6073 | 🔴 1174.8494 | 🟢 6.6577 | 🔴 inf | 🟢 1.0000 | 🟢 0.0000 |
-| zstd | 🔴 0.5949 | 🔴 1157.1907 | 🟢 3.0154 | 🔴 inf | 🟢 1.0000 | 🟢 0.0000 |
+## What's here
 
-## Metrics Explanation
+```
+.
+├── README.md                  this file
+├── REPRODUCE.md               step-by-step reproduction guide
+├── PIPELINE.md                technical pipeline reference
+├── justfile                   all recipes (run `just --list`)
+├── flake.nix                  Nix dev shell (provides pixi + system libs)
+├── pyproject.toml / uv.lock   Python deps (managed by uv)
+├── src/                       compression, feature extraction, motive eval
+├── src/norm_3/                normalization sweep pipeline
+├── analysis/                  per-figure analysis scripts
+├── scripts/                   one-shot data-prep utilities
+├── metadata/                  curated metadata used by the pipeline
+```
 
-- **filesize_ratio**: Compressed size / raw size (lower is better)
-- **compression_time_sec**: Time to compress all images (lower is better)
-- **decompression_time_sec**: Time to decompress all images (lower is better)
-- **psnr_mean**: Peak Signal-to-Noise Ratio in dB (higher is better, 30+ good, 35+ excellent)
-- **ssim_mean**: Structural Similarity Index 0-1 (higher is better, 0.9+ good)
-- **lpips_mean**: Learned Perceptual similarity (lower is better, <0.1 good)
+## Quick start
+
+```bash
+# 1. Environment
+nix develop                    # pixi + system libs auto-activated
+
+# 2. Verify
+just --list                    # show recipes
+just check-env                 # confirm Python + CUDA work
+
+# 3. Reproduce paper figures (assumes you have the per-(model, codec) sweep
+#    outputs — see REPRODUCE.md §2 for what to drop into data/)
+just clean-results
+just reproduce                 # ~55 min, ~350 MB written to data/results/
+```
+
+End-to-end from raw images is `just produce-paper` — many hours, hundreds of
+GB of disk. See REPRODUCE.md for the full pipeline.
+
+## Smoke test
+
+To validate the sweep machinery without committing to a full run, the smoke
+recipes collapse the per-(model, codec) grid from 48 → 4:
+
+```bash
+just sweep-v11-lite-smoke 0 4  # GPU 0, 4 joblib workers — ~20–40 min
+```
+
+## Reproducing on a different machine
+
+Set `DATA_ROOT` to point at wherever your raw data lives:
+
+```bash
+export DATA_ROOT=/my/storage/jump_data
+just check-data                # verifies all upstream paths resolve
+just produce-paper             # end-to-end
+```
+
+The default is `./data`, so a self-contained `data/` directory inside the repo
+works without configuration.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
+
+## Citation
+
+```
+TODO bibtex
+```

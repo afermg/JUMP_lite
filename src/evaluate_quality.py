@@ -11,7 +11,7 @@ Usage:
     python src/evaluate_quality.py --no-plots   # Skip visualization generation
 
 The script automatically:
-- Uses the same paths as compress_tif.py (/work/datasets/jump_toy/raw)
+- Uses the same paths as compress_tif.py (data/raw/jump_toy/raw)
 - Discovers all .zarr compression codecs in the output directory
 - Generates quality comparisons and exports results
 
@@ -52,6 +52,33 @@ try:
 except (ImportError, AttributeError) as e:
     print(f"Warning: imagecodecs.numcodecs not available: {e}")
     print("JpegXL and Brotli codecs will not be available")
+
+
+def compute_laplacian_variance(img: np.ndarray) -> float:
+    """Variance of Laplacian response across all channels. Higher = sharper.
+
+    Reference: squidpy _sharpness_metrics._laplacian_variance
+    """
+    from skimage.filters import laplace
+    variances = []
+    for c in range(img.shape[0]):  # img shape: (C, H, W)
+        lap = laplace(img[c].astype(np.float32))
+        variances.append(float(np.var(lap)))
+    return float(np.mean(variances))
+
+
+def compute_tenengrad(img: np.ndarray) -> float:
+    """Mean Tenengrad energy (sum of squared Sobel gradients) across channels. Higher = sharper.
+
+    Reference: squidpy _sharpness_metrics._tenengrad_mean
+    """
+    from skimage.filters import sobel_h, sobel_v
+    energies = []
+    for c in range(img.shape[0]):  # img shape: (C, H, W)
+        channel = img[c].astype(np.float32)
+        energy = sobel_h(channel) ** 2 + sobel_v(channel) ** 2
+        energies.append(float(energy.mean()))
+    return float(np.mean(energies))
 
 
 def setup_device() -> torch.device:
@@ -161,66 +188,92 @@ def normalize_image_for_metrics(img: np.ndarray) -> torch.Tensor:
 def compute_metrics(
     original: np.ndarray,
     compressed: np.ndarray,
-    device: torch.device,
-    psnr_metric: PeakSignalNoiseRatio,
-    ssim_metric: StructuralSimilarityIndexMeasure,
-    lpips_metric: LPIPS,
+    device: torch.device = None,
+    psnr_metric: PeakSignalNoiseRatio = None,
+    ssim_metric: StructuralSimilarityIndexMeasure = None,
+    lpips_metric: LPIPS = None,
+    sharpness_only: bool = False,
 ) -> Dict[str, float]:
     """
-    Compute PSNR, SSIM, and LPIPS for a pair of images.
+    Compute PSNR, SSIM, LPIPS, and sharpness metrics for a pair of images.
 
     Args:
         original: Original image (C, H, W)
         compressed: Compressed image (C, H, W)
-        device: torch device
-        psnr_metric: Initialized PSNR metric
-        ssim_metric: Initialized SSIM metric
-        lpips_metric: Initialized LPIPS metric
+        device: torch device (not needed if sharpness_only)
+        psnr_metric: Initialized PSNR metric (not needed if sharpness_only)
+        ssim_metric: Initialized SSIM metric (not needed if sharpness_only)
+        lpips_metric: Initialized LPIPS metric (not needed if sharpness_only)
+        sharpness_only: If True, skip PSNR/SSIM/LPIPS and compute only sharpness
 
     Returns:
-        Dict with 'psnr', 'ssim', 'lpips' values
+        Dict with metric values
     """
-    # Normalize and move to device
-    orig_tensor = normalize_image_for_metrics(original).to(device)
-    comp_tensor = normalize_image_for_metrics(compressed).to(device)
+    result = {}
 
-    # Compute PSNR
-    psnr_value = psnr_metric(comp_tensor, orig_tensor).item()
+    if not sharpness_only:
+        # Normalize and move to device
+        orig_tensor = normalize_image_for_metrics(original).to(device)
+        comp_tensor = normalize_image_for_metrics(compressed).to(device)
 
-    # Compute SSIM
-    ssim_value = ssim_metric(comp_tensor, orig_tensor).item()
+        # Compute PSNR
+        psnr_value = psnr_metric(comp_tensor, orig_tensor).item()
 
-    # LPIPS requires 3-channel images (RGB)
-    # For multi-channel microscopy images, we'll compute LPIPS per channel and average
-    if orig_tensor.shape[1] == 3:
-        # Already 3 channels
-        lpips_value = lpips_metric(comp_tensor, orig_tensor).item()
-    else:
-        # Compute LPIPS per channel
-        lpips_values = []
-        for c in range(orig_tensor.shape[1]):
-            # Repeat channel 3 times to create pseudo-RGB
-            orig_rgb = orig_tensor[:, c:c+1, :, :].repeat(1, 3, 1, 1)
-            comp_rgb = comp_tensor[:, c:c+1, :, :].repeat(1, 3, 1, 1)
-            lpips_values.append(lpips_metric(comp_rgb, orig_rgb).item())
-        lpips_value = np.mean(lpips_values)
+        # Compute SSIM
+        ssim_value = ssim_metric(comp_tensor, orig_tensor).item()
 
-    return {
-        'psnr': psnr_value,
-        'ssim': ssim_value,
-        'lpips': lpips_value,
-    }
+        # LPIPS requires 3-channel images (RGB)
+        # For multi-channel microscopy images, we'll compute LPIPS per channel and average
+        if orig_tensor.shape[1] == 3:
+            # Already 3 channels
+            lpips_value = lpips_metric(comp_tensor, orig_tensor).item()
+        else:
+            # Compute LPIPS per channel
+            lpips_values = []
+            for c in range(orig_tensor.shape[1]):
+                # Repeat channel 3 times to create pseudo-RGB
+                orig_rgb = orig_tensor[:, c:c+1, :, :].repeat(1, 3, 1, 1)
+                comp_rgb = comp_tensor[:, c:c+1, :, :].repeat(1, 3, 1, 1)
+                lpips_values.append(lpips_metric(comp_rgb, orig_rgb).item())
+            lpips_value = np.mean(lpips_values)
+
+        result.update({
+            'psnr': psnr_value,
+            'ssim': ssim_value,
+            'lpips': lpips_value,
+        })
+
+    # Sharpness metrics (computed on CPU numpy arrays)
+    orig_lap = compute_laplacian_variance(original)
+    comp_lap = compute_laplacian_variance(compressed)
+    orig_ten = compute_tenengrad(original)
+    comp_ten = compute_tenengrad(compressed)
+
+    result.update({
+        'laplacian_orig': orig_lap,
+        'laplacian_comp': comp_lap,
+        'laplacian_ratio': comp_lap / orig_lap if orig_lap > 0 else float('nan'),
+        'laplacian_diff': orig_lap - comp_lap,
+        'tenengrad_orig': orig_ten,
+        'tenengrad_comp': comp_ten,
+        'tenengrad_ratio': comp_ten / orig_ten if orig_ten > 0 else float('nan'),
+        'tenengrad_diff': orig_ten - comp_ten,
+    })
+
+    return result
 
 
 def evaluate_all_codecs(
     original_data: Dict[str, np.ndarray],
     output_dir: Path,
-    device: torch.device,
+    device: torch.device = None,
+    sharpness_only: bool = False,
 ) -> pd.DataFrame:
     """
     Evaluate all compression codecs against original images.
 
-    Returns DataFrame with columns: site_name, codec, psnr, ssim, lpips
+    Returns DataFrame with columns: site_name, codec, and metric columns.
+    If sharpness_only, only sharpness metrics are computed (no GPU needed).
     """
     # Find all codec zarr directories
     codec_dirs = [d for d in output_dir.glob("*.zarr") if d.is_dir()]
@@ -231,19 +284,24 @@ def evaluate_all_codecs(
 
     print(f"Found {len(codec_names)} codecs to evaluate: {codec_names}")
 
-    # Initialize metrics on device
-    # data_range=1.0 since we normalize images to [0, 1]
-    psnr_metric = PeakSignalNoiseRatio(data_range=1.0).to(device)
-    ssim_metric = StructuralSimilarityIndexMeasure(data_range=1.0).to(device)
-    # Using VGG for better perceptual accuracy. Options: 'alex' (fast), 'vgg' (more accurate), 'squeeze' (fastest)
-    lpips_metric = LPIPS(net='vgg').to(device)
+    # Initialize metrics on device (skip if sharpness_only)
+    psnr_metric = None
+    ssim_metric = None
+    lpips_metric = None
+    if not sharpness_only:
+        # data_range=1.0 since we normalize images to [0, 1]
+        psnr_metric = PeakSignalNoiseRatio(data_range=1.0).to(device)
+        ssim_metric = StructuralSimilarityIndexMeasure(data_range=1.0).to(device)
+        # Using VGG for better perceptual accuracy. Options: 'alex' (fast), 'vgg' (more accurate), 'squeeze' (fastest)
+        lpips_metric = LPIPS(net='vgg').to(device)
 
     # Collect results
     results = []
 
     site_names = list(original_data.keys())
 
-    for codec_name in tqdm(codec_names, desc="Evaluating codecs"):
+    desc = "Computing sharpness" if sharpness_only else "Evaluating codecs"
+    for codec_name in tqdm(codec_names, desc=desc):
         try:
             compressed_data = load_compressed_images(output_dir, codec_name, site_names)
 
@@ -257,7 +315,8 @@ def evaluate_all_codecs(
                 # Compute metrics
                 metrics = compute_metrics(
                     original, compressed, device,
-                    psnr_metric, ssim_metric, lpips_metric
+                    psnr_metric, ssim_metric, lpips_metric,
+                    sharpness_only=sharpness_only,
                 )
 
                 results.append({
@@ -274,53 +333,106 @@ def evaluate_all_codecs(
     return df
 
 
-def print_comparison_table(df: pd.DataFrame):
+def print_comparison_table(df: pd.DataFrame, sharpness_only: bool = False):
     """Print a formatted comparison table to the terminal using rich."""
     console = Console()
 
-    # Compute average metrics per codec
-    avg_metrics = df.groupby('codec')[['psnr', 'ssim', 'lpips']].mean()
-    avg_metrics = avg_metrics.sort_values('ssim', ascending=False)
+    sharpness_cols = [
+        'laplacian_orig', 'laplacian_comp', 'laplacian_ratio', 'laplacian_diff',
+        'tenengrad_orig', 'tenengrad_comp', 'tenengrad_ratio', 'tenengrad_diff',
+    ]
 
-    # Create rich table
-    table = Table(title="Compression Quality Comparison", show_header=True, header_style="bold magenta")
+    if sharpness_only:
+        # Sharpness-only table
+        avg_metrics = df.groupby('codec')[sharpness_cols].mean()
+        avg_metrics = avg_metrics.sort_values('laplacian_ratio', ascending=False)
 
-    table.add_column("Codec", style="cyan", no_wrap=True)
-    table.add_column("PSNR (dB)", justify="right", style="green")
-    table.add_column("SSIM", justify="right", style="green")
-    table.add_column("LPIPS", justify="right", style="green")
-    table.add_column("Quality", justify="center")
+        table = Table(title="Sharpness Metrics Comparison", show_header=True, header_style="bold magenta")
+        table.add_column("Codec", style="cyan", no_wrap=True)
+        table.add_column("Lap. Orig", justify="right", style="green")
+        table.add_column("Lap. Comp", justify="right", style="green")
+        table.add_column("Lap. Ratio", justify="right", style="green")
+        table.add_column("Lap. Diff", justify="right", style="green")
+        table.add_column("Ten. Orig", justify="right", style="green")
+        table.add_column("Ten. Comp", justify="right", style="green")
+        table.add_column("Ten. Ratio", justify="right", style="green")
+        table.add_column("Ten. Diff", justify="right", style="green")
 
-    for codec, row in avg_metrics.iterrows():
-        psnr = row['psnr']
-        ssim = row['ssim']
-        lpips = row['lpips']
+        for codec, row in avg_metrics.iterrows():
+            table.add_row(
+                codec,
+                f"{row['laplacian_orig']:.4f}",
+                f"{row['laplacian_comp']:.4f}",
+                f"{row['laplacian_ratio']:.4f}",
+                f"{row['laplacian_diff']:.4f}",
+                f"{row['tenengrad_orig']:.4f}",
+                f"{row['tenengrad_comp']:.4f}",
+                f"{row['tenengrad_ratio']:.4f}",
+                f"{row['tenengrad_diff']:.4f}",
+            )
+    else:
+        # Full table with all metrics
+        metric_cols = ['psnr', 'ssim', 'lpips'] + sharpness_cols
+        avg_metrics = df.groupby('codec')[metric_cols].mean()
+        avg_metrics = avg_metrics.sort_values('ssim', ascending=False)
 
-        # Determine overall quality
-        if ssim >= 0.95 and lpips <= 0.05:
-            quality = "[bold green]Excellent[/bold green]"
-        elif ssim >= 0.90 and lpips <= 0.10:
-            quality = "[green]Good[/green]"
-        elif ssim >= 0.80 and lpips <= 0.20:
-            quality = "[yellow]Fair[/yellow]"
-        else:
-            quality = "[red]Poor[/red]"
+        table = Table(title="Compression Quality Comparison", show_header=True, header_style="bold magenta")
 
-        table.add_row(
-            codec,
-            f"{psnr:.2f}",
-            f"{ssim:.4f}",
-            f"{lpips:.4f}",
-            quality,
-        )
+        table.add_column("Codec", style="cyan", no_wrap=True)
+        table.add_column("PSNR (dB)", justify="right", style="green")
+        table.add_column("SSIM", justify="right", style="green")
+        table.add_column("LPIPS", justify="right", style="green")
+        table.add_column("Lap. Orig", justify="right", style="green")
+        table.add_column("Lap. Comp", justify="right", style="green")
+        table.add_column("Lap. Ratio", justify="right", style="green")
+        table.add_column("Lap. Diff", justify="right", style="green")
+        table.add_column("Ten. Orig", justify="right", style="green")
+        table.add_column("Ten. Comp", justify="right", style="green")
+        table.add_column("Ten. Ratio", justify="right", style="green")
+        table.add_column("Ten. Diff", justify="right", style="green")
+        table.add_column("Quality", justify="center")
+
+        for codec, row in avg_metrics.iterrows():
+            psnr = row['psnr']
+            ssim = row['ssim']
+            lpips = row['lpips']
+
+            # Determine overall quality
+            if ssim >= 0.95 and lpips <= 0.05:
+                quality = "[bold green]Excellent[/bold green]"
+            elif ssim >= 0.90 and lpips <= 0.10:
+                quality = "[green]Good[/green]"
+            elif ssim >= 0.80 and lpips <= 0.20:
+                quality = "[yellow]Fair[/yellow]"
+            else:
+                quality = "[red]Poor[/red]"
+
+            table.add_row(
+                codec,
+                f"{psnr:.2f}",
+                f"{ssim:.4f}",
+                f"{lpips:.4f}",
+                f"{row['laplacian_orig']:.4f}",
+                f"{row['laplacian_comp']:.4f}",
+                f"{row['laplacian_ratio']:.4f}",
+                f"{row['laplacian_diff']:.4f}",
+                f"{row['tenengrad_orig']:.4f}",
+                f"{row['tenengrad_comp']:.4f}",
+                f"{row['tenengrad_ratio']:.4f}",
+                f"{row['tenengrad_diff']:.4f}",
+                quality,
+            )
 
     console.print(table)
 
     # Print interpretation guide
     console.print("\n[bold]Metric Interpretation:[/bold]")
-    console.print("  PSNR: Pixel accuracy. Higher = better. 30+ good, 35+ excellent.")
-    console.print("  SSIM: Structural similarity (0-1). Higher = better. 0.9+ good.")
-    console.print("  LPIPS: Perceptual quality. Lower = better. <0.1 good.")
+    if not sharpness_only:
+        console.print("  PSNR: Pixel accuracy. Higher = better. 30+ good, 35+ excellent.")
+        console.print("  SSIM: Structural similarity (0-1). Higher = better. 0.9+ good.")
+        console.print("  LPIPS: Perceptual quality. Lower = better. <0.1 good.")
+    console.print("  Laplacian Ratio: Sharpness preservation (compressed/original). Closer to 1.0 = better.")
+    console.print("  Tenengrad Ratio: Edge energy preservation (compressed/original). Closer to 1.0 = better.")
 
 
 def generate_visualizations(
@@ -386,7 +498,8 @@ def generate_visualizations(
                 for ch in range(nchannels):
                     axes[i + 1, ch].imshow(compressed[ch], cmap='gray')
                     title = f"{codec}\nPSNR:{metrics['psnr']:.1f} SSIM:{metrics['ssim']:.3f} LPIPS:{metrics['lpips']:.3f}"
-                    axes[i + 1, ch].set_title(title, fontsize=9)
+                    title += f"\nLap:{metrics['laplacian_ratio']:.3f} Ten:{metrics['tenengrad_ratio']:.3f}"
+                    axes[i + 1, ch].set_title(title, fontsize=8)
                     axes[i + 1, ch].axis('off')
 
             except Exception as e:
@@ -401,17 +514,51 @@ def generate_visualizations(
     print(f"Visualizations saved to {results_dir}")
 
 
-def save_results(df: pd.DataFrame, results_dir: Path):
+def save_results(df: pd.DataFrame, results_dir: Path, sharpness_only: bool = False):
     """Save results to CSV and JSON formats."""
     results_dir.mkdir(parents=True, exist_ok=True)
 
-    # Save detailed results
-    csv_path = results_dir / "metrics_detailed.csv"
-    df.to_csv(csv_path, index=False)
-    print(f"Detailed results saved to {csv_path}")
+    if sharpness_only:
+        # In sharpness-only mode, try to merge into existing detailed CSV
+        csv_path = results_dir / "metrics_detailed.csv"
+        if csv_path.exists():
+            existing_df = pd.read_csv(csv_path)
+            sharpness_cols = [
+                'laplacian_orig', 'laplacian_comp', 'laplacian_ratio', 'laplacian_diff',
+                'tenengrad_orig', 'tenengrad_comp', 'tenengrad_ratio', 'tenengrad_diff',
+            ]
+            # Drop old sharpness columns if they exist
+            existing_df = existing_df.drop(
+                columns=[c for c in sharpness_cols if c in existing_df.columns],
+                errors='ignore',
+            )
+            merged = existing_df.merge(
+                df[['site_name', 'codec'] + sharpness_cols],
+                on=['site_name', 'codec'],
+                how='left',
+            )
+            merged.to_csv(csv_path, index=False)
+            print(f"Merged sharpness metrics into {csv_path}")
+            df = merged  # Use merged for summary
+        else:
+            csv_path = results_dir / "sharpness_detailed.csv"
+            df.to_csv(csv_path, index=False)
+            print(f"Sharpness results saved to {csv_path}")
+    else:
+        # Save detailed results
+        csv_path = results_dir / "metrics_detailed.csv"
+        df.to_csv(csv_path, index=False)
+        print(f"Detailed results saved to {csv_path}")
+
+    # Determine which metric columns are present for summary
+    metric_cols = [c for c in [
+        'psnr', 'ssim', 'lpips',
+        'laplacian_orig', 'laplacian_comp', 'laplacian_ratio', 'laplacian_diff',
+        'tenengrad_orig', 'tenengrad_comp', 'tenengrad_ratio', 'tenengrad_diff',
+    ] if c in df.columns]
 
     # Save summary statistics
-    summary = df.groupby('codec')[['psnr', 'ssim', 'lpips']].agg(['mean', 'std', 'min', 'max'])
+    summary = df.groupby('codec')[metric_cols].agg(['mean', 'std', 'min', 'max'])
     summary_csv = results_dir / "metrics_summary.csv"
     summary.to_csv(summary_csv)
     print(f"Summary statistics saved to {summary_csv}")
@@ -424,26 +571,14 @@ def save_results(df: pd.DataFrame, results_dir: Path):
     summary_dict = {}
     for codec in df['codec'].unique():
         codec_df = df[df['codec'] == codec]
-        summary_dict[codec] = {
-            'psnr': {
-                'mean': float(codec_df['psnr'].mean()),
-                'std': float(codec_df['psnr'].std()),
-                'min': float(codec_df['psnr'].min()),
-                'max': float(codec_df['psnr'].max()),
-            },
-            'ssim': {
-                'mean': float(codec_df['ssim'].mean()),
-                'std': float(codec_df['ssim'].std()),
-                'min': float(codec_df['ssim'].min()),
-                'max': float(codec_df['ssim'].max()),
-            },
-            'lpips': {
-                'mean': float(codec_df['lpips'].mean()),
-                'std': float(codec_df['lpips'].std()),
-                'min': float(codec_df['lpips'].min()),
-                'max': float(codec_df['lpips'].max()),
-            },
-        }
+        summary_dict[codec] = {}
+        for col in metric_cols:
+            summary_dict[codec][col] = {
+                'mean': float(codec_df[col].mean()),
+                'std': float(codec_df[col].std()),
+                'min': float(codec_df[col].min()),
+                'max': float(codec_df[col].max()),
+            }
 
     summary_json = results_dir / "metrics_summary.json"
     with open(summary_json, 'w') as f:
@@ -454,20 +589,25 @@ def save_results(df: pd.DataFrame, results_dir: Path):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Evaluate image compression quality using PSNR, SSIM, and LPIPS"
+        description="Evaluate image compression quality using PSNR, SSIM, LPIPS, and sharpness metrics"
     )
     parser.add_argument(
         "--no-plots",
         action="store_true",
         help="Skip generating matplotlib visualizations",
     )
+    parser.add_argument(
+        "--sharpness-only",
+        action="store_true",
+        help="Only compute Laplacian variance and Tenengrad sharpness metrics (no GPU needed)",
+    )
 
     args = parser.parse_args()
-    
+
     # Use the same paths as compress_tif.py
-    #input_dir = Path("/work/datasets/jump_toy_compress/raw")
-    input_dir = Path("/work/datasets/jump_target2_subset_BR00121438/raw")
-    
+    #input_dir = Path("data/raw/jump_toy_compress/raw")
+    input_dir = Path("data/raw/jump_target2_subset_BR00121438/raw")
+
     output_dir = input_dir.parent
     results_dir = output_dir / "results"
 
@@ -487,8 +627,12 @@ def main():
         print("Please run compress_tif.py first to generate compressed images.")
         return
 
-    # Setup
-    device = setup_device()
+    # Setup device (skip GPU for sharpness-only mode)
+    device = None
+    if not args.sharpness_only:
+        device = setup_device()
+    else:
+        print("\nSharpness-only mode: skipping GPU setup and PSNR/SSIM/LPIPS")
 
     # Load original images
     print()
@@ -499,8 +643,12 @@ def main():
         return
 
     # Evaluate all codecs
-    print("\nEvaluating compression quality...")
-    df = evaluate_all_codecs(original_data, output_dir, device)
+    mode_desc = "sharpness" if args.sharpness_only else "compression quality"
+    print(f"\nEvaluating {mode_desc}...")
+    df = evaluate_all_codecs(
+        original_data, output_dir, device,
+        sharpness_only=args.sharpness_only,
+    )
 
     if df.empty:
         print("No results to display!")
@@ -508,14 +656,14 @@ def main():
 
     # Display results
     print("\n" + "="*80)
-    print_comparison_table(df)
+    print_comparison_table(df, sharpness_only=args.sharpness_only)
     print("="*80 + "\n")
 
     # Save results
-    save_results(df, results_dir)
+    save_results(df, results_dir, sharpness_only=args.sharpness_only)
 
-    # Generate visualizations
-    if not args.no_plots:
+    # Generate visualizations (skip in sharpness-only mode)
+    if not args.no_plots and not args.sharpness_only:
         generate_visualizations(df, original_data, output_dir, results_dir)
 
     print(f"\nEvaluation complete! Results saved to {results_dir}/")

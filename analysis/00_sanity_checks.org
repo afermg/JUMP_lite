@@ -1,7 +1,0 @@
-#+TITLE: Validations and sanity checks
-
-* Overview of data
-** Generate a mosaic of sampled images to ensure that we have the correct
-#+begin_src sh
-  find /work/datasets/jump_target2_4plate_bak/raw/ | grep __DNA__1 | shuf -n 20 | tee list.txt | awk 'BEGIN{n=split("DNA Mito AGP RNA ER", reps)} {for (rep in reps){l=$0; sub(/__DNA__/, "__" rep "__",l); print l;}}' | parallel -N 5 'magick {} -auto-level miff:- | montage {} -tile 5x1 -geometry +0+0 montage_{#}.jpg'
-#+end_src

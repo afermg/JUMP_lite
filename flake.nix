@@ -35,6 +35,7 @@
           pkgs.stdenv.cc.cc
           pkgs.libGL
           pkgs.glib
+          pkgs.just
           # CUDA packages
           pkgs.cudaPackages.cudatoolkit
           pkgs.cudaPackages.cudnn
@@ -44,63 +45,73 @@
       {
         devShells = {
           default =
-            # let
-            #   # These packages get built by Nix, and will be ahead on the PATH
-            #   pwp = (
-            #     python312.withPackages (
-            #       p: with p; [
-            #         venvShellHook
-            #       ]
-            #     )
-            #   );
-            # in
+            let
+              # These packages get built by Nix, and will be ahead on the PATH
+              pwp = (
+                python312.withPackages (
+                  p: with p; [
+                    venvShellHook
+                  ]
+                )
+              );
+            in
             mkShell {
               NIX_LD = runCommand "ld.so" { } ''
                 ln -s "$(cat '${pkgs.stdenv.cc}/nix-support/dynamic-linker')" $out
               '';
               NIX_LD_LIBRARY_PATH = lib.makeLibraryPath libList;
               packages = [
-                python312Packages.venvShellHook
+                pwp
                 uv
+                pixi
                 pkgs.gcc
                 claude-code
-                # python312Packages.venvShellHook
-		duckdb
+                pkgs.pixi
               ]
               ++ libList;
               shellHook = ''
-                # if [ ! -d .venv ]; then
-                #   source .venv/bin/activate
-                # fi
-                export PYTHONPATH=.venv/lib/python3.12/site-packages/
-                [ -f /etc/os-release ] && grep -q "ID=nixos" /etc/os-release && echo export LD_LIBRARY_PATH=$NIX_LD_LIBRARY_PATH:"/run/opengl-driver/lib":$LD_LIBRARY_PATH
+                export LD_LIBRARY_PATH=$NIX_LD_LIBRARY_PATH:"/run/opengl-driver/lib":$LD_LIBRARY_PATH
+
                 export PYTHON_KEYRING_BACKEND=keyring.backends.fail.Keyring
 
-                uv sync --all-groups
-                source .venv/bin/activate
-                # runHook venvShellHook
+                # Set up CUDA environment variables
+                export CUDA_PATH=${pkgs.cudaPackages.cudatoolkit}
+
+                # Cache the NVIDIA driver path
+                NVIDIA_CACHE=".nix-cache/nvidia-driver-path"
+                if [ ! -f "$NVIDIA_CACHE" ]; then
+                  mkdir -p .nix-cache
+                  find /nix/store -name "libcuda.so.1" 2>/dev/null | head -1 | xargs dirname > "$NVIDIA_CACHE"
+                fi
+                NVIDIA_DRIVER_LIB=$(cat "$NVIDIA_CACHE")
+
+                export LD_LIBRARY_PATH=${pkgs.cudaPackages.cudatoolkit}/lib:${pkgs.cudaPackages.cudnn}/lib:$NVIDIA_DRIVER_LIB:$NIX_LD_LIBRARY_PATH:$LD_LIBRARY_PATH
+                export EXTRA_LDFLAGS="-L${pkgs.cudaPackages.cudatoolkit}/lib"
+                export EXTRA_CCFLAGS="-I${pkgs.cudaPackages.cudatoolkit}/include"
+
+                # Create venv if it doesn't exist
+                if [ ! -d .venv ]; then
+                  ${pkgs.python312}/bin/python3.12 -m venv .venv
+                  source .venv/bin/activate
+                  uv sync --all-groups
+                  uv pip install torch torchvision torchmetrics --index-url https://download.pytorch.org/whl/cu121
+                  # Mark that we've installed
+                  touch .nix-cache/deps-installed
+                else
+                  source .venv/bin/activate
+                  # Only re-sync if pyproject.toml or uv.lock changed since last install
+                  if [ pyproject.toml -nt .nix-cache/deps-installed ] || [ uv.lock -nt .nix-cache/deps-installed ]; then
+                    echo "Dependencies changed, re-syncing..."
+                    uv sync --all-groups
+                    touch .nix-cache/deps-installed
+                  fi
+                fi
+
+                # Add PyTorch lib path
+                export LD_LIBRARY_PATH=.venv/lib/python3.12/site-packages/torch/lib:$LD_LIBRARY_PATH
               '';
             };
         };
       }
     );
 }
-                # # Set up CUDA environment variables
-                # export CUDA_PATH=${pkgs.cudaPackages.cudatoolkit}
-
-                # # Find NVIDIA driver libraries
-                # NVIDIA_DRIVER_LIB=$(find /nix/store -name "libcuda.so.1" 2>/dev/null | head -1 | xargs dirname)
-                # export LD_LIBRARY_PATH=${pkgs.cudaPackages.cudatoolkit}/lib:${pkgs.cudaPackages.cudnn}/lib:$NVIDIA_DRIVER_LIB:$NIX_LD_LIBRARY_PATH:$LD_LIBRARY_PATH
-                # export EXTRA_LDFLAGS="-L${pkgs.cudaPackages.cudatoolkit}/lib"
-                # export EXTRA_CCFLAGS="-I${pkgs.cudaPackages.cudatoolkit}/include"
-
-                # Create and activate venv
-                # if [ ! -d .venv ]; then
-                  # ${pkgs.python312}/bin/python -m venv .venv
-                # fi
-
-                # Install PyTorch with CUDA support
-                # uv pip install torch torchvision torchmetrics --index-url https://download.pytorch.org/whl/cu121
-
-                # Add PyTorch lib path
-                # export LD_LIBRARY_PATH=.venv/lib/python3.12/site-packages/torch/lib:$LD_LIBRARY_PATH

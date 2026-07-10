@@ -1,4 +1,0 @@
-#+begin_src sh
-  duckdb <generate_jumplite_index.sql # Generate index
-  python
-#+end_src

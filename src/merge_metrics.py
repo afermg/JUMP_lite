@@ -14,7 +14,7 @@ from rich.table import Table
 from rich.style import Style
 
 
-def merge_metrics(results_dir: Path = Path("/work/datasets/jump_toy/results")):
+def merge_metrics(results_dir: Path = Path("data/results")):
     """
     Merge compression metrics (from compress_tif.py) with quality metrics (from evaluate_quality.py).
 

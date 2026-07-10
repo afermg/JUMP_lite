@@ -1,0 +1,150 @@
+abort_on_ill_conditioned_tvn: true
+abort_on_invalid_features: true
+agg_method: median
+batch_method: tvn_efaar
+corr_thresh: 0.9
+dim_ratio_action: clamp
+dim_ratio_threshold: 2.5
+gpu:
+  device: 0
+  fallback_to_cpu: true
+  memory_limit_gb: null
+input:
+  path: ../../data/features/jump_lite_cl_3/morphem_jump_lite_updated_jpegxl_lossy_raw_raw_features.parquet
+input_override: null
+max_pc1_variance: 0.7
+norm_fit_controls: false
+norm_method: standardize
+output:
+  compression: zstd
+  path: data/features/variance_first_v11_lite/output.parquet
+skip_batch_effects: false
+skip_existing: true
+skip_redundant_configs: true
+skip_visualization: true
+spherize_epsilon: 0.1
+spherize_fit_controls: false
+spherize_remove_variance_method: threshold
+spherize_remove_variance_threshold: null
+steps:
+- enabled: true
+  name: clean_nans
+  params:
+    na_cutoff: 0.3
+- enabled: true
+  name: filter_features
+  params:
+    always_enabled: true
+    filters:
+    - freq_cut: 0.05
+      name: variance_threshold
+      unique_cut: 0.01
+- enabled: true
+  name: merge_metadata
+  params:
+    metadata_path: ${oc.env:JUMP_LITE_ROOT,${hydra:runtime.cwd}/../..}/metadata/metadata_dataset_filtered_4reps.parquet
+    skip_merge: false
+- enabled: false
+  name: normalize_robustmad
+  params:
+    batch_col: Metadata_Plate
+    epsilon: 1.0e-18
+    fit_on_controls: false
+- enabled: true
+  name: normalize_standardize
+  params:
+    batch_col: Metadata_Plate
+    fit_on_controls: false
+- enabled: false
+  name: inverse_normal_transform
+  params: {}
+- enabled: false
+  name: well_position_correct
+  params:
+    well_col: Metadata_Well
+- enabled: false
+  name: sample_norm
+  params:
+    norm: l2
+- enabled: false
+  name: normalize_pca
+  params:
+    fit_on_controls: false
+    n_components: 256
+    variance_threshold: 0.95
+    whiten: false
+- enabled: true
+  name: normalize_tvn_efaar
+  params:
+    batch_col: Metadata_Batch
+    dim_ratio_action: clamp
+    dim_ratio_threshold: 2.5
+    epsilon: 1.0
+    n_components: 150
+- enabled: false
+  name: normalize_spherize
+  params:
+    batch_col: ''
+    control_col: Metadata_control_type
+    control_key: negcon
+    epsilon: 0.1
+    fit_on_controls: false
+    method: ZCA-cor
+    remove_variance_method: threshold
+    remove_variance_threshold: null
+- enabled: false
+  name: normalize_tvn
+  params:
+    alpha: 0.5
+    batch_col: Metadata_Batch
+    epsilon: 1.0
+    fit_on_controls: true
+- enabled: false
+  name: normalize_tvn_original
+  params:
+    batch_col: Metadata_Batch
+    control_col: Metadata_control_type
+    control_key: negcon
+    dim_ratio_action: clamp
+    dim_ratio_threshold: 2.5
+    k: 64
+- enabled: false
+  name: normalize_tvn_cascade
+  params:
+    batch_col: Metadata_Batch
+    control_col: Metadata_control_type
+    control_key: negcon
+    dim_ratio_action: clamp
+    dim_ratio_threshold: 2.5
+    k1: 128
+    k2: 32
+- enabled: false
+  name: aggregate_wells
+  params:
+    method: median
+    strata:
+    - Metadata_Plate
+    - Metadata_Well
+- enabled: true
+  name: evaluate_metrics
+  params:
+    batch_col: Metadata_Plate
+    compound_col: Metadata_JCP2022
+    min_compounds_per_target: 3
+    negcon_col: Metadata_negcon
+    pc_groups:
+    - group_high
+    - group_low
+    skip_batch_effects: false
+    skip_visualization: true
+    target_col: Metadata_RefChemDB_target
+tvn_cascade_k1: 128
+tvn_cascade_k2: 32
+tvn_efaar_epsilon: 1.0
+tvn_efaar_n_components: 150
+tvn_original_k: 64
+use_int: false
+use_pca: false
+use_prune_correlated: true
+use_sample_norm: false
+use_wellcorr: false

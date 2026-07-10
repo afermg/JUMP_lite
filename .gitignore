@@ -1,0 +1,106 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+*.pyo
+*.pyd
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environments
+.venv/
+.venv.bak/
+venv/
+ENV/
+env/
+pixi.lock
+.pixi/
+
+# Nix
+.direnv/
+.envrc
+.nix-cache/
+result
+
+# Project-specific data
+images/
+metadata/*
+!metadata/motive_splits.parquet
+dataset_curration/
+*.tif
+*.tiff
+*.zarr/
+results/
+work/
+data/*
+!data/refchemdb/
+!data/refchemdb/*
+outputs/
+output/
+tmp/
+*.log
+*.csv
+*.html
+logs/
+
+# Databases
+*.duckdb
+*.duckdb.wal
+
+# Compressed files
+*.tar.gz
+
+# Temporary files
+/src/tmp.tiff
+
+# Analysis outputs
+analysis/feature_similarity/output/
+analysis/compression_exploration/*.png
+analysis/compression_exploration/full_res/
+analysis/compression_exploration/presets/
+analysis/compression_exploration/presets_pernorm/
+analysis/compression_exploration/presets_tif/
+analysis/image_quality/uv.lock
+
+# sweep
+src/norm_3/multirun/
+src/norm_3/data/
+
+
+# Jupyter Notebook
+.ipynb_checkpoints
+.ipynb_checkpoints/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+JUMP_core.code-workspace
+/.agent-shell/
+
+# OS
+.DS_Store
+Thumbs.db
+dataset_curration/input/refchemdb_inchikey.csv
+
+# Cleanup
+_archive/
+_cleanup_docs/
