@@ -85,9 +85,9 @@ Run `nix develop` followed by `just --list` to inspect the available generation 
 
 ## Citation
 
-The JUMP-Lite manuscript citation is forthcoming:
+Please cite the JUMP-Lite manuscript:
 
-> Muñoz AF, Fredin Haslum J, Shen R, Carpenter AE, Singh S. **JUMP-lite: Compact, reproducible benchmarking of cell representations.**
+> Muñoz AF, Fredin Haslum J, Shen R, Carpenter AE, Singh S. (2026). **JUMP-lite: Compact, reproducible benchmarking of cell representations.** [arXiv:2608.07632](https://arxiv.org/abs/2608.07632).
 
 Please also cite the primary [JUMP Cell Painting dataset](https://doi.org/10.1101/2023.03.23.534023). Release indices and related tables are archived at [Zenodo](https://doi.org/10.5281/zenodo.18705140).
 
