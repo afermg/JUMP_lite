@@ -1,0 +1,18 @@
+metric,value,unit,qualification
+total_compounds,115721,count,
+fit_eligible_compounds,95426,count,
+selected_compounds,3832,count,
+all_compound_prevalence,0.0331141279456624,fraction_or_score,
+eligible_compound_prevalence,0.0401567706914258,fraction_or_score,
+occupied_clusters,120,count,
+total_clusters,128,count,
+eligible_mass_in_occupied_clusters,0.962368746463228,fraction_or_score,"Broad occupancy, not proportional representation."
+total_variation_selected_vs_eligible,0.475048936694249,fraction_or_score,Selection is non-uniform across operational clusters.
+jensen_shannon_divergence_nats,0.172277567051497,nats,"Descriptive divergence, not a biological-class distance."
+average_precision_constant,0.0394697657013026,fraction_or_score,
+average_precision_acquisition_structure,0.515826426834917,fraction_or_score,Uses well/source/plate acquisition counts only.
+average_precision_cluster_only,0.277665692551445,fraction_or_score,Out-of-fold; cluster assignment is label-blind.
+average_precision_structure_plus_cluster,0.576481677213957,fraction_or_score,"Detectably additive, but below the 1.25x materiality gate."
+combined_to_structure_ap_ratio,1.11758848950648,fraction_or_score,Preregistered materiality threshold: 1.25x.
+conditional_permutation_p,0.000499750124937531,fraction_or_score,"2,000 permutations within acquisition strata; minimum attainable p."
+mean_seed_adjusted_rand_index,0.162414221608182,fraction_or_score,Low stability: do not interpret clusters as biological classes.

@@ -1,0 +1,13 @@
+{
+  "clusters": 128,
+  "eligible_compound_mass_in_occupied_clusters": 0.962368746463228,
+  "jensen_shannon_divergence_nats": 0.17227756705149666,
+  "occupied_fraction": 0.9375,
+  "selected_occupied_clusters": 120,
+  "selection_lift_iqr": [
+    0.25362460420369715,
+    1.4273216611900312
+  ],
+  "selection_lift_median": 0.6208201474558706,
+  "total_variation_selected_vs_eligible": 0.47504893669424875
+}

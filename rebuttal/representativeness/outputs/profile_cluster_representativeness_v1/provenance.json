@@ -1,0 +1,159 @@
+{
+  "conclusion": {
+    "combined_to_count_ap_ratio": 1.117588489506476,
+    "conditional_permutation_p": 0.0004997501249375312,
+    "detectably_better_than_structure": true,
+    "materially_better_than_structure": false,
+    "primary_seed_mean_ari": 0.16241422160818178,
+    "unique_cluster_biological_claims_allowed": false
+  },
+  "continuous_findings": {
+    "combined_to_count_ap_ratio": 1.117588489506476,
+    "conditional_permutation_p": 0.0004997501249375312,
+    "eligible_combined_ap": 0.576482,
+    "eligible_count_only_ap": 0.515826,
+    "eligible_mass_covered": 0.962368746463228,
+    "occupied_clusters": 120,
+    "primary_seed_mean_ari": 0.16241422160818178,
+    "total_variation": 0.47504893669424875
+  },
+  "counts": {
+    "all": 115721,
+    "eligible": 95426,
+    "selected": 3832
+  },
+  "current_computation_identity": {
+    "bytes": 4918,
+    "path": "computation_identity.json",
+    "path_scope": "output_root",
+    "sha256": "e5e61d0fec9133918368bd0d33b2b99133239efdedab2065882d3fb22e33cfee"
+  },
+  "current_partition_sensitivity_helper": {
+    "bytes": 4290,
+    "path": "score_cluster_partition_sensitivity.py",
+    "path_scope": "representativeness_root",
+    "sha256": "9a05c5110f3e6fd72feeef0f5a713821babd60aea85ed29d4bd26524308af329"
+  },
+  "current_reproduction_runner_with_guards": {
+    "bytes": 31366,
+    "path": "analyze_cluster_representativeness.py",
+    "path_scope": "representativeness_root",
+    "sha256": "09ac9d4392c7573335d0ec5a4fd467070baeee3fb95d5f7e47306604ab29b645"
+  },
+  "design": {
+    "bytes": 3837,
+    "path": "CLUSTER_SELECTION_DESIGN.md",
+    "path_scope": "representativeness_root",
+    "sha256": "55c3dd0a06255299dfa60c60871f98e3d269cdb586cc50a77bf423a140df76e4"
+  },
+  "executed_fit_runner_snapshot": {
+    "bytes": 26200,
+    "path": "fit_runner_snapshot_13bdd68e.py",
+    "path_scope": "output_root",
+    "sha256": "13bdd68e789194e9b1fc53858498b48920fbef65bd7f5b58512194633620e7a7"
+  },
+  "executed_score_runner_snapshot": {
+    "bytes": 26213,
+    "path": "score_runner_snapshot_5177ca70.py",
+    "path_scope": "output_root",
+    "sha256": "5177ca70a64ebeff353360808e467f31ba0da9b3ff518b803f23035769d98822"
+  },
+  "final_report": {
+    "bytes": 5038,
+    "path": "REPORT.md",
+    "path_scope": "output_root",
+    "sha256": "9d15b5da936bbd38130a8d85705e4b660fba231eed2c16b10e3ed739348c6ef6"
+  },
+  "fit_completion": {
+    "bytes": 1135,
+    "path": "fit/fit_complete.json",
+    "path_scope": "output_root",
+    "sha256": "fee7d3c85d2a4da2223c2962f2c75f247315419745d631785b84ea768036f332"
+  },
+  "numpy": "1.26.4",
+  "path_base_definitions": {
+    "output_root": "directory containing fit/ and the score outputs",
+    "representativeness_root": "directory containing analyze_cluster_representativeness.py"
+  },
+  "platform": "Linux-6.12.80-x86_64-with-glibc2.40",
+  "polars": "1.37.1",
+  "python": "3.12.11 (main, Sep 18 2025, 19:47:19) [Clang 20.1.4 ]",
+  "runtime_seconds": 21.224298820947297,
+  "scipy": "1.17.0",
+  "scoring_inputs": [
+    {
+      "bytes": 33252,
+      "path": "outputs/profile_space/manifests/jump_lite_compounds.parquet",
+      "path_scope": "representativeness_root",
+      "sha256": "a0671dcaae029a2c32ac58fdaf09178806b495d33a5ea439ff859b3c0fbe74de"
+    },
+    {
+      "bytes": 171360,
+      "path": "outputs/profile_space/manifests/fixed_evaluation_compounds.parquet",
+      "path_scope": "representativeness_root",
+      "sha256": "ea8510e84f281a562e4226d36d064e4f838b6e8068ff3712f5efdda94932f448"
+    },
+    {
+      "bytes": 31420,
+      "path": "outputs/profile_space/manifests/matched_random_seed_104729.parquet",
+      "path_scope": "representativeness_root",
+      "sha256": "d493f29d946b3d5d804daff366ccb72c49b461b9ec2edbd8cdc5ccfbe508dd45"
+    },
+    {
+      "bytes": 31642,
+      "path": "outputs/profile_space/manifests/matched_random_seed_13.parquet",
+      "path_scope": "representativeness_root",
+      "sha256": "03657b43c0142c8a3922a7de72458c7290b28106889acd4b6db010b0ad7503f5"
+    },
+    {
+      "bytes": 31613,
+      "path": "outputs/profile_space/manifests/matched_random_seed_130363.parquet",
+      "path_scope": "representativeness_root",
+      "sha256": "fc1129afb2a5f2b202aa19a02c8be0ba080cacebea5f38f56c7050bf2256fdf5"
+    },
+    {
+      "bytes": 32419,
+      "path": "outputs/profile_space/manifests/matched_random_seed_137.parquet",
+      "path_scope": "representativeness_root",
+      "sha256": "573243887849ea17c3d45711dfaee28d1c259ead636a4d14efe230c5ef35b2b4"
+    },
+    {
+      "bytes": 31549,
+      "path": "outputs/profile_space/manifests/matched_random_seed_1729.parquet",
+      "path_scope": "representativeness_root",
+      "sha256": "685d16dc4caa76af59165ed5a8546dff5fc062ef9b0d041efe42ba716f35ce1d"
+    },
+    {
+      "bytes": 31638,
+      "path": "outputs/profile_space/manifests/matched_random_seed_196613.parquet",
+      "path_scope": "representativeness_root",
+      "sha256": "56a4c2e2f393af0ce1921d1129cb7f0c958f4d4230966059869497917aaa96a9"
+    },
+    {
+      "bytes": 32582,
+      "path": "outputs/profile_space/manifests/matched_random_seed_2026.parquet",
+      "path_scope": "representativeness_root",
+      "sha256": "2b42f5483fd1b0444d974ba5680e4ba33cb210506f546ad018ee7ed77c9f531e"
+    },
+    {
+      "bytes": 32229,
+      "path": "outputs/profile_space/manifests/matched_random_seed_31415.parquet",
+      "path_scope": "representativeness_root",
+      "sha256": "b4fcf076419f425627b3fbb5a15621aac99cbf02a6c11b06c35a5a1908af4af2"
+    },
+    {
+      "bytes": 31612,
+      "path": "outputs/profile_space/manifests/matched_random_seed_42.parquet",
+      "path_scope": "representativeness_root",
+      "sha256": "388d265b2a11b797e387f97e8e1cc860d50e97957dbc19e24f29c365248dc7ef"
+    },
+    {
+      "bytes": 31522,
+      "path": "outputs/profile_space/manifests/matched_random_seed_65537.parquet",
+      "path_scope": "representativeness_root",
+      "sha256": "db7bf60d06a392f72f7b811e6f78be3a3a6c29712d22fea4686e726afbc6489f"
+    }
+  ],
+  "sklearn": "1.8.0",
+  "version": "profile-cluster-selection-v1"
+}
