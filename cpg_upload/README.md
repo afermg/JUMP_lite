@@ -169,10 +169,11 @@ The release uses the following agreed `source_all` namespace:
 
 ```text
 cpg0016-jump/source_all/
-├── images_compressed/jump_lite/v1.0/<codec>.zarr/
-├── workspace/metadata/jump_lite/v1.0/<release metadata files>
+├── images/2026_jump_lite_v1.0/images_compressed/<codec>.zarr/
+├── workspace/publication_data/2026_jump_lite/metadata/v1.0/
+│   └── <release metadata files>
 └── workspace_dl/embeddings/
-    └── <model>-<codec>/jump_lite/v1.0/
+    └── <model>-<codec>/2026_jump_lite_v1.0/
         └── <source>/<batch>/<plate>/<well>-<site>/embedding.parquet
 ```
 
@@ -281,9 +282,13 @@ changing S3:
 cpg_upload/upload_status.sh
 ```
 
-Re-running the supervisor is safe: `aws s3 sync` skips matching image objects,
-and profile checkpoints skip successfully uploaded Parquets. No upload command
-uses `--delete` or follows symlinks.
+Re-running the supervisor is safe when its checkpoints were created for the
+same destination: `aws s3 sync` skips matching image objects, and profile
+checkpoints skip successfully uploaded Parquets. Profile checkpoints now record
+the full CPG destination prefix and fail closed if an older-layout checkpoint
+is reused; use a new checkpoint root rather than relabeling an old checkpoint.
+For the supervisor, set `CPG_UPLOAD_STATE_ROOT` to that new directory. No upload
+command uses `--delete` or follows symlinks.
 
 ## 7. Rebuild and stream the lossless Zstd store
 
@@ -357,7 +362,7 @@ cpg_upload/zstd_upload_status.sh
 State is stored at
 `/work/datasets/jump_lite/cpg_upload_state/v1.0/zstd/checkpoint.json`. The final
 destination is
-`cpg0016-jump/source_all/images_compressed/jump_lite/v1.0/zstd.zarr/`.
+`cpg0016-jump/source_all/images/2026_jump_lite_v1.0/images_compressed/zstd.zarr/`.
 
 A builder restart scans the manifest from its beginning and skips existing
 complete arrays. Its displayed `processed_manifest_sites` may therefore fall
@@ -495,7 +500,7 @@ Use this checklist after all bulk transfers stop changing:
    # Enter a shell that has AWS CLI v2 if needed, then activate temporary keys.
    source cpg_upload/activate_cpg_credentials.sh
    cpg_upload/upload_to_staging.sh --apply \
-     "$metadata_view" workspace/metadata/jump_lite/v1.0
+     "$metadata_view" workspace/publication_data/2026_jump_lite/metadata/v1.0
    rm -rf "$metadata_view"
    ```
 

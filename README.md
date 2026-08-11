@@ -42,7 +42,7 @@ Start by downloading the small metadata bundle; AWS credentials are not required
 
 ```bash
 aws s3 cp --no-sign-request --recursive \
-  s3://cellpainting-gallery/cpg0016-jump/source_all/workspace/metadata/jump_lite/v1.0/ \
+  s3://cellpainting-gallery/cpg0016-jump/source_all/workspace/publication_data/2026_jump_lite/metadata/v1.0/ \
   jump_lite_metadata/
 ```
 

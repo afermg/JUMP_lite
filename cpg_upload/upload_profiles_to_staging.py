@@ -37,6 +37,7 @@ REGION = "us-east-1"
 BUCKET = "staging-cellpainting-gallery"
 GRANT_TARGET = "s3://staging-cellpainting-gallery/cpg0016-jump/*"
 DESTINATION_ROOT = "cpg0016-jump/source_all/workspace_dl/embeddings"
+RELEASE_BATCH = "2026_jump_lite_v1.0"
 CANONICAL_DIGEST = "399e703bc924a19f7c3827db3c711373306e3d943d2f12cf56d0a368f5d13961"
 MODEL_NAMES = {
     "dinov2": "dinov2",
@@ -108,6 +109,16 @@ def variants(args: argparse.Namespace) -> list[tuple[str, str]]:
     return result
 
 
+def feature_set_name(model: str, codec: str) -> str:
+    public_model = MODEL_NAMES[model]
+    public_codec = codec.removesuffix(".zarr")
+    return f"{public_model}-{public_codec}"
+
+
+def destination_prefix(model: str, codec: str) -> str:
+    return f"{DESTINATION_ROOT}/{feature_set_name(model, codec)}/{RELEASE_BATCH}"
+
+
 def destination_key(model: str, codec: str, filename: str) -> str:
     if not filename.endswith(".parquet"):
         raise ValueError(f"not a Parquet filename: {filename}")
@@ -115,11 +126,8 @@ def destination_key(model: str, codec: str, filename: str) -> str:
     if len(fields) != 5:
         raise ValueError(f"malformed site filename: {filename}")
     source, batch, plate, well, site = fields
-    public_model = MODEL_NAMES[model]
-    public_codec = codec.removesuffix(".zarr")
-    feature_set = f"{public_model}-{public_codec}"
     return (
-        f"{DESTINATION_ROOT}/{feature_set}/jump_lite/v1.0/"
+        f"{destination_prefix(model, codec)}/"
         f"{source}/{batch}/{plate}/{well}-{site}/embedding.parquet"
     )
 
@@ -263,6 +271,14 @@ def upload_variant(
     uploaded_bytes = 0
     if checkpoint_path.exists():
         checkpoint = json.loads(checkpoint_path.read_text())
+        expected_destination = destination_prefix(model, codec)
+        recorded_destination = checkpoint.get("destination_prefix")
+        if recorded_destination != expected_destination:
+            raise RuntimeError(
+                "checkpoint destination mismatch; use a new checkpoint for the "
+                f"CPG-compliant path: {checkpoint_path} "
+                f"(recorded={recorded_destination!r}, expected={expected_destination!r})"
+            )
         start = int(checkpoint["next_index"])
         uploaded_bytes = int(checkpoint.get("uploaded_bytes", 0))
         if start > len(entries):
@@ -307,6 +323,7 @@ def upload_variant(
                     payload = {
                         "model": model,
                         "codec": codec,
+                        "destination_prefix": destination_prefix(model, codec),
                         "next_index": completed,
                         "file_count": len(entries),
                         "last_filename": entry.name,

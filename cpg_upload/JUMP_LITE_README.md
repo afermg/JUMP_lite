@@ -31,34 +31,34 @@ The release is stored as loose, directly addressable CPG objects under:
 
 ```text
 cpg0016-jump/source_all/
-├── images_compressed/
-│   └── jump_lite/
-│       └── v1.0/
+├── images/
+│   └── 2026_jump_lite_v1.0/
+│       └── images_compressed/
 │           ├── zstd.zarr/
 │           ├── jpegxl_lossy_hq.zarr/
 │           ├── jpegxl_lossy_mq.zarr/
 │           └── jpegxl_lossy_d20.zarr/
 ├── workspace/
-│   └── metadata/
-│       └── jump_lite/
-│           └── v1.0/
-│               ├── README.md
-│               ├── jump_lite_site_index.parquet
-│               ├── jump_lite_image_index.parquet
-│               ├── jump_lite_perturbation_metadata.parquet
-│               ├── jump_lite_refchem_annotations.parquet
-│               ├── jump_lite_plate_manifest.parquet
-│               └── metadata_manifest.json
+│   └── publication_data/
+│       └── 2026_jump_lite/
+│           └── metadata/
+│               └── v1.0/
+│                   ├── README.md
+│                   ├── jump_lite_site_index.parquet
+│                   ├── jump_lite_image_index.parquet
+│                   ├── jump_lite_perturbation_metadata.parquet
+│                   ├── jump_lite_refchem_annotations.parquet
+│                   ├── jump_lite_plate_manifest.parquet
+│                   └── metadata_manifest.json
 └── workspace_dl/
     └── embeddings/
         └── <model>-<image-codec>/
-            └── jump_lite/
-                └── v1.0/
-                    └── <source>/
-                        └── <batch>/
-                            └── <plate>/
-                                └── <well>-<site>/
-                                    └── embedding.parquet
+            └── 2026_jump_lite_v1.0/
+                └── <source>/
+                    └── <batch>/
+                        └── <plate>/
+                            └── <well>-<site>/
+                                └── embedding.parquet
 ```
 
 The embedding feature-set identifiers combine model and image input, for
@@ -97,12 +97,12 @@ AGP, DNA, ER, Mito, RNA
 
 Four compressed image variants are included:
 
-| Dataset | Format | Approx. size | Description |
+| Dataset | Format | Size | Description |
 |---|---|---:|---|
-| `zstd.zarr` | Zarr v3, Blosc/Zstd level 9 with bit shuffle | 5.3 TB | Lossless site-major copy of the original TIFF pixels |
-| `jpegxl_lossy_hq.zarr` | Zarr v2, JPEG XL distance 1.0 | 280 GB | High quality |
-| `jpegxl_lossy_mq.zarr` | Zarr v2, JPEG XL distance 3.0 | 116 GB | Medium quality and canonical site manifest |
-| `jpegxl_lossy_d20.zarr` | Zarr v2, JPEG XL distance 20.0 | 32 GB | High-compression comparison variant |
+| `zstd.zarr` | Zarr v3, Blosc/Zstd level 9 with bit shuffle | 6.1 TB (5.6 TiB) | Lossless site-major copy of the original TIFF pixels |
+| `jpegxl_lossy_hq.zarr` | Zarr v2, JPEG XL distance 1.0 | 300.8 GB (280.1 GiB) | High quality |
+| `jpegxl_lossy_mq.zarr` | Zarr v2, JPEG XL distance 3.0 | 114.3 GB (106.4 GiB) | Medium quality and canonical site manifest |
+| `jpegxl_lossy_d20.zarr` | Zarr v2, JPEG XL distance 20.0 | 19.9 GB (18.5 GiB) | High-compression comparison variant |
 
 The finalized `zstd.zarr` contains 1,711,039 loose objects and totals exactly
 6,105,823,136,762 bytes (6.106 TB; 5.553 TiB).
@@ -203,7 +203,7 @@ original JUMP TIFFs in cpg0016-jump/source_<n>/images/
     ↓ five URLs frozen in jump_lite_site_index.parquet
 site-major uint16 array in <image-codec>.zarr/<site-key>
     ↓ model-specific channel selection, preprocessing, and tiling
-per-site embedding Parquet in <model>-<image-codec>/jump_lite/v1.0/
+per-site embedding Parquet in <model>-<image-codec>/2026_jump_lite_v1.0/
 ```
 
 The JUMP-Lite plate list was filtered against the JUMP redlist and graylist,

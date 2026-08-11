@@ -4,12 +4,17 @@ set -euo pipefail
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 PROJECT_ROOT=$(cd -- "$SCRIPT_DIR/.." && pwd)
+RELEASE_VERSION="v1.0"
+RELEASE_BATCH="2026_jump_lite_${RELEASE_VERSION}"
+PUBLICATION_ID="2026_jump_lite"
 IMAGE_ROOT="/work/datasets/jump_lite/images/compressed/compressed_test/jump_lite_updated"
 METADATA_ROOT="/work/datasets/jump_lite/cpg_release/metadata"
 RELEASE_README="/work/datasets/jump_lite/cpg_release/README.md"
-STATE_ROOT="/work/datasets/jump_lite/cpg_upload_state/v1.0"
+STATE_ROOT=${CPG_UPLOAD_STATE_ROOT:-"/work/datasets/jump_lite/cpg_upload_state/$RELEASE_VERSION"}
 LOG_PARENT="/work/datasets/jump_lite/cpg_upload_logs"
 STAGING_ROOT="s3://staging-cellpainting-gallery/cpg0016-jump/source_all"
+METADATA_DESTINATION="$STAGING_ROOT/workspace/publication_data/$PUBLICATION_ID/metadata/$RELEASE_VERSION"
+IMAGE_DESTINATION_ROOT="$STAGING_ROOT/images/$RELEASE_BATCH/images_compressed"
 REGION="us-east-1"
 RUN_ID=${CPG_UPLOAD_RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)}
 RUN_ROOT="$LOG_PARENT/$RUN_ID"
@@ -111,13 +116,13 @@ COMPONENT_NAMES=()
 start_sync \
   metadata \
   "$RUN_ROOT/metadata-layout" \
-  "$STAGING_ROOT/workspace/metadata/jump_lite/v1.0"
+  "$METADATA_DESTINATION"
 
 for codec in jpegxl_lossy_mq jpegxl_lossy_hq jpegxl_lossy_d20; do
   start_sync \
     "images_$codec" \
     "$IMAGE_ROOT/$codec.zarr" \
-    "$STAGING_ROOT/images_compressed/jump_lite/v1.0/$codec.zarr"
+    "$IMAGE_DESTINATION_ROOT/$codec.zarr"
 done
 
 (
