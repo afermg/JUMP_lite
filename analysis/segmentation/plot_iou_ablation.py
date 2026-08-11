@@ -20,22 +20,22 @@ CODEC_DISPLAY = {
     "raw": "Raw",
     "zstd": "Raw",
     "jpegxl_lossy_raw": "Raw",
-    "jpegxl_lossy_hq": "JXL-HQ",
-    "jpegxl_lossy_effort_3": "JXL-E3",
-    "jpegxl_lossy_d2_e8": "JXL-D2-E8",
-    "jpegxl_lossy_mq": "JXL-MQ",
-    "jpegxl_lossy_lq": "JXL-LQ",
-    "jpegxl_lossy_d10": "JXL-D10",
-    "jpegxl_lossy_d15": "JXL-D15",
-    "jpegxl_lossy_d20": "JXL-D20",
-    "jpegxl_lossy_d20_e2": "JXL-D20",
-    "jpegxl_lossy_d25": "JXL-D25",
-    "jpegxl_lossy_d30": "JXL-D25",
+    "jpegxl_lossy_hq": "HQ",
+    "jpegxl_lossy_effort_3": "E3",
+    "jpegxl_lossy_d2_e8": "D2-E8",
+    "jpegxl_lossy_mq": "MQ",
+    "jpegxl_lossy_lq": "LQ",
+    "jpegxl_lossy_d10": "D10",
+    "jpegxl_lossy_d15": "D15",
+    "jpegxl_lossy_d20": "D20",
+    "jpegxl_lossy_d20_e2": "D20",
+    "jpegxl_lossy_d25": "D25",
+    "jpegxl_lossy_d30": "D25",
 }
 
 CODEC_ORDER = [
-    "Raw", "JXL-HQ", "JXL-E3", "JXL-D2-E8", "JXL-MQ", "JXL-LQ",
-    "JXL-D10", "JXL-D15", "JXL-D20", "JXL-D25",
+    "Raw", "HQ", "E3", "D2-E8", "MQ", "LQ",
+    "D10", "D15", "D20", "D25",
 ]
 
 

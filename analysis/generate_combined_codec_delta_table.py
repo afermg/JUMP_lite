@@ -56,9 +56,9 @@ CODEC_NORMALIZE = {
 
 # Reader-visible labels only; internal codec tiers and filenames stay lowercase.
 CODEC_DISPLAY = {
-    "hq": "JXL-HQ",
-    "mq": "JXL-MQ",
-    "d20": "JXL-D20",
+    "hq": "HQ",
+    "mq": "MQ",
+    "d20": "D20",
 }
 
 # RefCam family substrings to display labels.

@@ -105,11 +105,11 @@ CODEC_DISPLAY = {
     "lz4hc":            "lz4hc",
     "blosc_zstd":       "blosc-zstd",
     "jpegxl_lossy_raw": "Lossless",
-    "jpegxl_lossy_hq":  "JXL-HQ",
-    "jpegxl_lossy_mq":  "JXL-MQ",
-    "jpegxl_lossy_lq":  "JXL-LQ",
-    "jpegxl_lossy_d20": "JXL-D20",
-    "jpegxl_lossy_d50": "JXL-D50",
+    "jpegxl_lossy_hq":  "HQ",
+    "jpegxl_lossy_mq":  "MQ",
+    "jpegxl_lossy_lq":  "LQ",
+    "jpegxl_lossy_d20": "D20",
+    "jpegxl_lossy_d50": "D50",
 }
 
 

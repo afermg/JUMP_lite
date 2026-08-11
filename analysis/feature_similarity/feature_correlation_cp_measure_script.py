@@ -270,9 +270,9 @@ _CODEC_ORDER = [
 ]
 _KEY_ORDER = [f'jpegxl_lossy_{c.replace("jxl_", "")}.zarr' for c in _CODEC_ORDER]
 _CODEC_LABELS = {
-    'jxl_hq': 'JXL-HQ', 'jxl_effort_3': 'JXL-E3', 'jxl_d2_e8': 'JXL-D2-E8',
-    'jxl_mq': 'JXL-MQ', 'jxl_lq': 'JXL-LQ', 'jxl_d10': 'JXL-D10',
-    'jxl_d15': 'JXL-D15', 'jxl_d20_e2': 'JXL-D20', 'jxl_d30': 'JXL-D25',
+    'jxl_hq': 'HQ', 'jxl_effort_3': 'E3', 'jxl_d2_e8': 'D2-E8',
+    'jxl_mq': 'MQ', 'jxl_lq': 'LQ', 'jxl_d10': 'D10',
+    'jxl_d15': 'D15', 'jxl_d20_e2': 'D20', 'jxl_d30': 'D25',
 }
 
 

@@ -725,7 +725,7 @@ def plot_crosswell_vs_codec_correlation(
                 bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.8),
             )
 
-        ax.set_xlabel("Codec Feature Correlation (Raw vs JXL-HQ, cell-level)", fontsize=13)
+        ax.set_xlabel("Codec Feature Correlation (Raw vs HQ, cell-level)", fontsize=13)
         ax.set_ylabel(ylabel, fontsize=13)
         ax.set_title(
             "Cross-Well Consistency vs Compression Fidelity",
@@ -903,7 +903,7 @@ def plot_replicate_vs_codec_correlation(
             ha="center",
         )
 
-    ax.set_xlabel("Codec Feature Correlation (Raw vs JXL-HQ, cell-level)", fontsize=13)
+    ax.set_xlabel("Codec Feature Correlation (Raw vs HQ, cell-level)", fontsize=13)
     ax.set_ylabel("Replicate Correlation (well-pair median reproducibility)", fontsize=13)
     ax.set_title(
         "Feature Signal vs Compression Fidelity",
