@@ -9,7 +9,7 @@ dependencies = [
     "boto3>=1.26.0",
     "cellpose>=4.0.7",
     "copairs>=0.5.1",
-    "cp-measure>=0.1.16",
+    "cp-measure @ git+https://github.com/afermg/cp_measure.git",
     "duckdb>=1.4.2",
     "hydra-core>=1.3.0",
     "hydra-joblib-launcher>=1.2.0",
