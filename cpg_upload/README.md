@@ -10,7 +10,7 @@ are requested through S3 Access Grants.
 ## Safety invariant
 
 All compressed image datasets and every corresponding per-site Parquet variant
-must contain the exact same frozen set of 855,519 site keys. The MQ Zarr is the
+must contain the exact same frozen set of 655,101 paper-cohort site keys. The MQ Zarr is the
 canonical set for this release.
 
 Uploads must use `upload_to_staging.sh` for one unchanged directory,
@@ -99,6 +99,14 @@ complete finalization checklist is below.
   counts and bytes and checkpoints each completed prefix.
 - `JUMP_LITE_README.md`: dataset-facing README copied to the release root by
   the metadata builder and uploaded with the release.
+- `TARGET2_ARTIFACTS_README.md`: dataset-facing README for the publication's
+  separate four-plate Target-2 artifact package.
+- `build_target2_artifacts.py`: validates and hashes the frozen Target-2 masks
+  and canonical compact profiles, then writes deterministic manifests and
+  provenance without regenerating any analysis output.
+- `upload_target2_artifacts_to_staging.py`: dry-run-by-default, checkpointed
+  Target-2 uploader. It withholds package metadata until data upload and exact
+  remote key/size/SHA-256 verification complete.
 
 ## 1. Reconcile site sets when inputs change
 
@@ -186,12 +194,13 @@ Frozen v1.0 facts useful for auditing:
 
 | Invariant | Value |
 |---|---:|
-| Sites per image/embedding variant | 855,519 |
-| Site-key SHA-256 | `399e703bc924a19f7c3827db3c711373306e3d943d2f12cf56d0a368f5d13961` |
+| Sites per image/embedding variant | 655,101 |
+| Modality-specific perturbations | 24,356 |
+| Site-key SHA-256 | `4ea6ea3f5457c33a1412a80a89d8696d4f8e77474cf449e75db7ce6ba98685e2` |
 | Embedding variants | 16 |
-| Embedding Parquets | 13,688,304 |
-| Final Zstd objects | 1,711,039 |
-| Final Zstd bytes | 6,105,823,136,762 (6.106 TB; 5.553 TiB) |
+| Embedding Parquets | 10,481,616 |
+| Final Zstd objects | 1,310,203 |
+| Final Zstd bytes | 4,812,456,031,773 (4.812 TB; 4.377 TiB) |
 
 Local embedding files are flat and named:
 
@@ -207,6 +216,53 @@ well-site object key shown above. It maps internal names
 The original TIFFs and source-specific `load_data_csv` files already exist in
 the six contributing JUMP source folders. They are referenced by the deposited
 indices and are not duplicated under `source_all`.
+
+### Target-2 publication artifacts
+
+Target-2 masks and compact profiles are a publication subanalysis, not part of
+the frozen JUMP-Lite image/embedding cohort. They use a separate version root:
+
+```text
+cpg0016-jump/source_all/workspace/publication_data/2026_jump_lite/
+└── target_2/v1.0/
+    ├── README.md
+    ├── manifests/{masks.parquet,profiles.parquet,provenance.json}
+    ├── segmentation/objects/<codec>/<source>/<batch>/<plate>/<well>-<site>/
+    │   ├── cell_mask.npz
+    │   └── nuclei_mask.npz
+    └── profiles/
+        ├── cp_measure/<codec>/profiles.parquet
+        ├── cell_count/<codec>/cell_counts.parquet
+        └── deep_learning/<model>/<codec>/profiles.parquet
+```
+
+Build and validate the local package metadata without changing source artifacts:
+
+```bash
+.venv/bin/python cpg_upload/build_target2_artifacts.py
+```
+
+The uploader performs the same complete local validation in dry-run mode and
+prints sample mappings without requesting credentials:
+
+```bash
+.venv/bin/python cpg_upload/upload_target2_artifacts_to_staging.py
+```
+
+Only after reviewing the manifests, provenance, partial-codec accounting, and
+destination mappings, upload to the private staging bucket:
+
+```bash
+.venv/bin/python cpg_upload/upload_target2_artifacts_to_staging.py --apply
+```
+
+The checkpoint is stored under
+`/work/datasets/jump_lite/cpg_upload_state/target_2/v1.0/`. A checkpoint is
+rejected if either the destination prefix or inventory digest changes. The
+uploader publishes `README.md` and `manifests/` only after all mask/profile data
+pass exact remote key, byte-size, and stored SHA-256 verification, then verifies
+the complete version prefix again. Public promotion remains a CPG maintainer
+action.
 
 ## 5. Activate temporary CPG credentials
 
@@ -307,7 +363,7 @@ systemctl --user enable --now jump-lite-zstd-rebuild.service
 Check service state with
 `systemctl --user status jump-lite-zstd-rebuild.service`.
 
-The frozen site index supplies exactly the 855,519 MQ keys and five original
+The frozen site index supplies exactly the 655,101 MQ keys and five original
 TIFF URLs per site. For each site, the builder:
 
 1. downloads AGP, DNA, ER, Mito, and RNA directly from the public CPG;
@@ -348,7 +404,7 @@ truncated test run never performs final renaming.
 The streaming uploader can safely overlap the multi-terabyte transfer with the
 rebuild. It follows only completed manifest batches and uploads each chunk before
 its array metadata. It deliberately withholds the group-level `zarr.json` until
-the builder has finalized all 855,519 arrays and the uploader has repeated full
+the builder has finalized all 655,101 release arrays and the uploader has repeated full
 local validation:
 
 ```bash
@@ -421,7 +477,7 @@ are evidence needed for recovery.
 Expected terminal states are:
 
 - `upload_status.sh`: `Overall state: COMPLETE` and all 16 profile checkpoints
-  at `855,519/855,519`;
+  at `655,101/655,101`;
 - `zstd_rebuild_status.sh`: `State: COMPLETE`, `complete: 1`, and final path
   `.../zstd.zarr`;
 - `zstd_upload_status.sh`: `Run state: COMPLETE`, `complete: true`,
@@ -542,7 +598,7 @@ v1.1 or another iteration:
 4. Audit every hard-coded version, count, and digest before any write:
 
    ```bash
-   rg -n 'v1\.0|855_519|855,519|399e703b' cpg_upload
+   rg -n 'v1\.0|655_101|655,101|4ea6ea3f' cpg_upload
    ```
 
    In particular update `run_background_upload.sh`,
