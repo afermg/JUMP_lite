@@ -34,9 +34,9 @@ s3://cellpainting-gallery/cpg0016-jump/source_all/
 
 | Component | Path below the public root |
 |---|---|
-| Compressed images | `images_compressed/jump_lite/v1.0/<codec>.zarr/` |
-| Metadata and annotations | `workspace/metadata/jump_lite/v1.0/` |
-| Per-site embeddings | `workspace_dl/embeddings/<model>-<codec>/jump_lite/v1.0/` |
+| Compressed images | `images/2026_jump_lite_v1.0/images_compressed/<codec>.zarr/` |
+| Metadata and annotations | `workspace/publication_data/2026_jump_lite/metadata/v1.0/` |
+| Per-site embeddings | `workspace_dl/embeddings/<model>-<codec>/2026_jump_lite_v1.0/` |
 
 Start by downloading the small metadata bundle; AWS credentials are not required:
 
