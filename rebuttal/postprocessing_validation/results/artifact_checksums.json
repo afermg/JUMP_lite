@@ -62,10 +62,22 @@
       "size_bytes": 3161
     },
     {
-      "mtime_ns": 1786473558725573425,
+      "mtime_ns": 1786477211536821933,
       "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/REPORT.md",
-      "sha256": "55271383f79d24c3f18b80c814f5240ffc44d4e2384a64d56f37af041e310f3e",
-      "size_bytes": 6490
+      "sha256": "196db8f3464112e6a737b70f1784ff2dc4d3545207a2bd278df45f6b9eda0ee9",
+      "size_bytes": 6914
+    },
+    {
+      "mtime_ns": 1786477298206827829,
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/heldout_codec_performance.pdf",
+      "sha256": "3c7fea5b75ccec8efada6d6659ae6d91d60347d9ef3643a7f6108100915c63db",
+      "size_bytes": 29994
+    },
+    {
+      "mtime_ns": 1786477298409827843,
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/heldout_codec_performance.png",
+      "sha256": "22d8ce15f01df0cc7d87cee1589f8d8cf7c35de68e7cc4e58a78438b68eca6fa",
+      "size_bytes": 175842
     }
   ],
   "selected_normalized_profiles": [
@@ -201,5 +213,11 @@
       "sha256": "2c87a61573aa4939cb965f19e49495d627ac5710c6b712e0274662b222c1719c",
       "size_bytes": 61039932
     }
-  ]
+  ],
+  "figure_source": {
+    "mtime_ns": 1786477175529819483,
+    "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/plot_heldout_codec_performance.py",
+    "sha256": "70933263c159bf2cc3fe5cd0bd5c5e37bcfdffc67057fa3505ac201688a2b556",
+    "size_bytes": 5328
+  }
 }

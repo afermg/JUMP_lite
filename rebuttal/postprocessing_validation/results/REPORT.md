@@ -74,11 +74,18 @@ The existing full-data, cross-codec best-average fixed-configuration analysis re
 
 CellProfiler and CellCount have Raw profiles only. CellProfiler also retains the manuscript's known site-count asymmetry relative to the four-site deep-learning inputs.
 
+## Figure
+
+![Held-out fixed-recipe performance across codecs](heldout_codec_performance.png)
+
+The left panel reports the absolute unscaled PA--PC product; the right panel reports each learned model's point-estimate percentage change from its own Raw score. No uncertainty intervals are shown because the paired uncertainty analysis remains separate.
+
 ## Output inventory
 
 - `treatment_split.csv` / `split_summary.csv`: frozen split and stratum counts.
 - `validation_config_scores.csv`: all successful Raw validation candidates and ranks.
 - `selected_configs.csv`: pinned family configurations and runner-up margins.
 - `heldout_test_scores.csv`: primary held-out results.
+- `heldout_codec_performance.pdf` and `.png`: reproducible paper figure.
 - `per_unit/*`: held-out PA treatment and PC target tables for uncertainty analyses.
 - `provenance.json` and `selected_codec_coverage.csv`: archive/config paths, hashes, and coverage.

@@ -64,6 +64,19 @@ each of five learned families, 280 CellProfiler configurations, and five
 CellCount configurations), then evaluates 22 pinned family/codec profiles. It
 is CPU- and I/O-intensive and is expected to take hours.
 
+## Figure
+
+Regenerate the paper figure from the frozen held-out score table with:
+
+```bash
+python rebuttal/postprocessing_validation/plot_heldout_codec_performance.py
+```
+
+This writes `results/heldout_codec_performance.pdf` and `.png`. Panel (a) shows
+the absolute unscaled PA--PC product; panel (b) expresses each learned model's
+point estimate relative to its own Raw result. The plot intentionally has no
+error bars because the paired uncertainty analysis is a separate pending item.
+
 ## Outputs
 
 Each output directory contains:
@@ -73,6 +86,7 @@ Each output directory contains:
 - `validation_config_scores.csv` and `selected_configs.csv`
 - `selected_codec_coverage.csv` and `common_wells.csv`
 - `heldout_test_scores.csv`
+- `heldout_codec_performance.pdf` and `.png`
 - `per_unit/*` treatment-level PA and target-level PC tables
 - `checkpoints/*` and suppressed copairs logs
 - `REPORT.md`
