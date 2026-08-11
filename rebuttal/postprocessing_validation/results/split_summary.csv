@@ -1,0 +1,6 @@
+stratum,validation,test,total
+group_crispr,1595,6380,7975
+group_high,72,289,361
+group_high|group_low,165,660,825
+group_low,518,2071,2589
+group_orf,3025,12102,15127

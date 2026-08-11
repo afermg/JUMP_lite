@@ -1,0 +1,289 @@
+{
+  "common_wells": 148253,
+  "completed_at": "2026-08-11T18:39:18.710303+00:00",
+  "compound_col": "Metadata_JCP2022",
+  "families": [
+    "dinov2",
+    "morphem",
+    "openphenom",
+    "subcell",
+    "cellprofiler",
+    "dinov2_random",
+    "cell_count"
+  ],
+  "group_col": "Metadata_Group",
+  "initial_started_at": "2026-08-11T17:49:50.030662+00:00",
+  "invocation_elapsed_seconds": 13.073534972965717,
+  "invocation_started_at": "2026-08-11T18:39:05.636875+00:00",
+  "max_selection_configs": null,
+  "negative_control_col": "Metadata_negcon",
+  "pc_groups": [
+    "group_high",
+    "group_low"
+  ],
+  "protocol_hash": "ae3d2b5ce4abf9cf232b4f42c2a9f1e6d8cc185e955cd8ed7199580c7d3a9e45",
+  "protocol_version": 1,
+  "repo_head": "754f99afe4bfea025e589e94aab0dc8b38deb0c1",
+  "runner_sha256": "8b0da01796cfe04171c0e20024f8facb6cad8c94c231beec392c2a4a9d1f0bf7",
+  "seed": 20260811,
+  "selected_outputs": [
+    {
+      "codec": "Raw",
+      "config": "std_ctrl__tvn_efaar_e0.1_c304",
+      "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/dinov2_jump_lite_updated_jpegxl_lossy_raw_raw_features/std_ctrl__tvn_efaar_e0.1_c304/pipeline_config.yaml",
+      "config_sha256": "fc04c43e6dcf71b83c5421d7fe07f94db9b7e2e29581e20ac24dbee8f81bedd5",
+      "family": "dinov2",
+      "output_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/dinov2_jump_lite_updated_jpegxl_lossy_raw_raw_features/std_ctrl__tvn_efaar_e0.1_c304/output.parquet",
+      "output_size_bytes": 187801422
+    },
+    {
+      "codec": "HQ",
+      "config": "std_ctrl__tvn_efaar_e0.1_c304",
+      "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/dinov2_jump_lite_updated_jpegxl_lossy_hq_raw_features/std_ctrl__tvn_efaar_e0.1_c304/pipeline_config.yaml",
+      "config_sha256": "224fac46a88e730307f9f2eef6e8ae62bbaca487ff13e29cf99681a00d416878",
+      "family": "dinov2",
+      "output_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/dinov2_jump_lite_updated_jpegxl_lossy_hq_raw_features/std_ctrl__tvn_efaar_e0.1_c304/output.parquet",
+      "output_size_bytes": 187802171
+    },
+    {
+      "codec": "MQ",
+      "config": "std_ctrl__tvn_efaar_e0.1_c304",
+      "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/dinov2_jump_lite_updated_jpegxl_lossy_mq_raw_features/std_ctrl__tvn_efaar_e0.1_c304/pipeline_config.yaml",
+      "config_sha256": "3248e1301f397f9b9d0971a56e8a8efd60c79a65530e0a13fcb0dfd35dd16b3a",
+      "family": "dinov2",
+      "output_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/dinov2_jump_lite_updated_jpegxl_lossy_mq_raw_features/std_ctrl__tvn_efaar_e0.1_c304/output.parquet",
+      "output_size_bytes": 187753735
+    },
+    {
+      "codec": "D20",
+      "config": "std_ctrl__tvn_efaar_e0.1_c304",
+      "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/dinov2_jump_lite_updated_jpegxl_lossy_d20_raw_features/std_ctrl__tvn_efaar_e0.1_c304/pipeline_config.yaml",
+      "config_sha256": "3869f0aa4a1da08266aaa8d01610a4c6a485d8bd04c64f346c5ad51b4df4a443",
+      "family": "dinov2",
+      "output_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/dinov2_jump_lite_updated_jpegxl_lossy_d20_raw_features/std_ctrl__tvn_efaar_e0.1_c304/output.parquet",
+      "output_size_bytes": 187707667
+    },
+    {
+      "codec": "Raw",
+      "config": "std_ctrl__tvn_efaar_e1.0_c304",
+      "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/morphem_jump_lite_updated_jpegxl_lossy_raw_raw_features/std_ctrl__tvn_efaar_e1.0_c304/pipeline_config.yaml",
+      "config_sha256": "5135c4001faa331a676157da9faa91267e8f7c0474338332d6bac32a3ca27f2c",
+      "family": "morphem",
+      "output_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/morphem_jump_lite_updated_jpegxl_lossy_raw_raw_features/std_ctrl__tvn_efaar_e1.0_c304/output.parquet",
+      "output_size_bytes": 187545949
+    },
+    {
+      "codec": "HQ",
+      "config": "std_ctrl__tvn_efaar_e1.0_c304",
+      "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/morphem_jump_lite_updated_jpegxl_lossy_hq_raw_features/std_ctrl__tvn_efaar_e1.0_c304/pipeline_config.yaml",
+      "config_sha256": "8df99e18fd51608e32864d8fbbca01aac9f02288a0b5940acd2b8aa52e983010",
+      "family": "morphem",
+      "output_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/morphem_jump_lite_updated_jpegxl_lossy_hq_raw_features/std_ctrl__tvn_efaar_e1.0_c304/output.parquet",
+      "output_size_bytes": 187574336
+    },
+    {
+      "codec": "MQ",
+      "config": "std_ctrl__tvn_efaar_e1.0_c304",
+      "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/morphem_jump_lite_updated_jpegxl_lossy_mq_raw_features/std_ctrl__tvn_efaar_e1.0_c304/pipeline_config.yaml",
+      "config_sha256": "b662bfd95d621a38ce10b27e4e792c6d204b7fd46052ea64e15e3284b76b12b1",
+      "family": "morphem",
+      "output_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/morphem_jump_lite_updated_jpegxl_lossy_mq_raw_features/std_ctrl__tvn_efaar_e1.0_c304/output.parquet",
+      "output_size_bytes": 187551117
+    },
+    {
+      "codec": "D20",
+      "config": "std_ctrl__tvn_efaar_e1.0_c304",
+      "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/morphem_jump_lite_updated_jpegxl_lossy_d20_raw_features/std_ctrl__tvn_efaar_e1.0_c304/pipeline_config.yaml",
+      "config_sha256": "b6b710ce481fea34d272b7e46749fc847ea82250f279751d00549d471d439103",
+      "family": "morphem",
+      "output_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/morphem_jump_lite_updated_jpegxl_lossy_d20_raw_features/std_ctrl__tvn_efaar_e1.0_c304/output.parquet",
+      "output_size_bytes": 187540555
+    },
+    {
+      "codec": "Raw",
+      "config": "std_all__tvn_efaar_e0.2_c150",
+      "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/openphenom_jump_lite_updated_jpegxl_lossy_raw_raw_features/std_all__tvn_efaar_e0.2_c150/pipeline_config.yaml",
+      "config_sha256": "1e6dcaa6fb1863c1a82ec56f34d89da7c13a5893e43946a5b90438fafb0d1734",
+      "family": "openphenom",
+      "output_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/openphenom_jump_lite_updated_jpegxl_lossy_raw_raw_features/std_all__tvn_efaar_e0.2_c150/output.parquet",
+      "output_size_bytes": 93866675
+    },
+    {
+      "codec": "HQ",
+      "config": "std_all__tvn_efaar_e0.2_c150",
+      "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/openphenom_jump_lite_updated_jpegxl_lossy_hq_raw_features/std_all__tvn_efaar_e0.2_c150/pipeline_config.yaml",
+      "config_sha256": "5e052bb20583d4ee13f3cb3299983ea645a9364f402475e7aa910695ca95d668",
+      "family": "openphenom",
+      "output_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/openphenom_jump_lite_updated_jpegxl_lossy_hq_raw_features/std_all__tvn_efaar_e0.2_c150/output.parquet",
+      "output_size_bytes": 95630646
+    },
+    {
+      "codec": "MQ",
+      "config": "std_all__tvn_efaar_e0.2_c150",
+      "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/openphenom_jump_lite_updated_jpegxl_lossy_mq_raw_features/std_all__tvn_efaar_e0.2_c150/pipeline_config.yaml",
+      "config_sha256": "22d548bd821ede834a00ae4a2b18e0d00ca2c939b9b53c03953d31ebea39a976",
+      "family": "openphenom",
+      "output_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/openphenom_jump_lite_updated_jpegxl_lossy_mq_raw_features/std_all__tvn_efaar_e0.2_c150/output.parquet",
+      "output_size_bytes": 95660458
+    },
+    {
+      "codec": "D20",
+      "config": "std_all__tvn_efaar_e0.2_c150",
+      "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/openphenom_jump_lite_updated_jpegxl_lossy_d20_raw_features/std_all__tvn_efaar_e0.2_c150/pipeline_config.yaml",
+      "config_sha256": "126f9152a43e1f405b19afa4230325feeba4db845ce77228e66a12b314814c43",
+      "family": "openphenom",
+      "output_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/openphenom_jump_lite_updated_jpegxl_lossy_d20_raw_features/std_all__tvn_efaar_e0.2_c150/output.parquet",
+      "output_size_bytes": 95670929
+    },
+    {
+      "codec": "Raw",
+      "config": "std_ctrl__tvn_efaar_e0.2_c96",
+      "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/subcell__clip01_jump_lite_updated_jpegxl_lossy_raw_raw_features/std_ctrl__tvn_efaar_e0.2_c96/pipeline_config.yaml",
+      "config_sha256": "9a0b96d92430d7ad2caba47b5450f194f1d199ac2b93d9beb2b0e805dc2ad70b",
+      "family": "subcell",
+      "output_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/subcell__clip01_jump_lite_updated_jpegxl_lossy_raw_raw_features/std_ctrl__tvn_efaar_e0.2_c96/output.parquet",
+      "output_size_bytes": 61039932
+    },
+    {
+      "codec": "HQ",
+      "config": "std_ctrl__tvn_efaar_e0.2_c96",
+      "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/subcell__clip01_jump_lite_updated_jpegxl_lossy_hq_raw_features/std_ctrl__tvn_efaar_e0.2_c96/pipeline_config.yaml",
+      "config_sha256": "b3de41d6723251dda1766cd0d7a70ebbe58e2fe6ce67a67fa374a274b53d5bdb",
+      "family": "subcell",
+      "output_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/subcell__clip01_jump_lite_updated_jpegxl_lossy_hq_raw_features/std_ctrl__tvn_efaar_e0.2_c96/output.parquet",
+      "output_size_bytes": 61052035
+    },
+    {
+      "codec": "MQ",
+      "config": "std_ctrl__tvn_efaar_e0.2_c96",
+      "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/subcell__clip01_jump_lite_updated_jpegxl_lossy_mq_raw_features/std_ctrl__tvn_efaar_e0.2_c96/pipeline_config.yaml",
+      "config_sha256": "98aa391b7b88e966afea25175bddce178f2f23a79f9dc73cbf5c5181552f8ede",
+      "family": "subcell",
+      "output_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/subcell__clip01_jump_lite_updated_jpegxl_lossy_mq_raw_features/std_ctrl__tvn_efaar_e0.2_c96/output.parquet",
+      "output_size_bytes": 61040841
+    },
+    {
+      "codec": "D20",
+      "config": "std_ctrl__tvn_efaar_e0.2_c96",
+      "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/subcell__clip01_jump_lite_updated_jpegxl_lossy_d20_raw_features/std_ctrl__tvn_efaar_e0.2_c96/pipeline_config.yaml",
+      "config_sha256": "2bd4e314d11ab04dfe4c5a36ec9a5acc3931275b1738fc272a8881237e5cf058",
+      "family": "subcell",
+      "output_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/subcell__clip01_jump_lite_updated_jpegxl_lossy_d20_raw_features/std_ctrl__tvn_efaar_e0.2_c96/output.parquet",
+      "output_size_bytes": 61021349
+    },
+    {
+      "codec": "Raw",
+      "config": "robustmad_all__outlier100__INT__prune0.9__tvn_efaar_e0.1_c196",
+      "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/cellprofiler_raw_jump_lite_raw_features/robustmad_all__outlier100__INT__prune0.9__tvn_efaar_e0.1_c196/pipeline_config.yaml",
+      "config_sha256": "5d2a81053aa4bd014a5aa325231baa7c4eae94fbb2dfbaca22f87e8f4ce9db76",
+      "family": "cellprofiler",
+      "output_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/cellprofiler_raw_jump_lite_raw_features/robustmad_all__outlier100__INT__prune0.9__tvn_efaar_e0.1_c196/output.parquet",
+      "output_size_bytes": 231020749
+    },
+    {
+      "codec": "Raw",
+      "config": "std_all__tvn_efaar_e0.05_c304",
+      "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/dinov2_random_jump_lite_updated_jpegxl_lossy_raw_raw_features/std_all__tvn_efaar_e0.05_c304/pipeline_config.yaml",
+      "config_sha256": "ac221c7fbf1dc559f761bdbd56ae33dd547f0c69454162abdd8797ebc55d32e7",
+      "family": "dinov2_random",
+      "output_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/dinov2_random_jump_lite_updated_jpegxl_lossy_raw_raw_features/std_all__tvn_efaar_e0.05_c304/output.parquet",
+      "output_size_bytes": 187665855
+    },
+    {
+      "codec": "HQ",
+      "config": "std_all__tvn_efaar_e0.05_c304",
+      "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/dinov2_random_jump_lite_updated_jpegxl_lossy_hq_raw_features/std_all__tvn_efaar_e0.05_c304/pipeline_config.yaml",
+      "config_sha256": "442cb2d1f24a2fc1fb1c9f882b32cbeccf7cc6e8b16d974b61f29e64b4b581a1",
+      "family": "dinov2_random",
+      "output_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/dinov2_random_jump_lite_updated_jpegxl_lossy_hq_raw_features/std_all__tvn_efaar_e0.05_c304/output.parquet",
+      "output_size_bytes": 187636169
+    },
+    {
+      "codec": "MQ",
+      "config": "std_all__tvn_efaar_e0.05_c304",
+      "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/dinov2_random_jump_lite_updated_jpegxl_lossy_mq_raw_features/std_all__tvn_efaar_e0.05_c304/pipeline_config.yaml",
+      "config_sha256": "594ab262351f2da7337ca1aa7d3c1adc192c92548849f079bbf29da0629f045d",
+      "family": "dinov2_random",
+      "output_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/dinov2_random_jump_lite_updated_jpegxl_lossy_mq_raw_features/std_all__tvn_efaar_e0.05_c304/output.parquet",
+      "output_size_bytes": 189539177
+    },
+    {
+      "codec": "D20",
+      "config": "std_all__tvn_efaar_e0.05_c304",
+      "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/dinov2_random_jump_lite_updated_jpegxl_lossy_d20_raw_features/std_all__tvn_efaar_e0.05_c304/pipeline_config.yaml",
+      "config_sha256": "a35959217a919e8028a09a0877d8c8a811d5f16de0c0b3918db077819b3d7a6d",
+      "family": "dinov2_random",
+      "output_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/dinov2_random_jump_lite_updated_jpegxl_lossy_d20_raw_features/std_all__tvn_efaar_e0.05_c304/output.parquet",
+      "output_size_bytes": 187603671
+    },
+    {
+      "codec": "Raw",
+      "config": "robustmad_all",
+      "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/cell_count_jump_lite_raw_features/robustmad_all/pipeline_config.yaml",
+      "config_sha256": "315af6124015c8f2b5836a7e81b6ec42e87071fd080855e191397924106de91f",
+      "family": "cell_count",
+      "output_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/cell_count_jump_lite_raw_features/robustmad_all/output.parquet",
+      "output_size_bytes": 7134137
+    }
+  ],
+  "selection_codec": "Raw",
+  "selection_ranges": {
+    "cell_count": {
+      "pa_max": 0.2645665856897921,
+      "pa_min": 0.20858434353958902,
+      "pc_max": 0.01643861463985816,
+      "pc_min": 0.005801530062689192
+    },
+    "cellprofiler": {
+      "pa_max": 0.5880928828910301,
+      "pa_min": 0.2847860651282389,
+      "pc_max": 0.08501021189562269,
+      "pc_min": 0.046306219018592845
+    },
+    "dinov2": {
+      "pa_max": 0.38635421620665533,
+      "pa_min": 0.002842811646684675,
+      "pc_max": 0.05897712608280729,
+      "pc_min": 0.0282809959981835
+    },
+    "dinov2_random": {
+      "pa_max": 0.10397134845544637,
+      "pa_min": -0.14254329793633014,
+      "pc_max": 0.023917207258933027,
+      "pc_min": -0.007955711689399814
+    },
+    "morphem": {
+      "pa_max": 0.5475441464834885,
+      "pa_min": 0.3283255934213752,
+      "pc_max": 0.07664393863307849,
+      "pc_min": 0.038351475565882226
+    },
+    "openphenom": {
+      "pa_max": 0.4177314888598007,
+      "pa_min": -0.052447093629454766,
+      "pc_max": 0.0569027965794582,
+      "pc_min": 0.025877761882080824
+    },
+    "subcell": {
+      "pa_max": 0.35475508452594934,
+      "pa_min": 0.11186341988840251,
+      "pc_max": 0.053486550502870454,
+      "pc_min": 0.02651631546849633
+    }
+  },
+  "selection_score": "within-family min-max(PA mean NAP) * min-max(PC mean NAP)",
+  "split_counts": {
+    "test_treatments": 21502,
+    "validation_treatments": 5375
+  },
+  "split_reference": {
+    "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/morphem_jump_lite_updated_jpegxl_lossy_raw_raw_features/robustmad_all__tvn_efaar_e0.05/pipeline_config.yaml",
+    "config_sha256": "68b984ff2aa488ff1d0cd3201eb79ba0993a80de1f761d6c992d793855e2701f",
+    "output_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/morphem_jump_lite_updated_jpegxl_lossy_raw_raw_features/robustmad_all__tvn_efaar_e0.05/output.parquet"
+  },
+  "started_at": "2026-08-11T17:49:50.030662+00:00",
+  "sweep_dir": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite",
+  "target_col": "Metadata_RefChemDB_target",
+  "validation_fraction": 0.2,
+  "workers": 4
+}
