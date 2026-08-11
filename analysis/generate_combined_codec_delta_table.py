@@ -13,9 +13,9 @@ mean %-delta from each family's baseline codec across four benchmarks:
 Plus a trailing "Mean" column = unweighted mean across the 11 task cells.
 
 Outputs two .tex files:
-  combined_codec_delta_pct_table.tex          full (commented per-model rows
-                                              + active per-tier aggregate)
-  combined_codec_delta_pct_table_summary.tex  active per-tier aggregate only
+  combined_codec_delta_pct_table.tex          full per-model rows plus a
+                                              clearly labeled Mean row
+  combined_codec_delta_pct_table_summary.tex  per-tier aggregate only
 
 Assumptions:
   - Top-tier header: RefChem spans PA + PC; MOTIVE spans CC/GG/CG; Mean trails.
@@ -52,6 +52,13 @@ CODEC_NORMALIZE = {
     "hq": "hq",
     "mq": "mq",
     "d20": "d20",
+}
+
+# Reader-visible labels only; internal codec tiers and filenames stay lowercase.
+CODEC_DISPLAY = {
+    "hq": "JXL-HQ",
+    "mq": "JXL-MQ",
+    "d20": "JXL-D20",
 }
 
 # RefCam family substrings to display labels.
@@ -484,17 +491,27 @@ def build_combined_table(
 
     models = MODEL_DISPLAY_ORDER
     for tier_idx, codec in enumerate(CODEC_TIERS):
+        codec_display = CODEC_DISPLAY[codec]
         if not summary_only:
-            # Four commented per-model rows. Tier label sits on the OpenPhenom
-            # line (3rd model in order) per the originals.
-            for i, m in enumerate(models):
-                tier_cell = codec if m == "OpenPhenom" else ""
+            # Show the codec once in each five-row block, centered on the
+            # OpenPhenom row; the final row is the aggregate across models.
+            for m in models:
+                tier_cell = codec_display if m == "OpenPhenom" else ""
                 cells = _row_cells_with_std(m, codec, refcam, motive)
                 lines.append(
-                    f"% {tier_cell} & {m} & " + " & ".join(cells) + r" \\"
+                    f"{tier_cell} & {m} & " + " & ".join(cells) + r" \\"
                 )
         agg_cells = _aggregate_cells(codec, refcam, motive, models)
-        lines.append(f"{codec} & & " + " & ".join(agg_cells) + r" \\")
+        if summary_only:
+            lines.append(
+                f"{codec_display} & \\textit{{Mean}} & "
+                + " & ".join(agg_cells)
+                + r" \\"
+            )
+        else:
+            lines.append(
+                r" & \textit{Mean} & " + " & ".join(agg_cells) + r" \\"
+            )
         if tier_idx < len(CODEC_TIERS) - 1:
             lines.append(r"\midrule")
 

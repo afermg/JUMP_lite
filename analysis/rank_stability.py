@@ -58,9 +58,9 @@ def get_codec(model: str) -> str:
 CODEC_ORDER = ["jpegxl_lossy_raw", "jpegxl_lossy_hq", "jpegxl_lossy_mq", "jpegxl_lossy_d20"]
 CODEC_LABELS = {
     "jpegxl_lossy_raw": "Raw",
-    "jpegxl_lossy_hq": "HQ",
-    "jpegxl_lossy_mq": "MQ",
-    "jpegxl_lossy_d20": "D20",
+    "jpegxl_lossy_hq": "JXL-HQ",
+    "jpegxl_lossy_mq": "JXL-MQ",
+    "jpegxl_lossy_d20": "JXL-D20",
     "raw": "Raw",
 }
 

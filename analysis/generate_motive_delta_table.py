@@ -38,6 +38,26 @@ from plot_motive_codec_delta import (  # noqa: E402
 )
 
 
+# Table-only reader labels. Keep shared/internal keys lowercase so figure and
+# data filenames remain stable even when the table presentation changes.
+TABLE_CODEC_DISPLAY = {
+    "raw": "Raw",
+    "zstd": "Zstd",
+    "jpegxl_lossy_raw": "Raw",
+    "jpegxl_lossy_hq": "JXL-HQ",
+    "jpegxl_lossy_effort_3": "JXL-E3",
+    "jpegxl_lossy_d2_e8": "JXL-D2-E8",
+    "jpegxl_lossy_mq": "JXL-MQ",
+    "jpegxl_lossy_lq": "JXL-LQ",
+    "jpegxl_lossy_d10": "JXL-D10",
+    "jpegxl_lossy_d15": "JXL-D15",
+    "jpegxl_lossy_d20": "JXL-D20",
+    "jpegxl_lossy_d20_e2": "JXL-D20",
+    "jpegxl_lossy_d25": "JXL-D25",
+    "jpegxl_lossy_d50": "JXL-D50",
+}
+
+
 # (group_label, [(panel_name, (task, modality, group))...]).
 # Panel names are LaTeX-safe (arrows escaped to $\to$).
 TASK_GROUPS: list[tuple[str, list[tuple[str, tuple[str, str | None, str | None]]]]] = [
@@ -246,7 +266,9 @@ def build_latex_table(
 
     # Data rows: blocks by codec, with families sub-grouped inside each block.
     for codec_idx, codec in enumerate(present_codecs):
-        codec_label = CODEC_DISPLAY.get(codec, codec)
+        codec_label = TABLE_CODEC_DISPLAY.get(
+            codec, CODEC_DISPLAY.get(codec, codec)
+        )
         # Families that actually have data for this codec.
         families_for_codec = (
             agg_df.filter(pl.col("codec") == codec)

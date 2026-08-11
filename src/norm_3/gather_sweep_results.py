@@ -46,6 +46,8 @@ COMPRESSION_DISPLAY = {
     "jpegxl_lossy_d2_e8_filtered_raw": "d2_e8_f",
     "jpegxl_lossy_d10_raw": "d10",
     "jpegxl_lossy_d10_filtered_raw": "d10_f",
+    "jpegxl_lossy_d15_raw": "d15",
+    "jpegxl_lossy_d30_raw": "d25",
     # Embedding models: DINOv2-490
     "dinov2_490_zstd_raw": "dv2_490_raw",
     "dinov2_490_jpegxl_lossy_hq_raw": "dv2_490_hq",
@@ -239,7 +241,10 @@ COMPRESSION_DISPLAY = {
     "dinov2_lite_jpegxl_lossy_hq_raw": "dv2_lite_hq",
     "dinov2_lite_jpegxl_lossy_mq_raw": "dv2_lite_mq",
     "dinov2_lite_jpegxl_lossy_d20_raw": "dv2_lite_d20",
+    "dinov2_random_lite_jpegxl_lossy_raw_raw": "dv2_rand_lite_raw",
+    "dinov2_random_lite_jpegxl_lossy_hq_raw": "dv2_rand_lite_hq",
     "dinov2_random_lite_jpegxl_lossy_mq_raw": "dv2_rand_lite_mq",
+    "dinov2_random_lite_jpegxl_lossy_d20_raw": "dv2_rand_lite_d20",
     "morphem_lite_jpegxl_lossy_raw_raw": "morphem_lite_raw",
     "morphem_lite_jpegxl_lossy_hq_raw": "morphem_lite_hq",
     "morphem_lite_jpegxl_lossy_mq_raw": "morphem_lite_mq",
@@ -579,7 +584,10 @@ MODEL_FAMILIES = {
         "dinov2_lite_jpegxl_lossy_d20_raw",
     ],
     "dinov2_random_lite": [
+        "dinov2_random_lite_jpegxl_lossy_raw_raw",
+        "dinov2_random_lite_jpegxl_lossy_hq_raw",
         "dinov2_random_lite_jpegxl_lossy_mq_raw",
+        "dinov2_random_lite_jpegxl_lossy_d20_raw",
     ],
     "morphem_lite": [
         "morphem_lite_jpegxl_lossy_raw_raw",
@@ -1369,7 +1377,7 @@ def generate_group_nap_plot_compact(pdf, output_dir: Path, model_colors: dict,
             model_xpos[m] = xpos
             display = get_display_name(m)
             tick_positions.append(xpos)
-            tick_labels.append(_get_codec_label(display))
+            tick_labels.append(_get_codec_display_label(_get_codec_label(display)))
         family_groups.append((FAMILY_DISPLAY.get(fam, fam), slot_start, slot_end))
         cursor += slot_width + GAP_BETWEEN_FAMILIES
     total_width = cursor - GAP_BETWEEN_FAMILIES
@@ -1480,8 +1488,33 @@ def generate_group_nap_plot_compact(pdf, output_dir: Path, model_colors: dict,
 
 
 def _get_codec_label(display_name: str) -> str:
-    """Strip model prefix from display name, returning only the codec part."""
+    """Strip a model prefix, returning the lowercase internal codec key."""
     return _DISPLAY_TO_CODEC.get(display_name, display_name)
+
+
+_CODEC_DISPLAY_LABELS = {
+    "raw": "Raw",
+    "zstd": "Raw",
+    "hq": "JXL-HQ",
+    "e3": "JXL-E3",
+    "effort_3": "JXL-E3",
+    "d2_e8": "JXL-D2-E8",
+    "mq": "JXL-MQ",
+    "mq_new": "JXL-MQ",
+    "lq": "JXL-LQ",
+    "d10": "JXL-D10",
+    "d15": "JXL-D15",
+    "d20": "JXL-D20",
+    "d20_e2": "JXL-D20",
+    "d25": "JXL-D25",
+    "d30": "JXL-D25",
+    "d50": "JXL-D50",
+}
+
+
+def _get_codec_display_label(codec: str) -> str:
+    """Format a lowercase codec key only when it crosses into rendered output."""
+    return _CODEC_DISPLAY_LABELS.get(codec, codec)
 
 
 def _get_model_codec_label(model: str) -> str:
@@ -1489,7 +1522,7 @@ def _get_model_codec_label(model: str) -> str:
     family = _get_model_family(model)
     family_disp = FAMILY_DISPLAY.get(family, family)
     display = get_display_name(model)
-    codec = _DISPLAY_TO_CODEC.get(display, display)
+    codec = _get_codec_display_label(_get_codec_label(display))
     return f"{family_disp}\n{codec}"
 
 
@@ -1541,6 +1574,18 @@ def _add_balanced_score_lines(ax, is_nap=False):
         ax.plot(pc[mask], pa[mask], "--", color="gray", alpha=0.35, linewidth=0.8, zorder=1)
 
         pass  # lines only, no labels
+
+
+def _get_model_display_family(model: str) -> str:
+    """Return a rendering family without changing config-selection grouping."""
+    family = _get_model_family(model)
+    if (
+        family == "unknown"
+        and model in COMPRESSION_DISPLAY
+        and model.startswith(("zstd_", "jpegxl_"))
+    ):
+        return "cp_measure"
+    return family
 
 
 def _get_compression_level(display_name: str) -> int:
@@ -1667,6 +1712,118 @@ FAMILY_DISPLAY = {
 }
 
 
+def _annotate_detail_codecs(ax, fam_data, fontsize: float) -> None:
+    """Place detail-panel codec labels without changing the plotted points."""
+    from matplotlib.font_manager import FontProperties
+
+    # Work in display coordinates so label spacing remains stable across the
+    # very different data ranges in panels b--g.
+    ax.figure.canvas.draw()
+    renderer = ax.figure.canvas.get_renderer()
+    points = []
+    for _, row in fam_data.iterrows():
+        label = _get_codec_display_label(_get_codec_label(row["display_name"]))
+        anchor = ax.transData.transform((row["PC_mean_nap"], row["PA_mean_nap"]))
+        points.append({
+            "anchor": anchor,
+            "data": (row["PC_mean_nap"], row["PA_mean_nap"]),
+            "label": label,
+            "size": float(row["dot_size"]),
+        })
+
+    points_per_inch = ax.figure.dpi / 72.0
+    font = FontProperties(size=fontsize)
+    axis_box = ax.get_window_extent(renderer)
+
+    def _overlap_area(a, b):
+        width = max(0.0, min(a[2], b[2]) - max(a[0], b[0]))
+        height = max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
+        return width * height
+
+    marker_boxes = []
+    for point in points:
+        radius = (np.sqrt(point["size"]) / 2.0 + 2.0) * points_per_inch
+        x, y = point["anchor"]
+        marker_boxes.append((x - radius, y - radius, x + radius, y + radius))
+
+    # Place the most crowded points first.  Each label tries successively
+    # wider rings around its marker and chooses the least-overlapping slot.
+    for point in points:
+        x, y = point["anchor"]
+        point["density"] = sum(
+            np.exp(-np.hypot(x - other["anchor"][0], y - other["anchor"][1]) / 60.0)
+            for other in points
+            if other is not point
+        )
+    points.sort(key=lambda point: (-point["density"], -len(point["label"])))
+
+    placed_boxes = []
+    directions = [
+        (1.0, 0.0), (-1.0, 0.0), (0.0, 1.0), (0.0, -1.0),
+        (0.72, 0.72), (-0.72, 0.72), (0.72, -0.72), (-0.72, -0.72),
+    ]
+    for point in points:
+        label = point["label"]
+        text_width, text_height, _ = renderer.get_text_width_height_descent(
+            label, font, ismath=False
+        )
+        marker_radius = np.sqrt(point["size"]) / 2.0
+        ring_radii = [
+            marker_radius + extra for extra in (4.0, 12.0, 22.0, 34.0, 48.0, 64.0)
+        ]
+        candidates = []
+        for radius in ring_radii:
+            for dx_unit, dy_unit in directions:
+                dx = radius * dx_unit
+                dy = radius * dy_unit
+                target_x = point["anchor"][0] + dx * points_per_inch
+                target_y = point["anchor"][1] + dy * points_per_inch
+                ha = "left" if dx > 0 else "right" if dx < 0 else "center"
+                va = "bottom" if dy > 0 else "top" if dy < 0 else "center"
+                x0 = target_x if ha == "left" else target_x - text_width if ha == "right" else target_x - text_width / 2.0
+                y0 = target_y if va == "bottom" else target_y - text_height if va == "top" else target_y - text_height / 2.0
+                box = (x0 - 2.0, y0 - 2.0, x0 + text_width + 2.0, y0 + text_height + 2.0)
+
+                box_area = (box[2] - box[0]) * (box[3] - box[1])
+                inside_area = _overlap_area(
+                    box,
+                    (axis_box.x0 + 2.0, axis_box.y0 + 2.0,
+                     axis_box.x1 - 2.0, axis_box.y1 - 2.0),
+                )
+                outside_area = box_area - inside_area
+                label_overlap = sum(_overlap_area(box, other) for other in placed_boxes)
+                marker_overlap = sum(_overlap_area(box, marker) for marker in marker_boxes)
+                score = (
+                    outside_area * 1_000_000.0
+                    + label_overlap * 100_000.0
+                    + marker_overlap * 1_000.0
+                    + np.hypot(dx, dy)
+                )
+                candidates.append((score, dx, dy, ha, va, box))
+
+        _, dx, dy, ha, va, box = min(candidates, key=lambda candidate: candidate[0])
+        placed_boxes.append(box)
+        ax.annotate(
+            label,
+            point["data"],
+            xycoords="data",
+            fontsize=fontsize,
+            alpha=0.9,
+            xytext=(dx, dy),
+            textcoords="offset points",
+            ha=ha,
+            va=va,
+            arrowprops={
+                "arrowstyle": "-",
+                "color": "0.35",
+                "linewidth": 0.55,
+                "alpha": 0.65,
+                "shrinkA": 1.0,
+                "shrinkB": marker_radius,
+            },
+        )
+
+
 def generate_nap_pa_vs_pc_combined(pdf, output_dir: Path, model_colors: dict,
                                     models: list, best_idx: dict, family_configs: dict | None,
                                     best_metric: str = "balanced",
@@ -1697,7 +1854,7 @@ def generate_nap_pa_vs_pc_combined(pdf, output_dir: Path, model_colors: dict,
     best["dot_size"] = best["comp_level"].apply(
         lambda lvl: 30 + 950 * np.exp(-2.5 * lvl / _max_level)
     )
-    best["family"] = best["model"].apply(_get_model_family)
+    best["family"] = best["model"].apply(_get_model_display_family)
     best = best.dropna(subset=["PA_mean_nap", "PC_mean_nap"])
     if best.empty:
         print("No valid NAP data for combined plot.")
@@ -1739,7 +1896,7 @@ def generate_nap_pa_vs_pc_combined(pdf, output_dir: Path, model_colors: dict,
     fs_subtitle = 24
     fs_axis = 24
     fs_tick = 18
-    fs_annot = 14
+    fs_annot = 10
     fs_legend = 17
 
     # ---- Left half: Clean overview (cols 0-1, all rows) ----
@@ -1796,12 +1953,6 @@ def generate_nap_pa_vs_pc_combined(pdf, output_dir: Path, model_colors: dict,
                 c=[color], s=row["dot_size"], alpha=0.85,
                 edgecolors="black", linewidths=0.8, zorder=5,
             )
-            ax.annotate(
-                _get_codec_label(row["display_name"]),
-                (row["PC_mean_nap"], row["PA_mean_nap"]),
-                fontsize=fs_annot, alpha=0.8,
-                xytext=(16, 4), textcoords="offset points",
-            )
 
         pa_vals = fam_data["PA_mean_nap"]
         pc_vals = fam_data["PC_mean_nap"]
@@ -1811,6 +1962,7 @@ def generate_nap_pa_vs_pc_combined(pdf, output_dir: Path, model_colors: dict,
         margin_pc = max(pc_range * 0.15, 0.002)
         ax.set_xlim(pc_vals.min() - margin_pc, pc_vals.max() + margin_pc)
         ax.set_ylim(pa_vals.min() - margin_pa, pa_vals.max() + margin_pa)
+        _annotate_detail_codecs(ax, fam_data, fs_annot)
 
         _add_balanced_score_lines(ax, is_nap=True)
         ax.spines["top"].set_visible(False)
@@ -1992,7 +2144,7 @@ def generate_nap_pa_vs_pc_panel_a(pdf, output_dir: Path, model_colors: dict,
                 [], [], c=["lightgray"], s=_dot_s, alpha=0.85,
                 edgecolors="black", linewidths=0.8,
             ))
-            _codec_labels.append(_label)
+            _codec_labels.append(_get_codec_display_label(_label))
         codec_leg = ax_ov.legend(handles=_codec_handles, labels=_codec_labels,
                                  loc="lower right",
                                  bbox_to_anchor=(0.62, 0.02),
@@ -2087,13 +2239,7 @@ def generate_codec_balanced_absolute_violin(pdf, output_dir: Path, model_colors:
     fam_order_keys = sorted(df_plot["family"].unique(),
                              key=lambda f: _fam_rank.get(f, len(_FAMILY_PLOT_ORDER)))
 
-    _known_labels = {
-        "raw": "Raw", "zstd": "Raw",
-        "lq": "Low", "mq": "Medium", "e3": "Mid-High", "effort_3": "Mid-High", "hq": "High",
-        "d2_e8": "D2 E8", "d10": "D10", "d15": "D15",
-        "d20_e2": "D20 E2", "d25": "D25", "d30": "D30",
-    }
-    codec_labels = {c: _known_labels.get(c, c.upper()) for c in codec_order}
+    codec_labels = {c: _get_codec_display_label(c) for c in codec_order}
 
     _sel_suffix = {
         "zstd_reference": "_zstd_pinned",
@@ -2382,7 +2528,7 @@ def generate_codec_delta_from_raw_groups_plot(pdf, output_dir: Path, model_color
             fam_start = cursor
         y_positions[m] = cursor
         y_ticks.append(cursor)
-        y_tick_labels.append(cl)
+        y_tick_labels.append(_get_codec_display_label(cl))
         prev_fam = fam
         cursor += 1.0
     if prev_fam is not None:
@@ -2689,8 +2835,13 @@ def generate_codec_delta_from_raw_groups_plot(pdf, output_dir: Path, model_color
         for row_idx, (fam, cl, m, _) in enumerate(entries):
             fam_disp = FAMILY_DISPLAY.get(fam, fam)
             cells = _compute_row_cells(m)
-            # Show codec label only on the middle row of the group
-            cl_cell = codec_label if row_idx == mid_row else ""
+            # Show the reader label only on the middle row of the group.
+            # Zstd remains distinct from the Raw baseline in rendered tables.
+            table_codec_label = (
+                "Zstd" if codec_label == "zstd"
+                else _get_codec_display_label(codec_label)
+            )
+            cl_cell = table_codec_label if row_idx == mid_row else ""
             lines.append(f"{cl_cell} & {fam_disp} & " + " & ".join(cells) + r" \\")
             all_row_vals.append(_compute_row_means(m))
 

@@ -17,15 +17,26 @@ THRESHOLDS = [50, 70, 80, 90]
 THRESHOLD_LABELS = ["0.5", "0.7", "0.8", "0.9"]
 
 CODEC_DISPLAY = {
-    "jpegxl_lossy_hq": "High",
-    "jpegxl_lossy_effort_3": "Mid-High",
-    "jpegxl_lossy_d2_e8": "D2E8",
-    "jpegxl_lossy_mq": "Medium",
-    "jpegxl_lossy_lq": "Low",
-    "jpegxl_lossy_d10": "D10",
+    "raw": "Raw",
+    "zstd": "Raw",
+    "jpegxl_lossy_raw": "Raw",
+    "jpegxl_lossy_hq": "JXL-HQ",
+    "jpegxl_lossy_effort_3": "JXL-E3",
+    "jpegxl_lossy_d2_e8": "JXL-D2-E8",
+    "jpegxl_lossy_mq": "JXL-MQ",
+    "jpegxl_lossy_lq": "JXL-LQ",
+    "jpegxl_lossy_d10": "JXL-D10",
+    "jpegxl_lossy_d15": "JXL-D15",
+    "jpegxl_lossy_d20": "JXL-D20",
+    "jpegxl_lossy_d20_e2": "JXL-D20",
+    "jpegxl_lossy_d25": "JXL-D25",
+    "jpegxl_lossy_d30": "JXL-D25",
 }
 
-CODEC_ORDER = ["High", "Mid-High", "D2E8", "Medium", "Low", "D10"]
+CODEC_ORDER = [
+    "Raw", "JXL-HQ", "JXL-E3", "JXL-D2-E8", "JXL-MQ", "JXL-LQ",
+    "JXL-D10", "JXL-D15", "JXL-D20", "JXL-D25",
+]
 
 
 def load_detailed_results(results_dir: Path) -> pd.DataFrame:
