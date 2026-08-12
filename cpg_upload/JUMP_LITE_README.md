@@ -15,15 +15,23 @@ compressed site back to its five original TIFF URLs.
 | Item | Count |
 |---|---:|
 | JUMP sources | 6 |
-| Batches | 34 |
-| Plates | 557 |
-| Wells with images | 213,881 |
-| Sites | 855,519 |
+| Batches | 30 |
+| Plates | 551 |
+| Wells with images | 163,776 |
+| Modality-specific perturbations | 24,356 |
+| Sites | 655,101 |
 | Channels per site | 5 |
-| Original image references | 4,277,595 |
+| Original image references | 3,275,505 |
 
 Included sources are `source_2`, `source_4`, `source_6`, `source_7`, `source_8`,
 and `source_13`.
+
+For benchmark accounting, a perturbation is the combination of modality and
+biological entity (gene or compound). The release contains 3,776 compound
+identities, 7,977 CRISPR-targeted genes, and 12,603 ORF-overexpressed genes, for
+24,356 modality-specific perturbations. ORF overexpression and CRISPR knockout
+of the same gene are distinct because these opposing interventions can produce
+different cellular phenotypes.
 
 ## Cell Painting Gallery layout
 
@@ -73,11 +81,12 @@ The original TIFFs and their source-specific `load_data_csv` files remain in
 They are not duplicated under `source_all`; the deposited site and image
 indices retain the original public TIFF URLs.
 
-The plate collection was defined from the JUMP-Lite plate list and filtered
-against the JUMP redlist and graylist. Six negative-control-only graylisted
-plates were excluded, leaving 557 plates. At most four sites are retained per
-well; 213,876 wells have four sites and five wells have three available sites.
-The release freezes the exact site keys represented by the MQ image store.
+The release contains the exact well cohort used in the paper after plate,
+quality-control, annotation, and replicate filtering. Six negative-control-only
+graylisted plates are excluded, leaving 551 plates. At most four sites are
+retained per well; 163,773 wells have four sites and three wells have three
+available sites. The release freezes these 655,101 site keys across images and
+embeddings; no unavailable site is synthesized.
 
 ## Compressed images
 
@@ -99,20 +108,17 @@ Four compressed image variants are included:
 
 | Dataset | Format | Size | Description |
 |---|---|---:|---|
-| `zstd.zarr` | Zarr v3, Blosc/Zstd level 9 with bit shuffle | 6.1 TB (5.6 TiB) | Lossless site-major copy of the original TIFF pixels |
-| `jpegxl_lossy_hq.zarr` | Zarr v2, JPEG XL distance 1.0 | 300.8 GB (280.1 GiB) | High quality |
-| `jpegxl_lossy_mq.zarr` | Zarr v2, JPEG XL distance 3.0 | 114.3 GB (106.4 GiB) | Medium quality and canonical site manifest |
-| `jpegxl_lossy_d20.zarr` | Zarr v2, JPEG XL distance 20.0 | 19.9 GB (18.5 GiB) | High-compression comparison variant |
+| `zstd.zarr` | Zarr v3, Blosc/Zstd level 9 with bit shuffle | 4.8 TB (4.4 TiB) | Lossless site-major copy of the original TIFF pixels |
+| `jpegxl_lossy_hq.zarr` | Zarr v2, JPEG XL distance 1.0 | 237.7 GB (221.4 GiB) | High quality |
+| `jpegxl_lossy_mq.zarr` | Zarr v2, JPEG XL distance 3.0 | 92.0 GB (85.7 GiB) | Medium quality and canonical site manifest |
+| `jpegxl_lossy_d20.zarr` | Zarr v2, JPEG XL distance 20.0 | 16.2 GB (15.1 GiB) | High-compression comparison variant |
 
-The finalized `zstd.zarr` contains 1,711,039 loose objects and totals exactly
-6,105,823,136,762 bytes (6.106 TB; 5.553 TiB).
+The finalized `zstd.zarr` contains 1,310,203 loose objects and totals exactly
+4,812,456,031,773 bytes (4.812 TB; 4.377 TiB).
 
-Four public `source_7` objects are permanently zero-filled rather than valid
-TIFFs: ER for `CP3-SC1-18/I22/site 2`, and DNA, Mito, and RNA for
-`CP3-SC1-18/I22/site 3`. For only those four URI/size/ETag combinations, the
-lossless builder writes zero-valued `1080 × 1280` `uint16` planes; all other
-channels are decoded directly from their original TIFFs. The metadata problem
-is tracked in [jump-cellpainting/datasets#177](https://github.com/jump-cellpainting/datasets/issues/177).
+The corrected cohort excludes the `source_7` sites affected by the malformed
+public TIFF objects tracked in
+[jump-cellpainting/datasets#177](https://github.com/jump-cellpainting/datasets/issues/177).
 
 The JPEG XL arrays are lossy derivatives and should not be interpreted as
 replacing the original JUMP TIFFs. Their decoding requires a Zarr-compatible
@@ -157,10 +163,9 @@ by resampling:
 - `jump_lite_site_index.parquet`: one row per compressed site, including source,
   batch, plate, well, site, and the five original JUMP TIFF URLs.
 - `jump_lite_image_index.parquet`: tidy expansion with one row per site/channel
-  and 4,277,595 total rows.
-- `jump_lite_perturbation_metadata.parquet`: 161,926 annotated wells with JUMP
-  identifiers, perturbation type, symbols, and grouping information. Empty or
-  otherwise unannotated wells remain represented in the site index.
+  and 3,275,505 total rows.
+- `jump_lite_perturbation_metadata.parquet`: 163,776 benchmark wells with JUMP
+  identifiers, perturbation type, symbols, and grouping information.
 - `jump_lite_plate_manifest.parquet`: per-plate well and site counts.
 - `metadata_manifest.json`: counts, channel order, and artifact sizes.
 
@@ -169,8 +174,8 @@ by resampling:
 `jump_lite_refchem_annotations.parquet` contains the release-relevant subset of
 curated RefChemDB/JUMP confidence matches:
 
-- 29,681 annotation rows
-- 1,576 distinct JUMP perturbation identifiers
+- 29,142 annotation rows
+- 1,526 distinct JUMP perturbation identifiers
 - target genes, target type, mode and activity fields
 - cross-modality and within-modality confidence tiers
 - compound/perturbation direction-match indicators
@@ -180,14 +185,18 @@ release are excluded from this deposited table.
 
 ## Data integrity
 
-Before upload, a fail-closed validator requires:
+Before upload, fail-closed validation and upload guards require:
 
-1. Zstd, MQ, HQ, and D20 to have exactly 855,519 identical site keys.
-2. Every per-site Parquet collection to have exactly the keys of its associated
-   image dataset.
-3. The frozen site and image indices to match the canonical keys and contain all
+1. The frozen manifest to contain exactly 655,101 internally consistent site
+   keys with the v1.0 digest.
+2. Zstd, MQ, HQ, D20, and every per-site Parquet collection to contain all
+   frozen release keys; extra source objects are reported rather than counted
+   as release members.
+3. Unfiltered image syncs to use already-subsetted source trees, while the Zstd
+   and profile uploaders select the exact frozen manifest and verify its digest.
+4. The frozen site and image indices to match the canonical keys and contain all
    five original image URLs.
-4. Metadata, plate, source, well, and annotation invariants to pass.
+5. Metadata, plate, source, well, and annotation invariants to pass.
 
 Release validation checks object counts and metadata invariants following Cell
 Painting Gallery upload guidance.
@@ -208,7 +217,7 @@ per-site embedding Parquet in <model>-<image-codec>/2026_jump_lite_v1.0/
 
 The JUMP-Lite plate list was filtered against the JUMP redlist and graylist,
 and at most four sites per source/batch/plate/well were selected in
-`Metadata_Site` order. The exact 855,519-site release manifest is frozen from
+`Metadata_Site` order. The exact 655,101-site release manifest is frozen from
 the completed MQ store. HQ and D20 contain the same site identities, but their
 profile values come from their respective compressed pixels: an HQ profile is
 computed from `jpegxl_lossy_hq.zarr`, a D20 profile from
@@ -228,7 +237,7 @@ Each compressed site array contains the five original channels in
 | `subcell_clip01` | Same SubCell model | Mito, ER, DNA, AGP | 448 px, clipped input | MQ, HQ, D20 |
 
 These are per-site embedding outputs, not well-level profiles. There are
-855,519 Parquets in each of 16 model/codec variants, for 13,688,304 Parquets in
+655,101 Parquets in each of 16 model/codec variants, for 10,481,616 Parquets in
 total. The lossless Zstd store is a pixel reference and does not have a
 corresponding embedding variant in v1.0.
 

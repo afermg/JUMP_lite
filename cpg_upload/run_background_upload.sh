@@ -63,6 +63,28 @@ cp -a "$RELEASE_README" "$RUN_ROOT/metadata-layout/README.md"
 # One fail-closed validation gates every component in this supervised run.
 "$PYTHON" "$SCRIPT_DIR/validate_release.py" --json-output "$VALIDATION_REPORT"
 
+# aws s3 sync cannot filter site directories from a broad source tree. Refuse
+# the supervised JPEG upload unless every source tree is already the exact
+# frozen cohort; profile uploads are manifest-filtered separately below.
+"$PYTHON" - "$VALIDATION_REPORT" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+report = json.loads(Path(sys.argv[1]).read_text())
+unsafe = {
+    codec: int(details.get("extra_sites", 0))
+    for codec, details in report.get("images", {}).items()
+    if codec.startswith("jpegxl_") and int(details.get("extra_sites", 0))
+}
+if unsafe:
+    formatted = ", ".join(f"{codec}={count:,}" for codec, count in sorted(unsafe.items()))
+    raise SystemExit(
+        "ERROR: refusing unfiltered image sync; create exact frozen-cohort "
+        f"source trees first ({formatted} extra sites)"
+    )
+PY
+
 sync_with_renewal() {
   local label=$1
   local source=$2

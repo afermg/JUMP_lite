@@ -11,6 +11,7 @@ before expiration.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import subprocess
@@ -23,6 +24,7 @@ from pathlib import Path
 from typing import Any
 
 import boto3
+import pyarrow.parquet as pq
 from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 
@@ -38,7 +40,8 @@ BUCKET = "staging-cellpainting-gallery"
 GRANT_TARGET = "s3://staging-cellpainting-gallery/cpg0016-jump/*"
 DESTINATION_ROOT = "cpg0016-jump/source_all/workspace_dl/embeddings"
 RELEASE_BATCH = "2026_jump_lite_v1.0"
-CANONICAL_DIGEST = "399e703bc924a19f7c3827db3c711373306e3d943d2f12cf56d0a368f5d13961"
+CANONICAL_DIGEST = "4ea6ea3f5457c33a1412a80a89d8696d4f8e77474cf449e75db7ce6ba98685e2"
+DEFAULT_SITE_MANIFEST = Path(__file__).resolve().parents[1] / "metadata/jump_lite_v1_site_manifest.parquet"
 MODEL_NAMES = {
     "dinov2": "dinov2",
     "dinov2_random": "dinov2_random",
@@ -52,6 +55,7 @@ MODEL_NAMES = {
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--profile-root", type=Path, default=DEFAULT_PROFILE_ROOT)
+    parser.add_argument("--site-manifest", type=Path, default=DEFAULT_SITE_MANIFEST)
     parser.add_argument(
         "--checkpoint-root",
         type=Path,
@@ -244,18 +248,45 @@ def upload_file(
     raise AssertionError("unreachable")
 
 
+def release_site_keys(path: Path) -> set[str]:
+    keys = {
+        str(value)
+        for value in pq.read_table(path, columns=["Metadata_Site_Key"])[
+            "Metadata_Site_Key"
+        ].to_pylist()
+    }
+    if len(keys) != EXPECTED_SITE_COUNT:
+        raise RuntimeError(
+            f"site manifest contains {len(keys):,} keys; "
+            f"expected {EXPECTED_SITE_COUNT:,}"
+        )
+    digest = hashlib.sha256("\n".join(sorted(keys)).encode()).hexdigest()
+    if digest != CANONICAL_DIGEST:
+        raise RuntimeError(
+            "site manifest has the wrong canonical site-key digest: "
+            f"{digest}"
+        )
+    return keys
+
+
 def upload_variant(
     args: argparse.Namespace,
     manager: RefreshingS3Client,
     model: str,
     codec: str,
+    allowed_keys: set[str],
 ) -> None:
     source_dir = args.profile_root / model / codec / "profiles"
     if not source_dir.is_dir():
         raise RuntimeError(f"missing profile directory: {source_dir}")
 
     entries = sorted(
-        (entry for entry in os.scandir(source_dir) if entry.is_file() and entry.name.endswith(".parquet")),
+        (
+            entry for entry in os.scandir(source_dir)
+            if entry.is_file()
+            and entry.name.endswith(".parquet")
+            and entry.name.removesuffix(".parquet") in allowed_keys
+        ),
         key=lambda entry: entry.name,
     )
     if len(entries) != EXPECTED_SITE_COUNT:
@@ -346,6 +377,7 @@ def main() -> int:
         raise ValueError("workers and batch-size must be positive")
     validate_report(args.validation_report)
     selected = variants(args)
+    allowed_keys = release_site_keys(args.site_manifest)
 
     # Validate mappings before any write.
     for model, codec in selected:
@@ -362,7 +394,7 @@ def main() -> int:
     if args.apply:
         manager.client()
     for model, codec in selected:
-        upload_variant(args, manager, model, codec)
+        upload_variant(args, manager, model, codec, allowed_keys)
     return 0
 
 

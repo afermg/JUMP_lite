@@ -44,6 +44,12 @@ if [[ -z "$RELATIVE_DESTINATION" || "$RELATIVE_DESTINATION" == *".."* ]]; then
   echo "ERROR: unsafe or empty destination: $RELATIVE_DESTINATION" >&2
   exit 1
 fi
+if [[ "$RELATIVE_DESTINATION" == /*
+   || "$RELATIVE_DESTINATION" == */
+   || "$RELATIVE_DESTINATION" == *"//"* ]]; then
+  echo "ERROR: destination must not contain empty path components: $RELATIVE_DESTINATION" >&2
+  exit 1
+fi
 if [[ ! "$RELATIVE_DESTINATION" =~ ^[A-Za-z0-9_./-]+$ ]]; then
   echo "ERROR: destination contains characters outside [A-Za-z0-9_./-]" >&2
   exit 1
@@ -57,10 +63,50 @@ if [[ -z ${AWS_ACCESS_KEY_ID:-} || -z ${AWS_SECRET_ACCESS_KEY:-} || -z ${AWS_SES
   exit 1
 fi
 
-if $APPLY; then
-  python "$SCRIPT_DIR/validate_release.py" --json-output "$VALIDATION_REPORT"
-else
-  python "$SCRIPT_DIR/validate_release.py"
+REPORT_PATH="$VALIDATION_REPORT"
+if ! $APPLY; then
+  REPORT_PATH=$(mktemp)
+  trap 'rm -f "$REPORT_PATH"' EXIT
+fi
+VALIDATION_ARGS=(--json-output "$REPORT_PATH")
+SOURCE_CODEC=""
+if [[ "$RELATIVE_DESTINATION" == images ]]; then
+  echo "ERROR: refusing image-root sync; provide one exact codec destination" >&2
+  exit 1
+elif [[ "$RELATIVE_DESTINATION" == images/* ]]; then
+  SOURCE_CODEC=$(basename -- "${SOURCE%/}")
+  VALIDATION_ARGS+=(--image-root "$(dirname -- "$SOURCE")")
+fi
+python "$SCRIPT_DIR/validate_release.py" "${VALIDATION_ARGS[@]}"
+
+# This generic wrapper uses aws s3 sync and therefore cannot filter individual
+# site directories. Bind image uploads to the exact tree validated above and
+# require that tree to contain no non-release sites.
+if [[ -n "$SOURCE_CODEC" ]]; then
+  python - "$REPORT_PATH" "$SOURCE_CODEC" "$SOURCE" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+report = json.loads(Path(sys.argv[1]).read_text())
+codec = sys.argv[2]
+source = Path(sys.argv[3]).resolve()
+validated_source = (Path(report["image_root"]) / codec).resolve()
+if source != validated_source:
+    raise SystemExit(
+        f"ERROR: upload source {source} differs from validated tree {validated_source}"
+    )
+details = report.get("images", {}).get(codec)
+if details is None:
+    raise SystemExit(
+        "ERROR: refusing image sync: source must be one validated codec tree"
+    )
+extra = int(details.get("extra_sites", 0))
+if extra:
+    raise SystemExit(
+        f"ERROR: refusing unfiltered {codec} sync: {extra:,} non-release sites"
+    )
+PY
 fi
 
 DESTINATION="$STAGING_ROOT/$RELATIVE_DESTINATION/"

@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Build frozen CPG metadata tables from the canonical JUMP-Lite MQ site set.
+"""Build frozen CPG metadata tables for the JUMP-Lite paper cohort.
 
-This does not resample sites. It joins the exact MQ Zarr keys to the full
-JUMP-Lite index so the metadata uploaded with the release describes precisely
-the image and per-site Parquet artifacts being deposited.
+This does not resample sites. It validates the committed v1.0 site manifest
+against the MQ source Zarr and joins those exact keys to the full JUMP index.
 """
 
 from __future__ import annotations
@@ -11,7 +10,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -23,20 +21,21 @@ DEFAULT_CANONICAL_ZARR = Path(
     "jump_lite_updated/jpegxl_lossy_mq.zarr"
 )
 DEFAULT_FULL_INDEX = Path("/work/datasets/jump_lite/misc/jl_index.parquet")
-DEFAULT_PERTURBATION_METADATA = Path(
-    "/work/datasets/jump_lite/misc/metadata_dataset_filtered_4reps.parquet"
-)
-DEFAULT_ANNOTATIONS = Path(
-    "/work/datasets/jump_lite/metadata/refchemdb_conf_jump_matched.parquet"
-)
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_SITE_MANIFEST = REPOSITORY_ROOT / "metadata/jump_lite_v1_site_manifest.parquet"
+DEFAULT_WELL_MANIFEST = REPOSITORY_ROOT / "metadata/jump_lite_v1_well_manifest.parquet"
+DEFAULT_PERTURBATION_METADATA = REPOSITORY_ROOT / "metadata/jump_lite_v1_perturbation_metadata.parquet"
+DEFAULT_ANNOTATIONS = REPOSITORY_ROOT / "metadata/jump_lite_v1_refchem_annotations.parquet"
 DEFAULT_OUTPUT_DIR = Path("/work/datasets/jump_lite/cpg_release/metadata")
-EXPECTED_SITE_COUNT = 855_519
+EXPECTED_SITE_COUNT = 655_101
 CHANNELS = ("AGP", "DNA", "ER", "Mito", "RNA")
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--canonical-zarr", type=Path, default=DEFAULT_CANONICAL_ZARR)
+    parser.add_argument("--site-manifest", type=Path, default=DEFAULT_SITE_MANIFEST)
+    parser.add_argument("--well-manifest", type=Path, default=DEFAULT_WELL_MANIFEST)
     parser.add_argument("--full-index", type=Path, default=DEFAULT_FULL_INDEX)
     parser.add_argument(
         "--perturbation-metadata", type=Path, default=DEFAULT_PERTURBATION_METADATA
@@ -47,32 +46,52 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def canonical_key_table(zarr_path: Path) -> tuple[pl.DataFrame, list[str]]:
-    keys = sorted(
-        entry.name
-        for entry in os.scandir(zarr_path)
-        if entry.is_dir(follow_symlinks=False)
+def canonical_key_table(
+    zarr_path: Path,
+    site_manifest: Path,
+    well_manifest: Path,
+) -> tuple[pl.DataFrame, list[str]]:
+    identity_columns = [
+        "Metadata_Source",
+        "Metadata_Batch",
+        "Metadata_Plate",
+        "Metadata_Well",
+    ]
+    table = pl.read_parquet(site_manifest).select(
+        "Metadata_Site_Key",
+        *identity_columns,
+        "Metadata_Site",
+    ).sort("Metadata_Site_Key")
+    keys = table["Metadata_Site_Key"].to_list()
+    if len(keys) != len(set(keys)):
+        raise RuntimeError("frozen site manifest contains duplicate keys")
+    expected_keys = pl.concat_str(
+        *[pl.col(column) for column in identity_columns],
+        pl.col("Metadata_Site").cast(pl.String),
+        separator="__",
     )
-    rows = []
-    for key in keys:
-        parts = key.split("__")
-        if len(parts) != 5:
-            raise ValueError(f"Invalid site key (expected five components): {key}")
-        source, batch, plate, well, site = parts
-        rows.append((key, source, batch, plate, well, int(site)))
+    malformed = table.filter(pl.col("Metadata_Site_Key") != expected_keys)
+    if not malformed.is_empty():
+        raise RuntimeError(
+            "frozen site-manifest keys disagree with coordinate columns: "
+            f"{malformed.head(5).to_dicts()}"
+        )
 
-    columns = list(zip(*rows, strict=True))
-    table = pl.DataFrame(
-        {
-            "Metadata_Site_Key": columns[0],
-            "Metadata_Source": columns[1],
-            "Metadata_Batch": columns[2],
-            "Metadata_Plate": columns[3],
-            "Metadata_Well": columns[4],
-            "Metadata_Site": columns[5],
-        },
-        schema_overrides={"Metadata_Site": pl.Int64},
-    )
+    wells = pl.read_parquet(well_manifest).select(identity_columns)
+    if wells.height != wells.unique().height:
+        raise RuntimeError("frozen well manifest contains duplicate identities")
+    site_wells = table.select(identity_columns).unique()
+    missing_wells = site_wells.join(wells, on=identity_columns, how="anti")
+    extra_wells = wells.join(site_wells, on=identity_columns, how="anti")
+    if not missing_wells.is_empty() or not extra_wells.is_empty():
+        raise RuntimeError(
+            "frozen well manifest does not exactly match site-manifest wells: "
+            f"missing={missing_wells.height:,}, extra={extra_wells.height:,}"
+        )
+
+    missing = [key for key in keys if not (zarr_path / key).is_dir()]
+    if missing:
+        raise RuntimeError(f"canonical MQ source is missing release sites: {missing[:5]}")
     return table, keys
 
 
@@ -97,7 +116,11 @@ def atomic_copy(con: duckdb.DuckDBPyConnection, query: str, destination: Path) -
 
 def main() -> int:
     args = parse_args()
-    key_table, keys = canonical_key_table(args.canonical_zarr)
+    key_table, keys = canonical_key_table(
+        args.canonical_zarr,
+        args.site_manifest,
+        args.well_manifest,
+    )
     if len(keys) != args.expected_sites:
         raise RuntimeError(
             f"Canonical Zarr has {len(keys):,} sites; expected {args.expected_sites:,}"
@@ -188,11 +211,42 @@ def main() -> int:
         FROM canonical_keys
         """
     )
+    canonical_well_count = key_table.select(
+        "Metadata_Source", "Metadata_Batch", "Metadata_Plate", "Metadata_Well"
+    ).unique().height
+    metadata_rows, metadata_distinct_wells = con.execute(
+        f"""
+        SELECT count(*), count(DISTINCT (
+          metadata.Metadata_Source, metadata.Metadata_Batch,
+          metadata.Metadata_Plate, metadata.Metadata_Well
+        ))
+        FROM read_parquet('{source_metadata}') AS metadata
+        INNER JOIN canonical_wells USING (
+          Metadata_Source, Metadata_Batch, Metadata_Plate, Metadata_Well
+        )
+        """
+    ).fetchone()
+    if metadata_rows != canonical_well_count or metadata_distinct_wells != canonical_well_count:
+        raise RuntimeError(
+            "perturbation metadata does not map one-to-one to every frozen well: "
+            f"rows={metadata_rows:,}, distinct_wells={metadata_distinct_wells:,}, "
+            f"expected={canonical_well_count:,}"
+        )
+
     perturbation_query = f"""
         SELECT
           concat_ws('__', Metadata_Source, Metadata_Batch,
                     Metadata_Plate, Metadata_Well) AS Metadata_Well_Key,
-          metadata.*
+          metadata.Metadata_Source,
+          metadata.Metadata_Batch,
+          metadata.Metadata_Plate,
+          metadata.Metadata_Well,
+          metadata.Metadata_JCP2022,
+          metadata.Metadata_broad_sample,
+          metadata.Metadata_Symbol,
+          metadata.Metadata_pert_type,
+          metadata.Metadata_Perturbation_Type,
+          metadata.Metadata_Group
         FROM read_parquet('{source_metadata}') AS metadata
         SEMI JOIN canonical_wells USING (
           Metadata_Source, Metadata_Batch, Metadata_Plate, Metadata_Well
@@ -233,9 +287,22 @@ def main() -> int:
     image_rows = con.execute(
         f"SELECT count(*) FROM read_parquet('{sql_path(image_index)}')"
     ).fetchone()[0]
-    metadata_rows = con.execute(
-        f"SELECT count(*) FROM read_parquet('{sql_path(perturbation_metadata)}')"
-    ).fetchone()[0]
+    metadata_rows, benchmark_perturbations = con.execute(
+        f"""
+        SELECT
+          count(*),
+          count(DISTINCT Metadata_JCP2022) FILTER (
+            WHERE Metadata_Perturbation_Type = 'compound'
+          ) +
+          count(DISTINCT Metadata_Symbol) FILTER (
+            WHERE Metadata_Perturbation_Type = 'crispr'
+          ) +
+          count(DISTINCT Metadata_Symbol) FILTER (
+            WHERE Metadata_Perturbation_Type = 'orf'
+          )
+        FROM read_parquet('{sql_path(perturbation_metadata)}')
+        """
+    ).fetchone()
     plate_rows = con.execute(
         f"SELECT count(*) FROM read_parquet('{sql_path(plate_manifest)}')"
     ).fetchone()[0]
@@ -267,6 +334,8 @@ def main() -> int:
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "canonical_image_dataset": str(args.canonical_zarr),
         "canonical_codec": args.canonical_zarr.name,
+        "release_site_manifest": str(args.site_manifest),
+        "release_well_manifest": str(args.well_manifest),
         "site_key_sha256": key_digest(keys),
         "site_count": site_rows,
         "well_count": well_count,
@@ -276,6 +345,7 @@ def main() -> int:
         "channel_order": list(CHANNELS),
         "image_index_row_count": image_rows,
         "perturbation_metadata_row_count": metadata_rows,
+        "benchmark_perturbation_count": benchmark_perturbations,
         "annotation_row_count": annotation_rows,
         "annotated_perturbation_count": annotation_ids,
         "artifacts": {
@@ -290,9 +360,9 @@ def main() -> int:
             )
         },
         "notes": [
-            "The site set is frozen from the MQ Zarr keys; it is not resampled.",
+            "The paper-cohort site set is frozen in the committed v1.0 manifest and validated against MQ; it is not resampled.",
             "The image index points to the original public JUMP TIFF images.",
-            "Perturbation metadata covers annotated wells and may exclude empty wells.",
+            "Benchmark perturbations are counted by modality and biological entity.",
         ],
     }
     manifest_path = output_dir / "metadata_manifest.json"
@@ -302,7 +372,10 @@ def main() -> int:
     print(f"Wrote CPG metadata to {output_dir}")
     print(f"  sites: {site_rows:,}; images: {image_rows:,}; wells: {well_count:,}")
     print(f"  plates: {plate_rows:,}; sources: {len(source_counts):,}")
-    print(f"  perturbation metadata rows: {metadata_rows:,}")
+    print(
+        f"  perturbation metadata rows: {metadata_rows:,}; "
+        f"benchmark perturbations: {benchmark_perturbations:,}"
+    )
     print(
         f"  annotation rows: {annotation_rows:,}; "
         f"annotated perturbations: {annotation_ids:,}"

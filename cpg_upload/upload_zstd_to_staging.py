@@ -8,7 +8,7 @@ uploads only canonical sites at or before the checkpoint's ``last_site_key``;
 it never scans the currently active batch.
 
 The destination group-level ``zarr.json`` is deliberately withheld until the
-builder has finalized and revalidated all 855,519 arrays.  Consequently the
+builder has finalized and revalidated all 655,101 release arrays.  Consequently the
 staging prefix cannot be opened as a Zarr group while it is incomplete.  After
 finalization, this process validates the local store again, uploads the root
 metadata, and verifies the complete remote object count and byte total.

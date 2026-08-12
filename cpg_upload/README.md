@@ -10,7 +10,7 @@ are requested through S3 Access Grants.
 ## Safety invariant
 
 All compressed image datasets and every corresponding per-site Parquet variant
-must contain the exact same frozen set of 855,519 site keys. The MQ Zarr is the
+must contain the exact same frozen set of 655,101 paper-cohort site keys. The MQ Zarr is the
 canonical set for this release.
 
 Uploads must use `upload_to_staging.sh` for one unchanged directory,
@@ -186,12 +186,13 @@ Frozen v1.0 facts useful for auditing:
 
 | Invariant | Value |
 |---|---:|
-| Sites per image/embedding variant | 855,519 |
-| Site-key SHA-256 | `399e703bc924a19f7c3827db3c711373306e3d943d2f12cf56d0a368f5d13961` |
+| Sites per image/embedding variant | 655,101 |
+| Modality-specific perturbations | 24,356 |
+| Site-key SHA-256 | `4ea6ea3f5457c33a1412a80a89d8696d4f8e77474cf449e75db7ce6ba98685e2` |
 | Embedding variants | 16 |
-| Embedding Parquets | 13,688,304 |
-| Final Zstd objects | 1,711,039 |
-| Final Zstd bytes | 6,105,823,136,762 (6.106 TB; 5.553 TiB) |
+| Embedding Parquets | 10,481,616 |
+| Final Zstd objects | 1,310,203 |
+| Final Zstd bytes | 4,812,456,031,773 (4.812 TB; 4.377 TiB) |
 
 Local embedding files are flat and named:
 
@@ -307,7 +308,7 @@ systemctl --user enable --now jump-lite-zstd-rebuild.service
 Check service state with
 `systemctl --user status jump-lite-zstd-rebuild.service`.
 
-The frozen site index supplies exactly the 855,519 MQ keys and five original
+The frozen site index supplies exactly the 655,101 MQ keys and five original
 TIFF URLs per site. For each site, the builder:
 
 1. downloads AGP, DNA, ER, Mito, and RNA directly from the public CPG;
@@ -348,7 +349,7 @@ truncated test run never performs final renaming.
 The streaming uploader can safely overlap the multi-terabyte transfer with the
 rebuild. It follows only completed manifest batches and uploads each chunk before
 its array metadata. It deliberately withholds the group-level `zarr.json` until
-the builder has finalized all 855,519 arrays and the uploader has repeated full
+the builder has finalized all 655,101 release arrays and the uploader has repeated full
 local validation:
 
 ```bash
@@ -421,7 +422,7 @@ are evidence needed for recovery.
 Expected terminal states are:
 
 - `upload_status.sh`: `Overall state: COMPLETE` and all 16 profile checkpoints
-  at `855,519/855,519`;
+  at `655,101/655,101`;
 - `zstd_rebuild_status.sh`: `State: COMPLETE`, `complete: 1`, and final path
   `.../zstd.zarr`;
 - `zstd_upload_status.sh`: `Run state: COMPLETE`, `complete: true`,
@@ -542,7 +543,7 @@ v1.1 or another iteration:
 4. Audit every hard-coded version, count, and digest before any write:
 
    ```bash
-   rg -n 'v1\.0|855_519|855,519|399e703b' cpg_upload
+   rg -n 'v1\.0|655_101|655,101|4ea6ea3f' cpg_upload
    ```
 
    In particular update `run_background_upload.sh`,

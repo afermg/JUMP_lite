@@ -48,8 +48,11 @@ UNPIVOT jl_index ON COLUMNS('URL_*') INTO NAME Metadata_Channel VALUE uri);
 COPY jl_index_tidy TO 'jl_index_tidy.parquet';
 FROM jl_index_tidy;
 
--- Deterministically retain at most four sites per well. Include the complete
--- location identity in the partition so identically named plates cannot mix.
+-- Build the broad plate-level source index and deterministically retain at most
+-- four sites per well. The v1.0 release is the paper-cohort subset frozen in
+-- metadata/jump_lite_v1_site_manifest.parquet; release builders must semi-join
+-- to that manifest rather than upload every well produced here. Include the
+-- complete location identity so identically named plates cannot mix.
 CREATE OR REPLACE TABLE jl_index_sampled AS (
   SELECT * EXCLUDE rn
   FROM (

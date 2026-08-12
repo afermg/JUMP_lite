@@ -42,6 +42,10 @@ result
 images/
 metadata/*
 !metadata/motive_splits.parquet
+!metadata/jump_lite_v1_site_manifest.parquet
+!metadata/jump_lite_v1_well_manifest.parquet
+!metadata/jump_lite_v1_perturbation_metadata.parquet
+!metadata/jump_lite_v1_refchem_annotations.parquet
 dataset_curration/
 *.tif
 *.tiff

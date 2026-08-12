@@ -9,20 +9,22 @@
 |                             |                              v1.0 |
 |-----------------------------|----------------------------------:|
 | JUMP sources                |                                 6 |
-| Plates                      |                               557 |
-| Wells                       |                           213,881 |
-| Image sites                 |                           855,519 |
+| Batches                     |                                30 |
+| Plates                      |                               551 |
+| Wells                       |                           163,776 |
+| Benchmark perturbations     |                            24,356 |
+| Image sites                 |                           655,101 |
 | Channels                    |        5: AGP, DNA, ER, Mito, RNA |
 | Compressed image variants   |              4: Zstd, HQ, MQ, D20 |
-| Lossless Zstd               |              6.1 TB (5.6 TiB) |
-| JPEG XL HQ                  |          300.8 GB (280.1 GiB) |
-| JPEG XL MQ                  |          114.3 GB (106.4 GiB) |
-| JPEG XL D20                 |            19.9 GB (18.5 GiB) |
+| Lossless Zstd               |              4.8 TB (4.4 TiB) |
+| JPEG XL HQ                  |          237.7 GB (221.4 GiB) |
+| JPEG XL MQ                  |            92.0 GB (85.7 GiB) |
+| JPEG XL D20                 |            16.2 GB (15.1 GiB) |
 | Embedding variants          |                                16 |
-| Per-site embedding Parquets |                        13,688,304 |
-| Curated annotation rows     | 29,681 across 1,576 perturbations |
+| Per-site embedding Parquets |                        10,481,616 |
+| Curated annotation rows     | 29,142 across 1,526 perturbations |
 
-The release covers `source_2`, `source_4`, `source_6`, `source_7`, `source_8`, and `source_13`, with at most four sites per well.
+The release covers `source_2`, `source_4`, `source_6`, `source_7`, `source_8`, and `source_13`, with at most four sites per well. Benchmark perturbations are defined by modality and biological entity, so ORF overexpression and CRISPR knockout of the same gene count separately.
 
 ## Access
 
@@ -48,7 +50,7 @@ aws s3 cp --no-sign-request --recursive \
 
 ## What is included
 
-- **Images:** a 6.1 TB (5.6 TiB) lossless Zarr v3 store (`zstd`) plus Zarr v2 JPEG XL stores at high quality (`jpegxl_lossy_hq`, 300.8 GB), medium quality (`jpegxl_lossy_mq`, 114.3 GB), and high compression (`jpegxl_lossy_d20`, 19.9 GB). Each site is one unsigned 16-bit `(channel, y, x)` array. Reading JPEG XL arrays requires a compatible NumCodecs implementation such as `imagecodecs`.
+- **Images:** a 4.8 TB (4.4 TiB) lossless Zarr v3 store (`zstd`) plus Zarr v2 JPEG XL stores at high quality (`jpegxl_lossy_hq`, 237.7 GB), medium quality (`jpegxl_lossy_mq`, 92.0 GB), and high compression (`jpegxl_lossy_d20`, 16.2 GB). Each site is one unsigned 16-bit `(channel, y, x)` array. Reading JPEG XL arrays requires a compatible NumCodecs implementation such as `imagecodecs`.
 - **Embeddings:** per-site long-form Parquets from DINOv2, randomly initialized DINOv2, MorphEm, OpenPhenom, and two SubCell input variants. These are site-level outputs, not aggregated well profiles.
 - **Metadata:** `jump_lite_site_index.parquet` is the primary index and links every compressed site to its five original JUMP TIFF URLs. The release also provides a channel-level image index, perturbation metadata, a plate manifest, and a machine-readable manifest.
 - **Annotations:** `jump_lite_refchem_annotations.parquet` contains the release-relevant RefChemDB/JUMP confidence matches, including targets, genes, activity fields, confidence tiers, and direction-match indicators.
@@ -63,7 +65,7 @@ The original TIFFs remain in their source-specific `cpg0016-jump/source_<n>/` lo
 
 ## Provenance
 
-The exact site set is frozen across all four image variants. The embedding collections share the same site set for the lossy image variants they cover.
+The exact 655,101-site paper benchmark cohort is frozen across all four image variants. It contains 163,773 wells with four available sites and three wells with three available sites. The embedding collections share this same site set for the lossy image variants they cover.
 
 ## How JUMP-Lite was generated
 

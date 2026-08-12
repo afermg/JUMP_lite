@@ -5,7 +5,7 @@ set -euo pipefail
 LOG_PARENT="/work/datasets/jump_lite/zstd_upload_logs"
 STATE="/work/datasets/jump_lite/cpg_upload_state/v1.0/zstd/checkpoint.json"
 REBUILD_STATE="/work/datasets/jump_lite/zstd_rebuild_state/v1.0/checkpoint.json"
-EXPECTED=855519
+EXPECTED=655101
 
 latest="$LOG_PARENT/latest"
 if [[ ! -L "$latest" && ! -d "$latest" ]]; then
