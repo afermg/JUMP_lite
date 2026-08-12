@@ -1,0 +1,8 @@
+metric,stratum,n_units,n_clusters,assigned_test_clusters,missing_assigned_clusters,n_family_codec_tables,key_sets_identical,point_estimate_max_abs_error
+pa_treatments,group_crispr,6312,6312,6380.0,68.0,22,True,6.439293542825908e-15
+pa_treatments,group_high,289,289,289.0,0.0,22,True,6.439293542825908e-15
+pa_treatments,group_high|group_low,1314,660,660.0,0.0,22,True,6.439293542825908e-15
+pa_treatments,group_low,2051,2051,2071.0,20.0,22,True,6.439293542825908e-15
+pa_treatments,group_orf,12102,12102,12102.0,0.0,22,True,6.439293542825908e-15
+pc_targets,group_high|group_low,452,226,,,22,True,6.439293542825908e-15
+pc_targets,group_low,217,217,,,22,True,6.439293542825908e-15

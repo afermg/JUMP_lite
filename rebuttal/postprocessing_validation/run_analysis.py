@@ -803,6 +803,306 @@ def protocol_payload(args: argparse.Namespace, families: Sequence[str]) -> dict[
     }
 
 
+def _require_columns(
+    frame: pd.DataFrame,
+    required: set[str],
+    path: Path,
+) -> None:
+    missing = required.difference(frame.columns)
+    if missing:
+        raise AnalysisError(
+            f"downstream uncertainty file has missing columns: "
+            f"path={path}, missing={sorted(missing)}"
+        )
+    if frame.empty:
+        raise AnalysisError(f"downstream uncertainty file is empty: {path}")
+
+
+def _require_finite(
+    frame: pd.DataFrame,
+    columns: Sequence[str],
+    path: Path,
+) -> None:
+    for column in columns:
+        values = pd.to_numeric(frame[column], errors="coerce")
+        if not values.map(math.isfinite).all():
+            raise AnalysisError(
+                f"downstream uncertainty contains non-finite {column}: {path}"
+            )
+
+
+def _record_relative_path(value: str) -> str:
+    marker = "/rebuttal/postprocessing_validation/"
+    normalized = value.replace("\\", "/")
+    if marker in normalized:
+        return normalized.split(marker, 1)[1]
+    return normalized.lstrip("./")
+
+
+def validate_downstream_uncertainty(
+    output_dir: Path,
+    final_rows: Sequence[Mapping[str, Any]],
+) -> dict[str, Any] | None:
+    """Validate and summarize the complete downstream bootstrap/figure bundle."""
+    uncertainty_dir = output_dir / "uncertainty"
+    named_paths = {
+        "summary": uncertainty_dir / "heldout_uncertainty.csv",
+        "codec": uncertainty_dir / "codec_vs_raw_paired.csv",
+        "pairwise": uncertainty_dir / "model_pairwise_by_codec.csv",
+        "ranks": uncertainty_dir / "model_rank_bounds.csv",
+        "diagnostics": uncertainty_dir / "bootstrap_diagnostics.csv",
+        "audit": uncertainty_dir / "resampling_unit_audit.csv",
+        "report": uncertainty_dir / "REPORT.md",
+        "provenance": uncertainty_dir / "provenance.json",
+        "figure_pdf": output_dir / "heldout_codec_performance.pdf",
+        "figure_png": output_dir / "heldout_codec_performance.png",
+        "checksums": output_dir / "artifact_checksums.json",
+    }
+    uncertainty_paths = [
+        path for name, path in named_paths.items() if name not in {"figure_pdf", "figure_png", "checksums"}
+    ]
+    if not any(path.is_file() for path in uncertainty_paths):
+        return None
+    missing = [
+        str(path.relative_to(output_dir))
+        for path in named_paths.values()
+        if not path.is_file()
+    ]
+    if missing:
+        raise AnalysisError(
+            f"incomplete downstream uncertainty/figure bundle: missing={missing}"
+        )
+
+    try:
+        summary = pd.read_csv(named_paths["summary"])
+        codec = pd.read_csv(named_paths["codec"])
+        pairwise = pd.read_csv(named_paths["pairwise"])
+        ranks = pd.read_csv(named_paths["ranks"])
+        diagnostics = pd.read_csv(named_paths["diagnostics"])
+        audit = pd.read_csv(named_paths["audit"])
+        provenance = json.loads(named_paths["provenance"].read_text())
+        checksum_payload = json.loads(named_paths["checksums"].read_text())
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        raise AnalysisError(f"invalid downstream uncertainty bundle: {exc}") from exc
+
+    _require_columns(
+        summary,
+        {
+            "family", "codec", "pa_clusters", "pc_clusters", "pa_point",
+            "pc_point", "product_point", "product_ci_low", "product_ci_high",
+            "replicates", "seed",
+        },
+        named_paths["summary"],
+    )
+    _require_columns(
+        codec,
+        {
+            "family", "codec", "product_holm_p", "product_supported_direction",
+            "multiplicity_family_size",
+        },
+        named_paths["codec"],
+    )
+    _require_columns(
+        pairwise,
+        {
+            "codec", "family_a", "family_b", "product_holm_p",
+            "product_supported_direction", "multiplicity_family_size",
+        },
+        named_paths["pairwise"],
+    )
+    _require_columns(
+        ranks,
+        {
+            "codec", "family", "product_point", "simultaneous_rank_lower",
+            "simultaneous_rank_upper",
+        },
+        named_paths["ranks"],
+    )
+    _require_columns(
+        diagnostics,
+        {"point", "final_replicates", "final_ci_low", "final_ci_high"},
+        named_paths["diagnostics"],
+    )
+    _require_columns(
+        audit,
+        {"n_family_codec_tables", "key_sets_identical", "point_estimate_max_abs_error"},
+        named_paths["audit"],
+    )
+    for frame, columns, key in (
+        (summary, ("pa_point", "pc_point", "product_point", "product_ci_low", "product_ci_high", "replicates", "seed"), "summary"),
+        (codec, ("product_holm_p", "multiplicity_family_size"), "codec"),
+        (pairwise, ("product_holm_p", "multiplicity_family_size"), "pairwise"),
+        (ranks, ("product_point", "simultaneous_rank_lower", "simultaneous_rank_upper"), "ranks"),
+        (diagnostics, ("point", "final_replicates", "final_ci_low", "final_ci_high"), "diagnostics"),
+        (audit, ("n_family_codec_tables", "point_estimate_max_abs_error"), "audit"),
+    ):
+        _require_finite(frame, columns, named_paths[key])
+
+    expected_points = {
+        (str(row["family"]), str(row["codec"])): float(
+            row["test_balanced_nap_product"]
+        )
+        for row in final_rows
+    }
+    if len(expected_points) != len(final_rows) or not all(
+        math.isfinite(value) for value in expected_points.values()
+    ):
+        raise AnalysisError("held-out results contain duplicate or non-finite variants")
+    observed_keys = list(zip(summary["family"].astype(str), summary["codec"].astype(str)))
+    if len(observed_keys) != len(set(observed_keys)) or set(observed_keys) != set(expected_points):
+        raise AnalysisError(
+            "downstream uncertainty variants do not match held-out results"
+        )
+    uncertainty_points = {
+        key: float(value)
+        for key, value in zip(observed_keys, summary["product_point"], strict=True)
+    }
+    max_error = max(
+        abs(uncertainty_points[key] - expected_points[key]) for key in expected_points
+    )
+    if not math.isfinite(max_error) or max_error > 1e-12:
+        raise AnalysisError(
+            "downstream uncertainty points are stale relative to held-out "
+            f"results: max_error={max_error}"
+        )
+    if not (
+        (summary["product_ci_low"] <= summary["product_point"])
+        & (summary["product_point"] <= summary["product_ci_high"])
+    ).all():
+        raise AnalysisError("downstream uncertainty product interval excludes its point")
+
+    variants = set(expected_points)
+    expected_codec_pairs = {
+        (family, codec_name)
+        for family, codec_name in variants
+        if codec_name != "Raw" and (family, "Raw") in variants
+    }
+    observed_codec_pairs = set(zip(codec["family"].astype(str), codec["codec"].astype(str)))
+    if len(codec) != len(observed_codec_pairs) or observed_codec_pairs != expected_codec_pairs:
+        raise AnalysisError("codec-vs-Raw uncertainty inventory is incomplete or duplicated")
+    expected_pairwise = {
+        (codec_name, family_a, family_b)
+        for codec_name in {codec_name for _, codec_name in variants}
+        for family_a in sorted(family for family, codec in variants if codec == codec_name)
+        for family_b in sorted(family for family, codec in variants if codec == codec_name)
+        if family_a < family_b
+    }
+    observed_pairwise = set(
+        zip(
+            pairwise["codec"].astype(str),
+            pairwise["family_a"].astype(str),
+            pairwise["family_b"].astype(str),
+        )
+    )
+    if len(pairwise) != len(observed_pairwise) or observed_pairwise != expected_pairwise:
+        raise AnalysisError("same-codec pairwise uncertainty inventory is incomplete or duplicated")
+    rank_keys = set(zip(ranks["family"].astype(str), ranks["codec"].astype(str)))
+    if len(ranks) != len(rank_keys) or rank_keys != variants:
+        raise AnalysisError("rank-bound uncertainty inventory is incomplete or duplicated")
+
+    replicates = int(summary["replicates"].iloc[0])
+    seed = int(summary["seed"].iloc[0])
+    if replicates < 100 or summary["replicates"].nunique() != 1 or summary["seed"].nunique() != 1:
+        raise AnalysisError("uncertainty rows have inconsistent protocol parameters")
+    if not (diagnostics["final_replicates"] == replicates).all():
+        raise AnalysisError("bootstrap diagnostics use a different replicate count")
+    if not audit["key_sets_identical"].astype(bool).all():
+        raise AnalysisError("uncertainty resampling key sets are not identical")
+    if int(audit["n_family_codec_tables"].max()) != len(variants):
+        raise AnalysisError("uncertainty audit has the wrong variant count")
+    if float(audit["point_estimate_max_abs_error"].max()) > 1e-12:
+        raise AnalysisError("uncertainty audit point estimates are stale")
+
+    dimensions = provenance.get("dimensions", {})
+    multiplicity = provenance.get("multiplicity", {})
+    if (
+        int(provenance.get("method_version", -1)) != 1
+        or int(provenance.get("replicates", -1)) != replicates
+        or int(provenance.get("seed", -1)) != seed
+        or int(dimensions.get("variants", -1)) != len(variants)
+        or int(multiplicity.get("codec_vs_raw", {}).get("comparisons", -1)) != len(codec)
+        or int(multiplicity.get("same_codec_models", {}).get("comparisons", -1)) != len(pairwise)
+    ):
+        raise AnalysisError("uncertainty provenance protocol or dimensions are stale")
+    provenance_variants = {
+        (str(row["family"]), str(row["codec"]))
+        for row in provenance.get("variants", [])
+    }
+    if provenance_variants != variants:
+        raise AnalysisError("uncertainty provenance variants are stale")
+
+    provenance_outputs = {
+        Path(str(row["path"])).name: row for row in provenance.get("outputs", [])
+    }
+    for path in uncertainty_paths[:-1]:
+        row = provenance_outputs.get(path.name)
+        if row is None or int(row.get("size_bytes", -1)) != path.stat().st_size or row.get("sha256") != sha256_file(path):
+            raise AnalysisError(f"uncertainty provenance does not bind output: {path}")
+    script_path = Path(__file__).with_name("bootstrap_uncertainty.py")
+    script_record = provenance.get("script", {})
+    if (
+        int(script_record.get("size_bytes", -1)) != script_path.stat().st_size
+        or script_record.get("sha256") != sha256_file(script_path)
+    ):
+        raise AnalysisError("uncertainty provenance does not bind the bootstrap source")
+
+    checksum_records: dict[str, Mapping[str, Any]] = {}
+    for section in ("result_artifacts", "uncertainty_outputs"):
+        for row in checksum_payload.get(section, []):
+            checksum_records[_record_relative_path(str(row["path"]))] = row
+    bound_paths = [*uncertainty_paths, named_paths["figure_pdf"], named_paths["figure_png"]]
+    for path in bound_paths:
+        relative = path.relative_to(output_dir.parent).as_posix()
+        row = checksum_records.get(relative)
+        if row is None or int(row.get("size_bytes", -1)) != path.stat().st_size or row.get("sha256") != sha256_file(path):
+            raise AnalysisError(f"artifact checksums do not bind downstream output: {path}")
+    for field, path in (
+        ("base_analysis_source", Path(__file__)),
+        ("base_analysis_test_source", Path(__file__).with_name("test_run_analysis.py")),
+    ):
+        row = checksum_payload.get(field, {})
+        if (
+            int(row.get("size_bytes", -1)) != path.stat().st_size
+            or row.get("sha256") != sha256_file(path)
+        ):
+            raise AnalysisError(f"artifact checksums do not bind {field}: {path}")
+
+    report_text = named_paths["report"].read_text()
+    if not report_text.startswith("# Held-out paired cluster-bootstrap uncertainty\n"):
+        raise AnalysisError("downstream uncertainty report is malformed")
+    learned = {"dinov2", "morphem", "openphenom", "subcell"}
+    morph_rows = pairwise.loc[
+        pairwise["codec"].isin({"Raw", "HQ", "MQ", "D20"})
+        & pairwise["family_a"].isin(learned)
+        & pairwise["family_b"].isin(learned)
+        & ((pairwise["family_a"] == "morphem") | (pairwise["family_b"] == "morphem"))
+    ]
+    morph_supported = sum(
+        str(row.product_supported_direction).startswith("morphem>")
+        for row in morph_rows.itertuples(index=False)
+    )
+    middle = {"dinov2", "openphenom", "subcell"}
+    raw_middle = pairwise.loc[
+        (pairwise["codec"] == "Raw")
+        & pairwise["family_a"].isin(middle)
+        & pairwise["family_b"].isin(middle)
+    ]
+    raw_middle_unresolved = len(raw_middle) == 3 and (
+        raw_middle["product_supported_direction"] == "unresolved"
+    ).all()
+    return {
+        "replicates": replicates,
+        "seed": seed,
+        "pa_clusters": int(dimensions.get("pa_clusters", summary["pa_clusters"].iloc[0])),
+        "pc_clusters": int(dimensions.get("pc_clusters", summary["pc_clusters"].iloc[0])),
+        "codec_comparisons": len(codec),
+        "pairwise_comparisons": len(pairwise),
+        "morph_supported": morph_supported,
+        "morph_total": len(morph_rows),
+        "raw_middle_unresolved": raw_middle_unresolved,
+    }
+
+
 def render_report(
     output_dir: Path,
     protocol: Mapping[str, Any],
@@ -826,7 +1126,15 @@ def render_report(
         and float(row["score_margin"]) == 0.0
         for row in selected_rows
     )
-    is_smoke = protocol.get("max_selection_configs") is not None or set(protocol["families"]) != set(FAMILIES)
+    is_smoke = protocol.get("max_selection_configs") is not None or set(
+        protocol["families"]
+    ) != set(FAMILIES)
+    uncertainty_summary = validate_downstream_uncertainty(output_dir, final_rows)
+    uncertainty_ready = uncertainty_summary is not None
+    figure_ready = all(
+        (output_dir / f"heldout_codec_performance.{suffix}").is_file()
+        for suffix in ("pdf", "png")
+    )
     lines = [
         "# Post-processing validation/test analysis",
         "",
@@ -904,6 +1212,105 @@ def render_report(
             "- `provenance.json` and `selected_codec_coverage.csv`: archive/config paths, hashes, and coverage.",
         ]
     )
+    pending_uncertainty = (
+        "The split is treatment-disjoint, not target-disjoint, and the "
+        "point-estimate model ordering must remain descriptive until paired "
+        "perturbation/target uncertainty is reported. Validation selection uses "
+        "a within-family min-max-scaled product, whereas the held-out table "
+        "reports the unscaled PA mean NAP times PC mean NAP; those products are "
+        "not directly comparable."
+    )
+    if uncertainty_ready:
+        assert uncertainty_summary is not None
+        morph_supported = int(uncertainty_summary["morph_supported"])
+        morph_total = int(uncertainty_summary["morph_total"])
+        if morph_supported == morph_total:
+            morph_claim = (
+                f"It supports MorphEM's lead in all {morph_total} learned-model "
+                "pairwise comparisons"
+            )
+        else:
+            morph_claim = (
+                f"It supports MorphEM's lead in {morph_supported}/{morph_total} "
+                "learned-model pairwise comparisons"
+            )
+        raw_ordering = (
+            ", while the Raw middle-model ordering remains unresolved"
+            if uncertainty_summary["raw_middle_unresolved"]
+            else ""
+        )
+        uncertainty_index = lines.index(pending_uncertainty)
+        lines[uncertainty_index : uncertainty_index + 1] = [
+            (
+                "The split is treatment-disjoint, not target-disjoint. A separate "
+                f"{int(uncertainty_summary['replicates']):,}-replicate paired, "
+                "stratified cluster bootstrap now quantifies conditional uncertainty "
+                f"over the {int(uncertainty_summary['pa_clusters']):,} evaluable PA "
+                f"treatment clusters and {int(uncertainty_summary['pc_clusters']):,} "
+                f"PC target clusters. {morph_claim} after Holm correction across all "
+                f"{int(uncertainty_summary['pairwise_comparisons'])} same-codec model "
+                f"comparisons{raw_ordering}. Validation selection uses a within-family "
+                "min-max-scaled product, whereas the held-out table reports the "
+                "unscaled PA mean NAP times PC mean NAP; those products are not "
+                "directly comparable."
+            ),
+            "",
+            (
+                "The bootstrap is conditional on the frozen per-unit retrieval "
+                "results, target eligibility, selected recipes, and normalized "
+                "profiles. PA and PC margins are resampled independently under a "
+                "working product-of-margins model because the saved target summaries "
+                "omit the treatment--target/query decomposition needed to propagate "
+                "treatment resampling through PC retrieval. The resulting pointwise "
+                "intervals and centered-bootstrap tests omit unknown PA--PC covariance "
+                "and may therefore be too narrow or too wide. They do not quantify "
+                "recipe-selection, split, transform-fitting, control, well/site, or "
+                "annotation uncertainty; a non-supported contrast is not evidence of "
+                "equivalence. Full methods, contrasts, rank bounds, diagnostics, and "
+                "provenance are under `uncertainty/`."
+            ),
+        ]
+        per_unit_index = lines.index(
+            "- `per_unit/*`: held-out PA treatment and PC target tables for "
+            "uncertainty analyses."
+        )
+        lines[per_unit_index : per_unit_index + 1] = [
+            "- `heldout_codec_performance.pdf` and `.png`: reproducible paper "
+            "figure with conditional intervals.",
+            "- `per_unit/*`: held-out PA treatment and PC target tables used for "
+            "uncertainty.",
+            "- `uncertainty/*`: interval, codec contrast, pairwise model, rank-bound, "
+            "diagnostic, report, and provenance outputs.",
+        ]
+    if figure_ready:
+        output_inventory_index = lines.index("## Output inventory")
+        if uncertainty_ready:
+            assert uncertainty_summary is not None
+            figure_description = (
+                "The left panel reports the absolute unscaled PA--PC product; the "
+                "right panel reports each learned model's point-estimate percentage "
+                "change from its own Raw score. Whiskers are pointwise, conditional "
+                "95% percentile intervals from "
+                f"{int(uncertainty_summary['replicates']):,} paired, stratified "
+                "cluster-bootstrap resamples of PA treatment IDs and PC target IDs "
+                "under the working product-of-margins model. The same cluster weights "
+                "are used across models/codecs within each margin."
+            )
+        else:
+            figure_description = (
+                "The left panel reports the absolute unscaled PA--PC product; the "
+                "right panel reports each learned model's point-estimate percentage "
+                "change from its own Raw score."
+            )
+        lines[output_inventory_index:output_inventory_index] = [
+            "## Figure",
+            "",
+            "![Held-out fixed-recipe performance across codecs]"
+            "(heldout_codec_performance.png)",
+            "",
+            figure_description,
+            "",
+        ]
     atomic_write_text(output_dir / "REPORT.md", "\n".join(lines) + "\n")
 
 

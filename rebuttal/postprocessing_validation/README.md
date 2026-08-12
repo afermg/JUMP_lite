@@ -64,18 +64,51 @@ each of five learned families, 280 CellProfiler configurations, and five
 CellCount configurations), then evaluates 22 pinned family/codec profiles. It
 is CPU- and I/O-intensive and is expected to take hours.
 
-## Figure
+## Paired uncertainty
 
-Regenerate the paper figure from the frozen held-out score table with:
+Run the conditional paired cluster bootstrap from the frozen per-unit outputs:
 
 ```bash
-python rebuttal/postprocessing_validation/plot_heldout_codec_performance.py
+OPENBLAS_NUM_THREADS=4 OMP_NUM_THREADS=4 \
+  src/norm_3/.pixi/envs/default/bin/python \
+  rebuttal/postprocessing_validation/bootstrap_uncertainty.py
+```
+
+The production protocol uses 50,000 resamples and seed `20260812`. The base
+analysis report generator includes the downstream uncertainty and figure
+sections only when the complete uncertainty bundle is present and its point
+estimates match the held-out score table; incomplete or stale bundles fail
+closed. PA treatment IDs are resampled within the frozen composite split strata,
+retaining every
+evaluable group row for a sampled treatment. PC targets are resampled within
+complete observed group-membership strata. Cluster weights are shared across
+all models/codecs, so contrasts are paired. PA and PC margins are resampled
+independently because the saved target tables do not contain the treatment--
+target/query decomposition required for an end-to-end joint resample.
+
+The pointwise intervals therefore quantify uncertainty over the observed
+held-out PA treatment and PC target distributions under a conditional working
+product-of-margins model. Independent PA/PC streams omit their unknown
+covariance, so intervals and centered-bootstrap p-values may be too narrow or
+too wide; they are not end-to-end or unconditional intervals. Product tests are
+adjusted in two separate Holm families: all 15 codec-vs-Raw contrasts and all 51
+same-codec model contrasts. See `results/uncertainty/REPORT.md` for results and
+limitations.
+
+## Figure
+
+Regenerate the paper figure from the frozen held-out score and uncertainty
+tables with:
+
+```bash
+.venv/bin/python rebuttal/postprocessing_validation/plot_heldout_codec_performance.py
 ```
 
 This writes `results/heldout_codec_performance.pdf` and `.png`. Panel (a) shows
 the absolute unscaled PA--PC product; panel (b) expresses each learned model's
-point estimate relative to its own Raw result. The plot intentionally has no
-error bars because the paired uncertainty analysis is a separate pending item.
+point estimate relative to its own Raw result. Whiskers are pointwise,
+conditional 95% paired cluster-bootstrap percentile intervals from the
+50,000-replicate run under the working product-of-margins model.
 
 ## Outputs
 
@@ -88,6 +121,7 @@ Each output directory contains:
 - `heldout_test_scores.csv`
 - `heldout_codec_performance.pdf` and `.png`
 - `per_unit/*` treatment-level PA and target-level PC tables
+- `uncertainty/*` paired interval, contrast, rank, diagnostic, and provenance tables
 - `checkpoints/*` and suppressed copairs logs
 - `REPORT.md`
 
@@ -100,4 +134,6 @@ not read or relabeled by this runner.
 ```bash
 src/norm_3/.pixi/envs/default/bin/python \
   rebuttal/postprocessing_validation/test_run_analysis.py
+src/norm_3/.pixi/envs/default/bin/python \
+  rebuttal/postprocessing_validation/test_bootstrap_uncertainty.py
 ```

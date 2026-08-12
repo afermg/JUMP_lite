@@ -1,0 +1,459 @@
+{
+  "batch_size": 100,
+  "bit_generator": "PCG64DXSM",
+  "component_dependence": "PA and PC margins use independent bootstrap streams under a working product-of-margins model because saved target summaries do not contain the treatment-target/query decomposition needed for a joint resample. Unknown PA-PC covariance may make intervals and tests too narrow or too wide.",
+  "conditional_inference": "Paired cluster-bootstrap uncertainty over the observed held-out PA treatment and PC target distributions, conditional on frozen retrieval calculations, target eligibility, selected recipes, and normalized profiles.",
+  "confidence_level": 0.95,
+  "diagnostic_prefixes": [
+    10000,
+    25000
+  ],
+  "dimensions": {
+    "pa_clusters": 21414,
+    "pa_partial_membership_clusters": 6,
+    "pa_strata": {
+      "group_crispr": {
+        "clusters": 6312,
+        "units": 6312
+      },
+      "group_high": {
+        "clusters": 289,
+        "units": 289
+      },
+      "group_high|group_low": {
+        "clusters": 660,
+        "units": 1314
+      },
+      "group_low": {
+        "clusters": 2051,
+        "units": 2051
+      },
+      "group_orf": {
+        "clusters": 12102,
+        "units": 12102
+      }
+    },
+    "pa_units": 22068,
+    "pc_clusters": 443,
+    "pc_strata": {
+      "group_high|group_low": {
+        "clusters": 226,
+        "units": 452
+      },
+      "group_low": {
+        "clusters": 217,
+        "units": 217
+      }
+    },
+    "pc_units": 669,
+    "variants": 22
+  },
+  "generated_utc": "2026-08-11T20:21:58.093525+00:00",
+  "inputs": [
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/heldout_test_scores.csv",
+      "sha256": "238d43163c7f85bab8a0741cf25ef1515f9045e86a64d1cbe6eaa2e0c4151313",
+      "size_bytes": 30439
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/treatment_split.csv",
+      "sha256": "11b1cb3eb4c90e0e35f1e6dbc1d46312828d5b08b5c73ed3f6d527bfbf71a97b",
+      "size_bytes": 2618969
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/cell_count__Raw__pa_treatments.csv",
+      "sha256": "db61d95d63dcc4b60f7df35f73ef93875dffcc4c9237e3626d82bcc352e4920c",
+      "size_bytes": 4104192
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/cellprofiler__Raw__pa_treatments.csv",
+      "sha256": "ea0a9ba0d10077dc92e65daa7a866fab15235f0e36a935d9b7419f6cce92074d",
+      "size_bytes": 5128896
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/dinov2__Raw__pa_treatments.csv",
+      "sha256": "c5035dfbc20bc5787071f7ab263fd90aff4faf13ea04e0e93197e9b4484ec0b4",
+      "size_bytes": 4359047
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/dinov2__HQ__pa_treatments.csv",
+      "sha256": "e565a4b93356c8bb20119f9d34f61d897d8e2402e9509e77b04f30cecf5dd673",
+      "size_bytes": 4334786
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/dinov2__MQ__pa_treatments.csv",
+      "sha256": "56d44bef0c04524c7faff6c432620f5ea56c820041d6c66a5dcac1047bc8c9b1",
+      "size_bytes": 4342985
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/dinov2__D20__pa_treatments.csv",
+      "sha256": "b998b64f7f5fa151b32d17af2c5582c3255d0502ae130197d0e858554f1b262c",
+      "size_bytes": 4373834
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/dinov2_random__Raw__pa_treatments.csv",
+      "sha256": "a2b6edc0b649dd250bd82aff0e7c545adf26308d8097d943165fbc68e32a0b2d",
+      "size_bytes": 4548288
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/dinov2_random__HQ__pa_treatments.csv",
+      "sha256": "0d969d054c2c0f8228a3091ab2eb84d1e04f61007f0d5ac55ad9075fea4c0bff",
+      "size_bytes": 4523037
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/dinov2_random__MQ__pa_treatments.csv",
+      "sha256": "6788bc8a3cc662fac50c302b407f96f6eeeadd41c015cc6e86ccef34aa5679b2",
+      "size_bytes": 4526875
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/dinov2_random__D20__pa_treatments.csv",
+      "sha256": "35fcee2522c24ad4a21b1ee651e3a17b7b3935153daa95a2a142d3e27d38bc29",
+      "size_bytes": 4547880
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/morphem__Raw__pa_treatments.csv",
+      "sha256": "cafe6328cfed6e676d02a99ba309395ff6d3437afd42cfc68084977405df88fb",
+      "size_bytes": 4302119
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/morphem__HQ__pa_treatments.csv",
+      "sha256": "17361a18b6ad8efb10bb5824556e8a8e14bb0197daac7c22c05c9b9552d54ccc",
+      "size_bytes": 4295849
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/morphem__MQ__pa_treatments.csv",
+      "sha256": "08dae5c979b85b946bda44d1de97e818efc98350df713b245f1e228f52cc9320",
+      "size_bytes": 4315627
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/morphem__D20__pa_treatments.csv",
+      "sha256": "8d78cce0edf7a16eee2b3bc6b471b04d064eaecae52bd5450b030546b5c21eaa",
+      "size_bytes": 4364398
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/openphenom__Raw__pa_treatments.csv",
+      "sha256": "eeb14c88f9f23882293ef2cdb80e5c48ef1b23460289a8b9e8b27d81e927004b",
+      "size_bytes": 4422571
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/openphenom__HQ__pa_treatments.csv",
+      "sha256": "4b67e37519d3acb2390e8d44af9b81aeefd8c43d9843046f8f3eb3589310f2cf",
+      "size_bytes": 4398839
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/openphenom__MQ__pa_treatments.csv",
+      "sha256": "c24828ea7c94e581dbabc86768942123e7c8ac3bb727c5847e7babcdfb250b99",
+      "size_bytes": 4404858
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/openphenom__D20__pa_treatments.csv",
+      "sha256": "0d75a0c627460c5ffe57e9de7af4908077a4251d9edaadfb38702d1454b83206",
+      "size_bytes": 4437596
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/subcell__Raw__pa_treatments.csv",
+      "sha256": "68090913fd2e482439cf2b8f684631f486c4ce84ca7aa53cc068afb8ee43ae79",
+      "size_bytes": 4354305
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/subcell__HQ__pa_treatments.csv",
+      "sha256": "d2b2a4a8f06c70956c2cd0536c540f9d5542a43538f65b46040d723301f0fb68",
+      "size_bytes": 4333401
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/subcell__MQ__pa_treatments.csv",
+      "sha256": "e1279eac8f868f7011d973a1a7094156f8f6ebdda67e0f45d5cdb5505a474905",
+      "size_bytes": 4335710
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/subcell__D20__pa_treatments.csv",
+      "sha256": "96a51dd8b27d2c26851b4b63e487efcdd3770f40ceea963e5260ae62bfbcab4c",
+      "size_bytes": 4363519
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/cell_count__Raw__pc_targets.csv",
+      "sha256": "a981a65b44c59b6e979d20e3876f04e75e8c245031562fec9137fbc1baef7e77",
+      "size_bytes": 130169
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/cellprofiler__Raw__pc_targets.csv",
+      "sha256": "5218bc150d4409407dcccbd591ba369f55b2a74af151a475088107bca1bfaf62",
+      "size_bytes": 163453
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/dinov2__Raw__pc_targets.csv",
+      "sha256": "bae20ecb636987d33379d40bb961968da1aebfb7d9c4fb1caeb8b32f2b07797a",
+      "size_bytes": 137915
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/dinov2__HQ__pc_targets.csv",
+      "sha256": "7b0540a53a0c6c65bfd283aa5b1aeaa5b1a52d79a9b718cf1c020753a6ab0cbb",
+      "size_bytes": 135935
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/dinov2__MQ__pc_targets.csv",
+      "sha256": "4bb32eb96257d8b0189c0d325fc5194384f9192499b23203c328d4e8b6d880ac",
+      "size_bytes": 137348
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/dinov2__D20__pc_targets.csv",
+      "sha256": "91800ae656addc3b431bb51f42be3f1365930cfa9fa8995ec30e84644ef37052",
+      "size_bytes": 138071
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/dinov2_random__Raw__pc_targets.csv",
+      "sha256": "6f352bd26edb4aeda9772297cfd152447d3d908f6e311a66cf51e8677b7ea758",
+      "size_bytes": 139031
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/dinov2_random__HQ__pc_targets.csv",
+      "sha256": "2782c6e1d10bf201a4377636e63b3d3abab630447d65f9a008256eecbd67f63b",
+      "size_bytes": 142179
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/dinov2_random__MQ__pc_targets.csv",
+      "sha256": "6f35e9e741052956847d2a616a2f86db39de8b381e7d46e92f017c27c3f2550f",
+      "size_bytes": 142132
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/dinov2_random__D20__pc_targets.csv",
+      "sha256": "26bb739a2f267527df30bb10baeb2f535ec6bac9b794b8d92b7e42fd94f7bda3",
+      "size_bytes": 137887
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/morphem__Raw__pc_targets.csv",
+      "sha256": "9375b5da33f3d066268506a3070a7c296469a10cdd50bc4d466d61ed80c47d5b",
+      "size_bytes": 138412
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/morphem__HQ__pc_targets.csv",
+      "sha256": "6f96d16e26b9ef06137aee2a85acf8a20ce387f49dc692cb48f2022865a04473",
+      "size_bytes": 137793
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/morphem__MQ__pc_targets.csv",
+      "sha256": "f51c5a5906714da583627d3471297d140ecfd2c46ebb77a64e6cfab9a124df99",
+      "size_bytes": 137895
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/morphem__D20__pc_targets.csv",
+      "sha256": "9e1ec47c36db1f3057018184630982aec48d8371439eb0af55b40fedea040d01",
+      "size_bytes": 138677
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/openphenom__Raw__pc_targets.csv",
+      "sha256": "78ce997b8944a3742c0fc367472e8d9084d40ce740b0710b3fc6f41e109a3655",
+      "size_bytes": 139973
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/openphenom__HQ__pc_targets.csv",
+      "sha256": "c00603aeeb8b21b4799c116aba7b9e1f5c1ce8fb4f60cfd8c1a011e116e7a325",
+      "size_bytes": 139410
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/openphenom__MQ__pc_targets.csv",
+      "sha256": "aee01f5e9addd7d5e1dd91d76b3ef3e6be70ec0fced3ee41c7be05670ee25bab",
+      "size_bytes": 137682
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/openphenom__D20__pc_targets.csv",
+      "sha256": "a525d85c24cedcfc246ac7085820a12b219aeb0d64fae1fc1ca5e4357de5f9b1",
+      "size_bytes": 138420
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/subcell__Raw__pc_targets.csv",
+      "sha256": "c4d432ad7a85d700a84d3c24f3bcfbdc07ffa9314d29b5ae93f2c5b25efb0de6",
+      "size_bytes": 138132
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/subcell__HQ__pc_targets.csv",
+      "sha256": "913ec2b6fb2e3b5bcfcdb3d72e07756f15031bc2440ea8ce7a864e8ce702d0f1",
+      "size_bytes": 137251
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/subcell__MQ__pc_targets.csv",
+      "sha256": "39c29dd91e137aab207b712fc6309a76d914360d97e24490396182b6bb0c6365",
+      "size_bytes": 137044
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/subcell__D20__pc_targets.csv",
+      "sha256": "0faf9159edee3ca98c61f52da54d35455c63ae7857408bd0256b8933b5f0a63e",
+      "size_bytes": 137007
+    }
+  ],
+  "interval_method": "percentile",
+  "limitations": [
+    "Conditional two-margin uncertainty under a working-independence approximation, not end-to-end sampling uncertainty.",
+    "No treatment-target/query decomposition for joint PA-PC resampling.",
+    "No recipe-selection, split, transform-fit, target-eligibility, well/site, or control resampling.",
+    "Treatment-disjoint rather than target-disjoint evaluation.",
+    "A non-supported difference does not establish equivalence."
+  ],
+  "method_version": 1,
+  "multiplicity": {
+    "codec_vs_raw": {
+      "alpha": 0.050000000000000044,
+      "comparisons": 15,
+      "method": "Holm FWER"
+    },
+    "same_codec_models": {
+      "alpha": 0.050000000000000044,
+      "comparisons": 51,
+      "method": "Holm FWER"
+    }
+  },
+  "numpy": "1.26.4",
+  "output_dir": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/uncertainty",
+  "outputs": [
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/uncertainty/heldout_uncertainty.csv",
+      "sha256": "47417056f05eaa3561d01aa30a35495170c2e9a81058922f8c068b4106a3f9c6",
+      "size_bytes": 11345
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/uncertainty/codec_vs_raw_paired.csv",
+      "sha256": "dbb6372175eeb059de922f5dde90f2456fd727ac470339ce447c619d7ddbced9",
+      "size_bytes": 10424
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/uncertainty/model_pairwise_by_codec.csv",
+      "sha256": "88bc72d5f1f0c5822081c73c983ccb6a3debd1c21a7d121756b03b2bc3a1548c",
+      "size_bytes": 24579
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/uncertainty/model_rank_bounds.csv",
+      "sha256": "31b97366813440cd32569062a2ed26fb57e4cb8f32860020940143d16c48b009",
+      "size_bytes": 4078
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/uncertainty/resampling_unit_audit.csv",
+      "sha256": "ee16c9781c1a60f0ec5b8a2795c0187b939b08df659e30e9afb957bea27e1e27",
+      "size_bytes": 676
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/uncertainty/bootstrap_diagnostics.csv",
+      "sha256": "3402767ba5b090756ffd4e510a28a99647b44e0f674441a29c170a3822360f20",
+      "size_bytes": 22578
+    },
+    {
+      "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/uncertainty/REPORT.md",
+      "sha256": "2d9f45667c2c82366c62b3d3d257c91170a1448e6c40bc9c5ba76255dfd7a42f",
+      "size_bytes": 5830
+    }
+  ],
+  "pa_seed_spawn_key": [
+    0
+  ],
+  "pairing": "Identical PA cluster weights and identical PC cluster weights across all family/codec conditions within each replicate.",
+  "pandas": "2.2.1",
+  "pc_seed_spawn_key": [
+    1
+  ],
+  "platform": "Linux-6.12.80-x86_64-with-glibc2.40",
+  "point_reproduction_max_abs_error": {
+    "pa": 6.439293542825908e-15,
+    "pc": 1.214306433183765e-16,
+    "product": 4.0245584642661925e-16
+  },
+  "python": "3.11.15 | packaged by conda-forge | (main, Aug 11 2026, 10:26:29) [GCC 14.4.0]",
+  "replicates": 50000,
+  "repository_head": "157c9b368dc4860eaeeeac648a848ba5394f92b3",
+  "results_dir": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results",
+  "runtime_seconds": 87.09222968295217,
+  "script": {
+    "path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/bootstrap_uncertainty.py",
+    "sha256": "038549db622170ecd6e430af25c16e48f1e99ff370a250169ee23efa02bef8ff",
+    "size_bytes": 48445
+  },
+  "seed": 20260812,
+  "variants": [
+    {
+      "codec": "Raw",
+      "family": "cell_count"
+    },
+    {
+      "codec": "Raw",
+      "family": "cellprofiler"
+    },
+    {
+      "codec": "Raw",
+      "family": "dinov2"
+    },
+    {
+      "codec": "HQ",
+      "family": "dinov2"
+    },
+    {
+      "codec": "MQ",
+      "family": "dinov2"
+    },
+    {
+      "codec": "D20",
+      "family": "dinov2"
+    },
+    {
+      "codec": "Raw",
+      "family": "dinov2_random"
+    },
+    {
+      "codec": "HQ",
+      "family": "dinov2_random"
+    },
+    {
+      "codec": "MQ",
+      "family": "dinov2_random"
+    },
+    {
+      "codec": "D20",
+      "family": "dinov2_random"
+    },
+    {
+      "codec": "Raw",
+      "family": "morphem"
+    },
+    {
+      "codec": "HQ",
+      "family": "morphem"
+    },
+    {
+      "codec": "MQ",
+      "family": "morphem"
+    },
+    {
+      "codec": "D20",
+      "family": "morphem"
+    },
+    {
+      "codec": "Raw",
+      "family": "openphenom"
+    },
+    {
+      "codec": "HQ",
+      "family": "openphenom"
+    },
+    {
+      "codec": "MQ",
+      "family": "openphenom"
+    },
+    {
+      "codec": "D20",
+      "family": "openphenom"
+    },
+    {
+      "codec": "Raw",
+      "family": "subcell"
+    },
+    {
+      "codec": "HQ",
+      "family": "subcell"
+    },
+    {
+      "codec": "MQ",
+      "family": "subcell"
+    },
+    {
+      "codec": "D20",
+      "family": "subcell"
+    }
+  ]
+}
