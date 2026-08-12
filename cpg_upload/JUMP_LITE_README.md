@@ -3,7 +3,9 @@
 JUMP-Lite is a compact, source-spanning subset of the JUMP Cell Painting
 dataset. It provides lossless and lossy-compressed multichannel image arrays together with
 per-site deep-learning feature Parquets, image provenance metadata, perturbation
-metadata, and curated RefChemDB-derived annotations.
+metadata, curated RefChemDB-derived annotations, and the masks, per-site object
+features, and compact profiles used by the publication's Target-2 compression
+subanalysis.
 
 The original TIFF images are already public under `cpg0016-jump`. This release
 is deposited as an aggregated multi-source subset beneath
@@ -49,15 +51,22 @@ cpg0016-jump/source_all/
 ├── workspace/
 │   └── publication_data/
 │       └── 2026_jump_lite/
-│           └── metadata/
+│           ├── metadata/
+│           │   └── v1.0/
+│           │       ├── README.md
+│           │       ├── jump_lite_site_index.parquet
+│           │       ├── jump_lite_image_index.parquet
+│           │       ├── jump_lite_perturbation_metadata.parquet
+│           │       ├── jump_lite_refchem_annotations.parquet
+│           │       ├── jump_lite_plate_manifest.parquet
+│           │       └── metadata_manifest.json
+│           └── target_2/
 │               └── v1.0/
 │                   ├── README.md
-│                   ├── jump_lite_site_index.parquet
-│                   ├── jump_lite_image_index.parquet
-│                   ├── jump_lite_perturbation_metadata.parquet
-│                   ├── jump_lite_refchem_annotations.parquet
-│                   ├── jump_lite_plate_manifest.parquet
-│                   └── metadata_manifest.json
+│                   ├── manifests/
+│                   ├── segmentation/objects/
+│                   ├── object_features/cp_measure/
+│                   └── profiles/
 └── workspace_dl/
     └── embeddings/
         └── <model>-<image-codec>/
@@ -154,6 +163,27 @@ outlier clipping, and 8-bit conversion; and SubCell uses Mito/ER/DNA/AGP with
 448-pixel tiles. The processing code in the JUMP-Lite repository and the
 frozen metadata manifest provide the authoritative record of run parameters
 and release identity.
+
+## Target-2 subanalysis artifacts
+
+The publication-specific Target-2 package is deposited separately from the
+655,101-site JUMP-Lite image and embedding cohort. It covers 1,536 wells and up
+to 9,216 sites across four plates from `source_3`, `source_4`, `source_5`, and
+`source_6`.
+
+The package contains 163,786 cell/nuclei instance-mask NPZ files (4.304 GB),
+86,989 per-site object-level `cp_measure` Parquets (253.990 GB), and 66
+canonical compact raw-feature Parquets (506.6 MB): nine aggregated
+`cp_measure` profiles, seven cell-count baseline tables, and 50 deep-learning
+profiles. It preserves and labels incomplete codec coverage; it never silently
+intersects sites, masks, object features, or wells. The per-site tables retain
+object measurements that cannot be recovered from the compact aggregates.
+
+See the package `README.md`, `manifests/masks.parquet`,
+`manifests/object_features.parquet`, `manifests/profiles.parquet`, and
+`manifests/provenance.json` for exact counts, SHA-256 hashes, schema and site-set
+digests, mask availability, recorded mask scripts, a release-time
+profile-producer code snapshot, and object paths.
 
 ## Metadata files
 
