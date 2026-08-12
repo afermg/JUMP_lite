@@ -1,0 +1,270 @@
+{
+  "central_interpretation": "broad but non-uniform coverage of operational CellProfiler compound-profile space in JUMP",
+  "cohort": {
+    "added_candidate_count": 0,
+    "added_candidate_ids": [],
+    "excluded_control_identity": "JCP2022_033924",
+    "excluded_control_role": "shared DMSO negative control",
+    "original_candidate_manifest_compounds": 3832,
+    "release_compound_identities_including_dmso": 3776,
+    "release_metadata_rows": 163776,
+    "removed_candidate_count": 57,
+    "removed_candidate_ids": [
+      "JCP2022_001854",
+      "JCP2022_006998",
+      "JCP2022_007613",
+      "JCP2022_009404",
+      "JCP2022_010954",
+      "JCP2022_016340",
+      "JCP2022_017097",
+      "JCP2022_017597",
+      "JCP2022_022720",
+      "JCP2022_026508",
+      "JCP2022_026681",
+      "JCP2022_032332",
+      "JCP2022_036506",
+      "JCP2022_038041",
+      "JCP2022_038138",
+      "JCP2022_039512",
+      "JCP2022_043538",
+      "JCP2022_050371",
+      "JCP2022_052661",
+      "JCP2022_053413",
+      "JCP2022_054903",
+      "JCP2022_055347",
+      "JCP2022_055833",
+      "JCP2022_058046",
+      "JCP2022_058212",
+      "JCP2022_058799",
+      "JCP2022_063362",
+      "JCP2022_063686",
+      "JCP2022_063983",
+      "JCP2022_064577",
+      "JCP2022_068713",
+      "JCP2022_069626",
+      "JCP2022_074764",
+      "JCP2022_079329",
+      "JCP2022_079616",
+      "JCP2022_080717",
+      "JCP2022_088914",
+      "JCP2022_089948",
+      "JCP2022_090016",
+      "JCP2022_090839",
+      "JCP2022_093756",
+      "JCP2022_093888",
+      "JCP2022_095345",
+      "JCP2022_097171",
+      "JCP2022_098546",
+      "JCP2022_098957",
+      "JCP2022_099101",
+      "JCP2022_100200",
+      "JCP2022_100626",
+      "JCP2022_102083",
+      "JCP2022_104655",
+      "JCP2022_105413",
+      "JCP2022_105494",
+      "JCP2022_110159",
+      "JCP2022_113041",
+      "JCP2022_113701",
+      "JCP2022_114461"
+    ],
+    "selected_is_subset_of_original": true,
+    "selected_treatment_compounds": 3775
+  },
+  "content_file_hashes": {
+    "README.md": {
+      "bytes": 2948,
+      "sha256": "465f2039695ae29420a5c77b99ef94306ff12cf9a220abbca6bfb728e4e8195e"
+    },
+    "cluster_selection_compound_map.pdf": {
+      "bytes": 953410,
+      "sha256": "89a6ea414c1f1a36cacf54720c055d87132c3a05490f5a507408e0a0fcdef58e"
+    },
+    "cluster_selection_compound_map.png": {
+      "bytes": 1516290,
+      "sha256": "1173d339aac1fe736cecd6cfb152609533a44c9315f7210693bed03ce853d370"
+    },
+    "cluster_selection_summary_table.csv": {
+      "bytes": 1688,
+      "sha256": "e1a0ab0fe4c4f47a79882d8322bae798a945ca9939dacf350b7ad97a3f685bfa"
+    },
+    "cluster_selection_table.csv": {
+      "bytes": 35165,
+      "sha256": "853dfc94e62de98aa2aefb284239643f46522024636e851d651bed951444c079"
+    },
+    "clustering_diagnostics.csv": {
+      "bytes": 4708,
+      "sha256": "9df79ab9f92e6c3c1ca0b268e6544a9d59647a5c1e7bb345f86ce0b07e628709"
+    },
+    "release_selected_compounds.csv": {
+      "bytes": 56642,
+      "sha256": "2807086ec446d5d65e83e3b43864d8b90c0ac8d48ce03a2c54233564c4dcf9b6"
+    },
+    "retrieval_metrics.csv": {
+      "bytes": 1698,
+      "sha256": "3765c34cc7108add4219b0bdeb12692911e4212657566e0a997fc3fff4461cf4"
+    }
+  },
+  "figure_renderer": {
+    "bytes": 7670,
+    "included_in_result_only_package": false,
+    "path": "render_release_cluster_control_figure.py",
+    "purpose": "Documentation-only renderer from frozen UMAP coordinates and compact numeric result tables; does not fit UMAP, clusters, or scoring models.",
+    "sha256": "f20925cd33a79aa70b6fe52f458c3f1920f4be4a32682310ce057e861ae48227"
+  },
+  "frozen_umap": {
+    "coordinate_columns": [
+      "umap_1",
+      "umap_2"
+    ],
+    "coordinate_digest_definition": "SHA-256 over each Metadata_JCP2022 UTF-8 value followed by NUL in frozen row order, then contiguous umap_1/umap_2 little-endian float32 bytes",
+    "coordinate_digest_sha256": "5249f5bf80e939c513b047592601b57f0dbd309c6583398b126eccf93657190e",
+    "coordinate_dtype_for_digest": "little-endian float32",
+    "row_count": 115721,
+    "selection_labels_joined_after_coordinates_frozen": true,
+    "source_file_sha256": "3b8ac04e817dc65e89926048797bf330e8595966d9dd425de2491dab07f82bba"
+  },
+  "label_blind_contract": "Scientific clusters and UMAP coordinates were frozen before the cleaned release treatment labels were joined; neither representation was refit.",
+  "original_3832_validation": {
+    "comparison": "independent rerun of exact existing deterministic OOF scoring functions versus committed retrieval_metrics.csv",
+    "maximum_absolute_permutation_numeric_difference": 0.0,
+    "maximum_absolute_representation_numeric_difference": 0.0,
+    "maximum_absolute_retrieval_numeric_difference": 1.7763568394002505e-15,
+    "passed": true,
+    "permutation_global_exceedances": 0,
+    "rows_compared": 8,
+    "tolerance": 1e-12
+  },
+  "parameters": {
+    "biological_class_ari_gate": 0.8,
+    "folds": 5,
+    "materiality_gate_combined_to_structure_ap_ratio": 1.25,
+    "permutation_seed": 20260811,
+    "permutation_shuffle": "within structural_stratum",
+    "permutations": 2000,
+    "stable_fold": "SHA-256 of cluster-selection-fold-v1::<Metadata_JCP2022>; first 16 hexadecimal characters interpreted as an integer; modulo 5"
+  },
+  "path_scope_definitions": {
+    "cleaned_release_v1_metadata": "directory containing the cleaned release-v1 metadata artifacts",
+    "source_representativeness_root": "rebuttal/representativeness at source analysis commit"
+  },
+  "qualifications": [
+    "Finite-cohort descriptive result; conditional permutation is not population inference.",
+    "Broad occupancy is not proportional or random representation.",
+    "Operational clusters are unstable continuum partitions, not biological classes.",
+    "CellProfiler compound-profile coverage does not establish other-model, every-phenotype, or genetic-perturbation coverage.",
+    "UMAP is display only."
+  ],
+  "renderer_environment": {
+    "matplotlib": "3.10.8",
+    "numpy": "1.26.4",
+    "pandas": "3.0.0",
+    "polars": "1.37.1",
+    "python": "3.12.11 (main, Sep 18 2025, 19:47:19) [Clang 20.1.4 ]",
+    "python_implementation": "CPython",
+    "scikit_learn": "1.8.0",
+    "scipy": "1.17.0"
+  },
+  "results": {
+    "conclusion": {
+      "combined_to_count_ap_ratio": 1.1164019594986136,
+      "conditional_permutation_p": 0.0004997501249375312,
+      "detectably_better_than_structure": true,
+      "materially_better_than_structure": false,
+      "primary_seed_mean_ari": 0.16241422160818178,
+      "unique_cluster_biological_claims_allowed": false
+    },
+    "permutation": {
+      "global_exceedances": 0,
+      "observed_statistic": 3085.775038620623,
+      "one_sided_p": 0.0004997501249375312
+    },
+    "representation": {
+      "clusters": 128,
+      "eligible_compound_mass_in_occupied_clusters": 0.962368746463228,
+      "jensen_shannon_divergence_nats": 0.17226944974115826,
+      "occupied_fraction": 0.9375,
+      "selected_occupied_clusters": 120,
+      "total_variation_selected_vs_eligible": 0.4749893478709552
+    },
+    "summary": {
+      "all_compound_prevalence": 0.032621563933944574,
+      "average_precision_acquisition_structure": 0.5135366526438606,
+      "average_precision_cluster_only": 0.27310476907581527,
+      "average_precision_constant": 0.03888706305173615,
+      "average_precision_structure_plus_cluster": 0.5733133252859649,
+      "combined_to_structure_ap_ratio": 1.1164019594986136,
+      "conditional_permutation_p": 0.0004997501249375312,
+      "eligible_compound_prevalence": 0.03955944920671515,
+      "eligible_mass_in_occupied_clusters": 0.962368746463228,
+      "fit_eligible_compounds": 95426.0,
+      "jensen_shannon_divergence_nats": 0.17226944974115826,
+      "mean_seed_adjusted_rand_index": 0.16241422160818178,
+      "occupied_clusters": 120.0,
+      "release_compound_identities_including_dmso": 3776.0,
+      "selected_treatment_compounds": 3775.0,
+      "total_clusters": 128.0,
+      "total_compounds": 115721.0,
+      "total_variation_selected_vs_eligible": 0.4749893478709552
+    }
+  },
+  "source_analysis_commit": "5b8ab8c6f8dc3616a6ddf6a9310c6bb98a0e551f",
+  "source_inputs": {
+    "committed_original_permutation": {
+      "bytes": 228,
+      "path": "outputs/profile_cluster_representativeness_v1/permutation_summary.json",
+      "path_scope": "source_representativeness_root",
+      "sha256": "b044f2d17ed64ac9843d62321d58026e9040e0dc268555236e3f6e963541aaaa"
+    },
+    "committed_original_representation": {
+      "bytes": 404,
+      "path": "outputs/profile_cluster_representativeness_v1/representation_summary.json",
+      "path_scope": "source_representativeness_root",
+      "sha256": "fcacac30785d710693a2418226881e9779f06db2ea88bc69c4c20f7bc088e973"
+    },
+    "frozen_clustering_diagnostics": {
+      "bytes": 4708,
+      "path": "outputs/profile_cluster_representativeness_v1/fit/clustering_diagnostics.csv",
+      "path_scope": "source_representativeness_root",
+      "sha256": "9df79ab9f92e6c3c1ca0b268e6544a9d59647a5c1e7bb345f86ce0b07e628709"
+    },
+    "frozen_umap_coordinates": {
+      "bytes": 999039,
+      "path": "outputs/profile_cluster_representativeness_v1/compound_cluster_umap.parquet",
+      "path_scope": "source_representativeness_root",
+      "sha256": "3b8ac04e817dc65e89926048797bf330e8595966d9dd425de2491dab07f82bba"
+    },
+    "frozen_unlabeled_assignments": {
+      "bytes": 1161683,
+      "path": "outputs/profile_cluster_representativeness_v1/fit/cluster_assignments_unlabeled.parquet",
+      "path_scope": "source_representativeness_root",
+      "sha256": "20a1282d0e81ad6d26cd443d327ba86282cd38981b7751d871bc170bec940613"
+    },
+    "original_candidate_manifest": {
+      "bytes": 33252,
+      "path": "outputs/profile_space/manifests/jump_lite_compounds.parquet",
+      "path_scope": "source_representativeness_root",
+      "sha256": "a0671dcaae029a2c32ac58fdaf09178806b495d33a5ea439ff859b3c0fbe74de"
+    },
+    "release_metadata": {
+      "bytes": 949745,
+      "path": "jump_lite_perturbation_metadata.parquet",
+      "path_scope": "cleaned_release_v1_metadata",
+      "sha256": "bbedb37f12fdeb9a09e72abaa166159d286052dc1201166d811c5310db5cd7e1"
+    },
+    "scoring_runner": {
+      "bytes": 31366,
+      "path": "analyze_cluster_representativeness.py",
+      "path_scope": "source_representativeness_root",
+      "sha256": "09ac9d4392c7573335d0ec5a4fd467070baeee3fb95d5f7e47306604ab29b645"
+    }
+  },
+  "universe": {
+    "all_compounds": 115721,
+    "clusters": 128,
+    "fit_eligible_n_wells_ge_4": 95426,
+    "selected_all": 3775,
+    "selected_fit_eligible": 3775
+  },
+  "version": "release-v1-cluster-selection-control-result-only-v1"
+}
