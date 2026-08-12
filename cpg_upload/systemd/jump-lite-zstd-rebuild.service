@@ -1,0 +1,19 @@
+[Unit]
+Description=JUMP-Lite lossless Zstd rebuild from original TIFFs
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/work/users/amunoz/projects/JUMP_lite
+Environment=HOME=/home/amunoz
+Environment=PATH=/work/users/amunoz/projects/JUMP_lite/.venv/bin:/home/amunoz/.nix-profile/bin:/run/current-system/sw/bin:/run/wrappers/bin
+Environment=ZSTD_REBUILD_WORKERS=48
+Environment=ZSTD_REBUILD_BATCH_SIZE=192
+ExecStart=/run/current-system/sw/bin/bash cpg_upload/run_zstd_rebuild.sh --apply
+Restart=on-failure
+RestartSec=60
+TimeoutStopSec=180
+
+[Install]
+WantedBy=default.target

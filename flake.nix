@@ -65,8 +65,8 @@
                 uv
                 pixi
                 pkgs.gcc
-                claude-code
                 pkgs.pixi
+                duckdb
               ]
               ++ libList;
               shellHook = ''

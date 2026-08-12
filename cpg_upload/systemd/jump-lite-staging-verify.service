@@ -1,0 +1,18 @@
+[Unit]
+Description=Verify all JUMP-Lite v1.0 bulk staging prefixes
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/work/users/amunoz/projects/JUMP_lite
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/work/users/amunoz/projects/JUMP_lite/.venv/bin/python /work/users/amunoz/projects/JUMP_lite/cpg_upload/verify_complete_staging.py --workers 4 --output /work/datasets/jump_lite/cpg_release/staging_bulk_verification.json
+Restart=on-failure
+RestartPreventExitStatus=2
+RestartSec=60
+StandardOutput=append:/work/datasets/jump_lite/cpg_release/staging_bulk_verification.log
+StandardError=append:/work/datasets/jump_lite/cpg_release/staging_bulk_verification.log
+
+[Install]
+WantedBy=default.target

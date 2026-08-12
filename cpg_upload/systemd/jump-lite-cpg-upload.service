@@ -1,0 +1,17 @@
+[Unit]
+Description=JUMP-Lite CPG staging upload supervisor
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/work/users/amunoz/projects/JUMP_lite
+Environment=HOME=/home/amunoz
+Environment=PATH=/work/users/amunoz/projects/JUMP_lite/.venv/bin:/home/amunoz/.nix-profile/bin:/run/current-system/sw/bin:/run/wrappers/bin
+ExecStart=/run/current-system/sw/bin/nix shell nixpkgs#awscli2 -c /run/current-system/sw/bin/bash cpg_upload/run_background_upload.sh --apply
+Restart=on-failure
+RestartSec=30
+TimeoutStopSec=180
+
+[Install]
+WantedBy=default.target

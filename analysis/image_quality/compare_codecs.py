@@ -425,14 +425,14 @@ def generate_ssim_plot(df: pd.DataFrame, output_dir: Path):
 
     # Nice display names
     display_names = {
-        'jxl_hq': 'High',
-        'jxl_effort_3': 'Mid-High',
-        'jxl_d2_e8': 'D2 E8',
-        'jxl_mq': 'Medium',
-        'jxl_lq': 'Low',
+        'jxl_hq': 'HQ',
+        'jxl_effort_3': 'E3',
+        'jxl_d2_e8': 'D2-E8',
+        'jxl_mq': 'MQ',
+        'jxl_lq': 'LQ',
         'jxl_d10': 'D10',
         'jxl_d15': 'D15',
-        'jxl_d20_e2': 'D20 E2',
+        'jxl_d20_e2': 'D20',
         'jxl_d30': 'D25',
     }
 

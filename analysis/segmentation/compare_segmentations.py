@@ -35,6 +35,24 @@ from instance_matching import matching as stardist_matching
 USE_STARDIST = True
 
 
+SEGMENTATION_CODEC_DISPLAY = {
+    'raw': 'Raw',
+    'zstd': 'Raw',
+    'jxl_raw': 'Raw',
+    'jxl_hq': 'HQ',
+    'jxl_effort_3': 'E3',
+    'jxl_d2_e8': 'D2-E8',
+    'jxl_mq': 'MQ',
+    'jxl_lq': 'LQ',
+    'jxl_d10': 'D10',
+    'jxl_d15': 'D15',
+    'jxl_d20': 'D20',
+    'jxl_d20_e2': 'D20',
+    'jxl_d25': 'D25',
+    'jxl_d30': 'D25',
+}
+
+
 def compute_dice(pred: np.ndarray, gt: np.ndarray) -> float:
     """Compute Dice coefficient."""
     if USE_MEDPY:
@@ -865,12 +883,10 @@ def plot_iou_boxplot_combined(df_cell, df_nuclei, output_prefix):
     df_plot = df_combined
 
     # Nice display names
-    _known_labels = {
-        'jxl_lq': 'Low', 'jxl_mq': 'Medium', 'jxl_effort_3': 'Mid-High',
-        'jxl_hq': 'High', 'jxl_d2_e8': 'D2 E8', 'jxl_d10': 'D10',
-        'jxl_d15': 'D15', 'jxl_d20_e2': 'D20 E2', 'jxl_d30': 'D30',
+    codec_labels = {
+        c: SEGMENTATION_CODEC_DISPLAY.get(c, c.replace('jxl_', '').upper())
+        for c in label_order
     }
-    codec_labels = {c: _known_labels.get(c, c.replace('jxl_', '').upper()) for c in label_order}
 
     # --- IoU Violin Plot ---
     fig, ax = plt.subplots(figsize=(7, 7))
@@ -1409,12 +1425,10 @@ def plot_cell_level_iou_combined(df_cell: pd.DataFrame, df_nuclei: pd.DataFrame,
     _all_codecs['codec'] = _all_codecs['method'].str.replace('.zarr', '').str.replace('jpegxl_lossy_', 'jxl_')
     _codec_mean = _all_codecs.groupby('codec')['iou_score'].mean().sort_values(ascending=False)
     codec_order = list(_codec_mean.index)
-    _known_labels = {
-        'jxl_lq': 'Low', 'jxl_mq': 'Medium', 'jxl_effort_3': 'Mid-High',
-        'jxl_hq': 'High', 'jxl_d2_e8': 'D2 E8', 'jxl_d10': 'D10',
-        'jxl_d15': 'D15', 'jxl_d20_e2': 'D20 E2', 'jxl_d30': 'D30',
+    codec_labels = {
+        c: SEGMENTATION_CODEC_DISPLAY.get(c, c.replace('jxl_', '').upper())
+        for c in codec_order
     }
-    codec_labels = {c: _known_labels.get(c, c.replace('jxl_', '').upper()) for c in codec_order}
 
     # Create two versions: TP only and All matched (TP + BELOW_THRESH)
     plot_configs = [

@@ -61,18 +61,18 @@ FAMILY_PLOT_ORDER = [
 ]
 
 CODEC_DISPLAY = {
-    "raw": "raw",
+    "raw": "Raw",
     "zstd": "zstd",
     "lz4hc": "lz4hc",
     "blosc_zstd": "blosc-zstd",
     # jpegxl_lossy with no distance == lossless jpegxl (the dir is named
     # ``..._jpegxl_lossy_raw_raw_features``); display as "lossless".
-    "jpegxl_lossy_raw": "lossless",
-    "jpegxl_lossy_hq": "hq",
-    "jpegxl_lossy_mq": "mq",
-    "jpegxl_lossy_lq": "lq",
-    "jpegxl_lossy_d20": "d20",
-    "jpegxl_lossy_d50": "d50",
+    "jpegxl_lossy_raw": "Lossless",
+    "jpegxl_lossy_hq": "HQ",
+    "jpegxl_lossy_mq": "MQ",
+    "jpegxl_lossy_lq": "LQ",
+    "jpegxl_lossy_d20": "D20",
+    "jpegxl_lossy_d50": "D50",
 }
 
 # X-axis codec ordering: best quality first (raw / lossless) → most lossy.

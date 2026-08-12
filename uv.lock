@@ -580,17 +580,13 @@ wheels = [
 [[package]]
 name = "cp-measure"
 version = "0.1.19"
-source = { registry = "https://pypi.org/simple" }
+source = { git = "https://github.com/afermg/cp_measure.git#3f5c272857c1a093aa4f13af7dacc4d55b6b2fd9" }
 dependencies = [
     { name = "centrosome" },
     { name = "mahotas" },
     { name = "numpy" },
     { name = "scikit-image" },
     { name = "scipy" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/0f/6a/f8301cfc560a4b9b6d702c0b506573261684eb08c98dc45d8fe9ed293f71/cp_measure-0.1.19.tar.gz", hash = "sha256:829144998eec3d7c8ac4ca15dea01814afa332612be96d5d025d13c4aa4eaa7b", size = 56993, upload-time = "2026-04-22T14:57:05.959Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/e6/2d/4291033cce9fda4c6375188035ca81adfe174926f23b490af02b8306aef5/cp_measure-0.1.19-py3-none-any.whl", hash = "sha256:036596f6e9750f0dc36b7e3dccdc5d4ada6451f92125aa73ff08153c7d27ed3e", size = 60128, upload-time = "2026-04-22T14:57:04.579Z" },
 ]
 
 [[package]]
@@ -1303,7 +1299,7 @@ requires-dist = [
     { name = "boto3", specifier = ">=1.26.0" },
     { name = "cellpose", specifier = ">=4.0.7" },
     { name = "copairs", specifier = ">=0.5.1" },
-    { name = "cp-measure", specifier = ">=0.1.16" },
+    { name = "cp-measure", git = "https://github.com/afermg/cp_measure.git" },
     { name = "duckdb", specifier = ">=1.4.2" },
     { name = "holoviews", specifier = ">=1.22.1" },
     { name = "hydra-core", specifier = ">=1.3.0" },

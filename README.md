@@ -1,73 +1,101 @@
-# JUMP_lite
+# JUMP-Lite
 
-Reproduction code for the WACV submission **"<paper title>"**, which evaluates
-how lossy image compression affects downstream cell-painting analysis (model
-ranking, MOTIVE retrieval, segmentation, feature stability).
+**JUMP-Lite** is a compact, analysis-ready subset of the [JUMP Cell Painting dataset](https://registry.opendata.aws/cellpainting-gallery/). It combines compressed five-channel microscopy images with per-site deep-learning embeddings, exact links to the original TIFFs, perturbation metadata, and curated RefChemDB annotations.
 
-## What's here
+> **Release status:** v1.0 is deposited for publication in the Cell Painting Gallery. The public paths below will become available after gallery promotion.
 
+## Dataset at a glance
+
+|                             |                              v1.0 |
+|-----------------------------|----------------------------------:|
+| JUMP sources                |                                 6 |
+| Batches                     |                                30 |
+| Plates                      |                               551 |
+| Wells                       |                           163,776 |
+| Benchmark perturbations     |                            24,356 |
+| Image sites                 |                           655,101 |
+| Channels                    |        5: AGP, DNA, ER, Mito, RNA |
+| Compressed image variants   |              4: Zstd, HQ, MQ, D20 |
+| Lossless Zstd               |              4.8 TB (4.4 TiB) |
+| JPEG XL HQ                  |          237.7 GB (221.4 GiB) |
+| JPEG XL MQ                  |            92.0 GB (85.7 GiB) |
+| JPEG XL D20                 |            16.2 GB (15.1 GiB) |
+| Embedding variants          |                                16 |
+| Per-site embedding Parquets |                        10,481,616 |
+| Curated annotation rows     | 29,142 across 1,526 perturbations |
+
+The release covers `source_2`, `source_4`, `source_6`, `source_7`, `source_8`, and `source_13`, with at most four sites per well. Benchmark perturbations are defined by modality and biological entity, so ORF overexpression and CRISPR knockout of the same gene count separately.
+
+## Access
+
+Public root:
+
+```text
+s3://cellpainting-gallery/cpg0016-jump/source_all/
 ```
-.
-├── README.md                  this file
-├── REPRODUCE.md               step-by-step reproduction guide
-├── PIPELINE.md                technical pipeline reference
-├── justfile                   all recipes (run `just --list`)
-├── flake.nix                  Nix dev shell (provides pixi + system libs)
-├── pyproject.toml / uv.lock   Python deps (managed by uv)
-├── src/                       compression, feature extraction, motive eval
-├── src/norm_3/                normalization sweep pipeline
-├── analysis/                  per-figure analysis scripts
-├── scripts/                   one-shot data-prep utilities
-├── metadata/                  curated metadata used by the pipeline
-```
 
-## Quick start
+| Component | Path below the public root |
+|---|---|
+| Compressed images | `images/2026_jump_lite_v1.0/images_compressed/<codec>.zarr/` |
+| Metadata and annotations | `workspace/publication_data/2026_jump_lite/metadata/v1.0/` |
+| Per-site embeddings | `workspace_dl/embeddings/<model>-<codec>/2026_jump_lite_v1.0/` |
+
+Start by downloading the small metadata bundle; AWS credentials are not required:
 
 ```bash
-# 1. Environment
-nix develop                    # pixi + system libs auto-activated
-
-# 2. Verify
-just --list                    # show recipes
-just check-env                 # confirm Python + CUDA work
-
-# 3. Reproduce paper figures (assumes you have the per-(model, codec) sweep
-#    outputs — see REPRODUCE.md §2 for what to drop into data/)
-just clean-results
-just reproduce                 # ~55 min, ~350 MB written to data/results/
+aws s3 cp --no-sign-request --recursive \
+  s3://cellpainting-gallery/cpg0016-jump/source_all/workspace/publication_data/2026_jump_lite/metadata/v1.0/ \
+  jump_lite_metadata/
 ```
 
-End-to-end from raw images is `just produce-paper` — many hours, hundreds of
-GB of disk. See REPRODUCE.md for the full pipeline.
+## What is included
 
-## Smoke test
+- **Images:** a 4.8 TB (4.4 TiB) lossless Zarr v3 store (`zstd`) plus Zarr v2 JPEG XL stores at high quality (`jpegxl_lossy_hq`, 237.7 GB), medium quality (`jpegxl_lossy_mq`, 92.0 GB), and high compression (`jpegxl_lossy_d20`, 16.2 GB). Each site is one unsigned 16-bit `(channel, y, x)` array. Reading JPEG XL arrays requires a compatible NumCodecs implementation such as `imagecodecs`.
+- **Embeddings:** per-site long-form Parquets from DINOv2, randomly initialized DINOv2, MorphEm, OpenPhenom, and two SubCell input variants. These are site-level outputs, not aggregated well profiles.
+- **Metadata:** `jump_lite_site_index.parquet` is the primary index and links every compressed site to its five original JUMP TIFF URLs. The release also provides a channel-level image index, perturbation metadata, a plate manifest, and a machine-readable manifest.
+- **Annotations:** `jump_lite_refchem_annotations.parquet` contains the release-relevant RefChemDB/JUMP confidence matches, including targets, genes, activity fields, confidence tiers, and direction-match indicators.
 
-To validate the sweep machinery without committing to a full run, the smoke
-recipes collapse the per-(model, codec) grid from 48 → 4:
+Site identifiers have the form:
 
-```bash
-just sweep-v11-lite-smoke 0 4  # GPU 0, 4 joblib workers — ~20–40 min
+```text
+<source>__<batch>__<plate>__<well>__<site>
 ```
 
-## Reproducing on a different machine
+The original TIFFs remain in their source-specific `cpg0016-jump/source_<n>/` locations and are not duplicated in JUMP-Lite.
 
-Set `DATA_ROOT` to point at wherever your raw data lives:
+## Provenance
 
-```bash
-export DATA_ROOT=/my/storage/jump_data
-just check-data                # verifies all upstream paths resolve
-just produce-paper             # end-to-end
+The exact 655,101-site paper benchmark cohort is frozen across all four image variants. It contains 163,773 wells with four available sites and three wells with three available sites. The embedding collections share this same site set for the lossy image variants they cover.
+
+## How JUMP-Lite was generated
+
+```text
+public JUMP TIFFs
+  → plate filtering and deterministic site selection
+  → lossless Zstd and JPEG XL site-major Zarr arrays
+  → model-specific tiling and per-site embeddings
+  → frozen metadata and annotation tables
+  → cross-variant validation and CPG deposit
 ```
 
-The default is `./data`, so a self-contained `data/` directory inside the repo
-works without configuration.
+The generation and analysis resources remain part of this repository:
 
-## License
+- [Bootstrap and source-data preparation](prep/README.md), including the [deterministic site-selection query](prep/build_jl_index.sql)
+- [Image compression implementation](src/compress_tif.py) and [embedding driver](prep/aliby_featurize.py)
+- [Release metadata, validation, and CPG layout](cpg_upload/README.md)
+- [Complete dataset specification and model provenance](cpg_upload/JUMP_LITE_README.md)
+- [Technical analysis pipeline](PIPELINE.md) and [paper reproduction guide](REPRODUCE.md)
 
-MIT. See [LICENSE](LICENSE).
+Run `nix develop` followed by `just --list` to inspect the available generation and reproduction recipes.
 
 ## Citation
 
-```
-TODO bibtex
-```
+Please cite the JUMP-Lite manuscript:
+
+> Muñoz AF, Fredin Haslum J, Shen R, Carpenter AE, Singh S. (2026). **JUMP-lite: Compact, reproducible benchmarking of cell representations.** [arXiv:2608.07632](https://arxiv.org/abs/2608.07632).
+
+Release indices and related tables are archived at [Zenodo](https://doi.org/10.5281/zenodo.18705140).
+
+## License
+
+Repository code is available under the [MIT License](LICENSE). Data usage is governed by the terms of the Cell Painting Gallery and the original JUMP dataset.

@@ -1,0 +1,20 @@
+[Unit]
+Description=JUMP-Lite streaming lossless Zstd upload to CPG staging
+Wants=network-online.target jump-lite-zstd-rebuild.service
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/work/users/amunoz/projects/JUMP_lite
+Environment=HOME=/home/amunoz
+Environment=PATH=/work/users/amunoz/projects/JUMP_lite/.venv/bin:/home/amunoz/.nix-profile/bin:/run/current-system/sw/bin:/run/wrappers/bin
+Environment=ZSTD_UPLOAD_WORKERS=24
+Environment=ZSTD_UPLOAD_BATCH_SIZE=192
+Environment=ZSTD_UPLOAD_POLL_SECONDS=30
+ExecStart=/run/current-system/sw/bin/bash cpg_upload/run_zstd_upload.sh --apply
+Restart=on-failure
+RestartSec=60
+TimeoutStopSec=180
+
+[Install]
+WantedBy=default.target

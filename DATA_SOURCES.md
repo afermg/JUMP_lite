@@ -16,18 +16,23 @@ This document does two jobs:
 | Aliby segmentation + per-model embeddings | `just aliby-featurize` | Wired (`prep/`), but requires external `aliby` + Nahual GPU servers |
 | CellProfiler `profiles.parquet` | `just fetch-cp-profiles` (anonymous S3, ~13.5 GB) | Wired (`prep/`) |
 
-The only annotation file committed to the repo is `metadata/motive_eval_compounds.parquet`
-(the MOTIVE compound allowlist). The rest of `metadata/*.parquet` (incl.
-`motive_annotations*`, `metadata_dataset_filtered_4reps.parquet`) is gitignored
-and must be regenerated via `just prep-annotations` — see §2 below. A reproducer
-who already has those files locally can skip §2 entirely.
+The analysis-time MOTIVE allowlist is committed as
+`metadata/motive_eval_compounds.parquet`. The small frozen v1.0 release
+manifests, perturbation metadata, and RefChem annotation snapshot are also
+committed as `metadata/jump_lite_v1_*.parquet`; these define the deposited
+163,776-well, 655,101-site cohort but do not replace the analysis intermediates.
+The remaining analysis `metadata/*.parquet` files (including
+`motive_annotations*` and `metadata_dataset_filtered_4reps.parquet`) are
+ignored and must be regenerated via `just prep-annotations` — see §2 below. A
+reproducer who already has those files locally can skip §2 entirely.
 
 ---
 
-## §2. Provenance of the committed `metadata/` files
+## §2. Provenance of generated analysis metadata
 
-The 11 files in `metadata/` were produced by three scripts in this repo. Each
-script's external inputs (TODO ADDRESS entries) are listed.
+The generated analysis metadata files are produced by the scripts below but,
+except for the explicitly frozen release snapshots described above, are not
+committed. Each script's external inputs (TODO ADDRESS entries) is listed.
 
 All four producer scripts are wrapped by the `prep-annotations` recipe:
 
@@ -39,7 +44,7 @@ You can also invoke each step individually (`just metadata`, `just motive-curate
 
 ### 2a. Metadata bundle (`scripts/build_metadata_dataset.py`, 8 steps unified)
 
-| Reads | Writes (all committed) |
+| Reads | Writes (generated locally) |
 |---|---|
 | `jump_metadata.duckdb` (well / plate / compound / crispr / orf tables) | `metadata.parquet` |
 | `annotations_compound_compound.parquet` (MOTIVE) | `metadata_filtered.parquet` |
@@ -49,7 +54,7 @@ You can also invoke each step individually (`just metadata`, `just motive-curate
 
 ### 2b. MOTIVE annotations (`scripts/curate_motive.py --mode {full,strict,ultra_strict}`)
 
-| Reads | Writes (all committed) |
+| Reads | Writes (generated locally) |
 |---|---|
 | `metadata.parquet` (from 2a) | `motive_annotations.parquet` (full) |
 | `metadata_dataset_filtered_4reps.parquet` (from 2a) | `motive_annotations_strict.parquet` |
@@ -63,7 +68,7 @@ You can also invoke each step individually (`just metadata`, `just motive-curate
 
 ### 2c. Top-config list (`analysis/filter_top_configs.py` via `just motive-filter-top`)
 
-| Reads | Writes (committed) |
+| Reads | Writes (generated locally) |
 |---|---|
 | `sweep_results.csv` (output of `just sweep-v11{,-lite}`) | `motive_top_configs.txt` |
 
@@ -71,8 +76,9 @@ You can also invoke each step individually (`just metadata`, `just motive-curate
 
 ## §3. Addresses still to fill before public release
 
-Each TODO below blocks "rebuild metadata from source" but does **not** block
-running `produce-paper` against the committed parquets.
+Each TODO below blocks a clean rebuild of the corresponding analysis metadata.
+It does not affect the frozen v1.0 release manifests, but `produce-paper` still
+requires the missing analysis files to be regenerated or supplied externally.
 
 | # | Artifact | Used by | Address (TODO) |
 |---|---|---|---|

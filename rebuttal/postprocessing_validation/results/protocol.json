@@ -1,0 +1,31 @@
+{
+  "compound_col": "Metadata_JCP2022",
+  "families": [
+    "dinov2",
+    "morphem",
+    "openphenom",
+    "subcell",
+    "cellprofiler",
+    "dinov2_random",
+    "cell_count"
+  ],
+  "group_col": "Metadata_Group",
+  "max_selection_configs": null,
+  "negative_control_col": "Metadata_negcon",
+  "pc_groups": [
+    "group_high",
+    "group_low"
+  ],
+  "protocol_hash": "ae3d2b5ce4abf9cf232b4f42c2a9f1e6d8cc185e955cd8ed7199580c7d3a9e45",
+  "protocol_version": 1,
+  "repo_head": "754f99afe4bfea025e589e94aab0dc8b38deb0c1",
+  "runner_sha256": "8b0da01796cfe04171c0e20024f8facb6cad8c94c231beec392c2a4a9d1f0bf7",
+  "seed": 20260811,
+  "selection_codec": "Raw",
+  "selection_score": "within-family min-max(PA mean NAP) * min-max(PC mean NAP)",
+  "started_at": "2026-08-11T17:49:50.030662+00:00",
+  "sweep_dir": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite",
+  "target_col": "Metadata_RefChemDB_target",
+  "validation_fraction": 0.2,
+  "workers": 4
+}
