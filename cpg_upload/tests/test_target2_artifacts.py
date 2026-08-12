@@ -351,6 +351,45 @@ class Target2ArtifactTests(unittest.TestCase):
                 upload.inventory_digest([existing, object_feature]),
             )
 
+    def test_metadata_upload_uses_verified_in_memory_bytes(self) -> None:
+        class Client:
+            def __init__(self):
+                self.body = None
+
+            def put_object(self, **kwargs):
+                self.body = kwargs["Body"]
+
+        class Manager:
+            def __init__(self):
+                self._client = Client()
+
+            def client(self, **_kwargs):
+                return self._client
+
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / "metadata.json"
+            source.write_bytes(b'{"ok": true}\n')
+            digest = hashlib.sha256(source.read_bytes()).hexdigest()
+            entry = upload.UploadEntry(
+                source=source,
+                relative_key="manifests/provenance.json",
+                size_bytes=source.stat().st_size,
+                sha256=digest,
+                content_type="application/json",
+            )
+            manager = Manager()
+            upload.upload_entry(manager, entry, in_memory=True)
+            self.assertIsInstance(manager._client.body, bytes)
+            self.assertEqual(manager._client.body, source.read_bytes())
+
+            source.write_bytes(b"changed")
+            with self.assertRaisesRegex(RuntimeError, "metadata source changed"):
+                upload.upload_entry(manager, entry, in_memory=True)
+            source.write_bytes(b'{"no": true}\n')
+            self.assertEqual(source.stat().st_size, entry.size_bytes)
+            with self.assertRaisesRegex(RuntimeError, "metadata source changed"):
+                upload.upload_entry(manager, entry, in_memory=True)
+
     def test_metadata_preflight_rejects_unknown_root_objects(self) -> None:
         data = upload.UploadEntry(
             source=Path("data"),

@@ -414,22 +414,44 @@ class RefreshingS3Client:
 
 
 def upload_entry(
-    manager: RefreshingS3Client, entry: UploadEntry, *, max_attempts: int = 20
+    manager: RefreshingS3Client,
+    entry: UploadEntry,
+    *,
+    max_attempts: int = 20,
+    in_memory: bool = False,
 ) -> int:
+    expected_checksum = base64.b64encode(bytes.fromhex(entry.sha256)).decode("ascii")
     for attempt in range(1, max_attempts + 1):
         try:
-            with entry.source.open("rb") as stream:
+            if in_memory:
+                body = entry.source.read_bytes()
+                if (
+                    len(body) != entry.size_bytes
+                    or hashlib.sha256(body).hexdigest() != entry.sha256
+                ):
+                    raise RuntimeError(
+                        f"metadata source changed before upload: {entry.source}"
+                    )
                 manager.client().put_object(
                     Bucket=BUCKET,
                     Key=entry.destination_key,
-                    Body=stream,
+                    Body=body,
                     ContentLength=entry.size_bytes,
                     ContentType=entry.content_type,
-                    ChecksumSHA256=base64.b64encode(
-                        bytes.fromhex(entry.sha256)
-                    ).decode("ascii"),
+                    ChecksumSHA256=expected_checksum,
                     ExpectedBucketOwner=ACCOUNT_ID,
                 )
+            else:
+                with entry.source.open("rb") as stream:
+                    manager.client().put_object(
+                        Bucket=BUCKET,
+                        Key=entry.destination_key,
+                        Body=stream,
+                        ContentLength=entry.size_bytes,
+                        ContentType=entry.content_type,
+                        ChecksumSHA256=expected_checksum,
+                        ExpectedBucketOwner=ACCOUNT_ID,
+                    )
             return entry.size_bytes
         except ClientError as error:
             code = error.response.get("Error", {}).get("Code", "unknown")
@@ -807,7 +829,10 @@ def main() -> int:
         key=lambda entry: (entry.relative_key == "README.md", entry.relative_key),
     )
     for entry in ordered_metadata:
-        upload_entry(manager, entry)
+        # Small metadata objects are uploaded from verified immutable byte
+        # strings. This avoids streaming-checksum ambiguity and makes each
+        # replacement payload atomic from the client's perspective.
+        upload_entry(manager, entry, in_memory=True)
 
     final = verify_remote_entries(
         manager,
