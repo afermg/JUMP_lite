@@ -1,0 +1,92 @@
+{
+  "design_addendum": {
+    "bytes": 3269,
+    "path": "rebuttal/representativeness/CLUSTER_SELECTION_RELEASE_V1_ADDENDUM.md",
+    "path_scope": "repository_root",
+    "sha256": "36dd74e1894c0df117872c3b84a3206a58f2c9d87e5076941647960270e5b06a"
+  },
+  "frozen_umap": {
+    "bytes": 999039,
+    "path": "rebuttal/representativeness/outputs/profile_cluster_representativeness_v1/compound_cluster_umap.parquet",
+    "path_scope": "repository_root",
+    "sha256": "3b8ac04e817dc65e89926048797bf330e8595966d9dd425de2491dab07f82bba"
+  },
+  "manifest": {
+    "bytes": 32941,
+    "path": "current_release_treatment_manifest.parquet",
+    "path_scope": "output_root",
+    "sha256": "3d3ca04b51a47d23b9c8f20b62fdc24295cd0c8e44b678b2a123c353fd5ee56b"
+  },
+  "metadata": {
+    "bytes": 949745,
+    "path": "metadata/jump_lite_v1_perturbation_metadata.parquet",
+    "path_scope": "repository_root",
+    "sha256": "bbedb37f12fdeb9a09e72abaa166159d286052dc1201166d811c5310db5cd7e1"
+  },
+  "parameters": {
+    "folds": 5,
+    "matched_comparators": "omitted",
+    "permutation_strata": [
+      "ineligible_lt4",
+      "w4_7_single",
+      "w4_7_multi",
+      "w8plus"
+    ],
+    "permutations": 2000,
+    "refit_clusters": false,
+    "refit_umap": false
+  },
+  "reviewed_fit_identity": {
+    "analysis_helper": {
+      "bytes": 31366,
+      "path": "rebuttal/representativeness/analyze_cluster_representativeness.py",
+      "path_scope": "repository_root",
+      "sha256": "09ac9d4392c7573335d0ec5a4fd467070baeee3fb95d5f7e47306604ab29b645"
+    },
+    "fit_artifacts": {
+      "cluster_assignments_sensitivity_unlabeled.parquet": {
+        "bytes": 11203503,
+        "path": "rebuttal/representativeness/outputs/profile_cluster_representativeness_v1/fit/cluster_assignments_sensitivity_unlabeled.parquet",
+        "path_scope": "repository_root",
+        "sha256": "c3d021bf0c3c56488f5409228383f9cb7991e14307bfc2c4d072b9a2bfc4f45a"
+      },
+      "cluster_assignments_unlabeled.parquet": {
+        "bytes": 1161683,
+        "path": "rebuttal/representativeness/outputs/profile_cluster_representativeness_v1/fit/cluster_assignments_unlabeled.parquet",
+        "path_scope": "repository_root",
+        "sha256": "20a1282d0e81ad6d26cd443d327ba86282cd38981b7751d871bc170bec940613"
+      },
+      "clustering_diagnostics.csv": {
+        "bytes": 4708,
+        "path": "rebuttal/representativeness/outputs/profile_cluster_representativeness_v1/fit/clustering_diagnostics.csv",
+        "path_scope": "repository_root",
+        "sha256": "9df79ab9f92e6c3c1ca0b268e6544a9d59647a5c1e7bb345f86ce0b07e628709"
+      },
+      "computation_identity.json": {
+        "bytes": 1657,
+        "path": "rebuttal/representativeness/outputs/profile_cluster_representativeness_v1/fit/computation_identity.json",
+        "path_scope": "repository_root",
+        "sha256": "153ddc59e136ae6bdb78ac61e76a311d306c73b4c52e4fae9b16c7bc1019941c"
+      },
+      "primary_model.npz": {
+        "bytes": 31712,
+        "path": "rebuttal/representativeness/outputs/profile_cluster_representativeness_v1/fit/primary_model.npz",
+        "path_scope": "repository_root",
+        "sha256": "3546f6abe83ef85b2aa809cdbf4209dd0b2a979b3415c3e7eb956bf4339a8a54"
+      }
+    },
+    "fit_completion": {
+      "bytes": 1135,
+      "path": "rebuttal/representativeness/outputs/profile_cluster_representativeness_v1/fit/fit_complete.json",
+      "path_scope": "repository_root",
+      "sha256": "fee7d3c85d2a4da2223c2962f2c75f247315419745d631785b84ea768036f332"
+    }
+  },
+  "runner": {
+    "bytes": 40191,
+    "path": "rebuttal/representativeness/rescore_cluster_representativeness_release_v1.py",
+    "path_scope": "repository_root",
+    "sha256": "69a3478ccd2de9a537825bb6553f9b9a56f09ac9a85c704e2c771cd7637ece40"
+  },
+  "version": "profile-cluster-selection-current-release-v1"
+}
