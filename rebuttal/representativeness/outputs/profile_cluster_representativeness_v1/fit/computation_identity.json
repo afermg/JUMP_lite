@@ -1,0 +1,61 @@
+{
+  "counts": {
+    "all": 115721,
+    "eligible": 95426,
+    "retained_features": 94
+  },
+  "design": {
+    "bytes": 3837,
+    "path": "CLUSTER_SELECTION_DESIGN.md",
+    "path_scope": "representativeness_root",
+    "sha256": "55c3dd0a06255299dfa60c60871f98e3d269cdb586cc50a77bf423a140df76e4"
+  },
+  "inputs": [
+    {
+      "bytes": 40554151,
+      "path": "outputs/profile_space/compound_consensus_plate_robust.parquet",
+      "path_scope": "representativeness_root",
+      "sha256": "dc2f84178a15f2e18177d4475b094af0da8fab10b1856bd3d1e4f6521d6c9d06"
+    },
+    {
+      "bytes": 3847,
+      "path": "outputs/profile_space/selected_features.txt",
+      "path_scope": "representativeness_root",
+      "sha256": "fb05b7454feca3afe6677c73465adcb596481e7b32707eb52d9e21f6d6d42601"
+    }
+  ],
+  "parameters": {
+    "eligible": "n_wells>=4",
+    "primary": {
+      "best_seed": 65537,
+      "k": 128,
+      "pca": 32,
+      "preprocessing": "clip10"
+    },
+    "seeds": [
+      13,
+      42,
+      2026,
+      31415,
+      65537
+    ],
+    "sensitivities": [
+      "clip10-k64",
+      "clip10-k256",
+      "rank-gaussian-k128"
+    ]
+  },
+  "path_base_definitions": {
+    "output_root": "directory containing fit/ and the score outputs",
+    "representativeness_root": "directory containing analyze_cluster_representativeness.py"
+  },
+  "pca_explained_variance": 0.9063885951779964,
+  "runner": {
+    "bytes": 26200,
+    "path": "fit_runner_snapshot_13bdd68e.py",
+    "path_scope": "output_root",
+    "sha256": "13bdd68e789194e9b1fc53858498b48920fbef65bd7f5b58512194633620e7a7"
+  },
+  "runtime_seconds": 60.867242060019635,
+  "version": "profile-cluster-fit-v1"
+}

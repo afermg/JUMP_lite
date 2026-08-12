@@ -1,0 +1,189 @@
+{
+  "cohort": {
+    "derivation": "distinct Metadata_JCP2022 where Metadata_Perturbation_Type == compound and Metadata_pert_type == trt; sorted by identifier; attributes joined from the frozen historical manifest",
+    "exclusion": "The sole compound negative control is explicitly excluded.",
+    "inputs": [
+      {
+        "bytes": 949745,
+        "path": "metadata/jump_lite_v1_perturbation_metadata.parquet",
+        "path_scope": "repository_root",
+        "sha256": "bbedb37f12fdeb9a09e72abaa166159d286052dc1201166d811c5310db5cd7e1"
+      },
+      {
+        "bytes": 33252,
+        "path": "rebuttal/representativeness/outputs/profile_space/manifests/jump_lite_compounds.parquet",
+        "path_scope": "repository_root",
+        "sha256": "a0671dcaae029a2c32ac58fdaf09178806b495d33a5ea439ff859b3c0fbe74de"
+      }
+    ],
+    "manifest": {
+      "bytes": 32941,
+      "path": "current_release_treatment_manifest.parquet",
+      "path_scope": "output_root",
+      "sha256": "3d3ca04b51a47d23b9c8f20b62fdc24295cd0c8e44b678b2a123c353fd5ee56b"
+    },
+    "validation": {
+      "all_assignments_present": true,
+      "all_fit_eligible": true,
+      "compound_identifiers": 3776,
+      "current_only_count": 0,
+      "current_only_ids": [],
+      "historical_only_count": 57,
+      "historical_only_ids": [
+        "JCP2022_001854",
+        "JCP2022_006998",
+        "JCP2022_007613",
+        "JCP2022_009404",
+        "JCP2022_010954",
+        "JCP2022_016340",
+        "JCP2022_017097",
+        "JCP2022_017597",
+        "JCP2022_022720",
+        "JCP2022_026508",
+        "JCP2022_026681",
+        "JCP2022_032332",
+        "JCP2022_036506",
+        "JCP2022_038041",
+        "JCP2022_038138",
+        "JCP2022_039512",
+        "JCP2022_043538",
+        "JCP2022_050371",
+        "JCP2022_052661",
+        "JCP2022_053413",
+        "JCP2022_054903",
+        "JCP2022_055347",
+        "JCP2022_055833",
+        "JCP2022_058046",
+        "JCP2022_058212",
+        "JCP2022_058799",
+        "JCP2022_063362",
+        "JCP2022_063686",
+        "JCP2022_063983",
+        "JCP2022_064577",
+        "JCP2022_068713",
+        "JCP2022_069626",
+        "JCP2022_074764",
+        "JCP2022_079329",
+        "JCP2022_079616",
+        "JCP2022_080717",
+        "JCP2022_088914",
+        "JCP2022_089948",
+        "JCP2022_090016",
+        "JCP2022_090839",
+        "JCP2022_093756",
+        "JCP2022_093888",
+        "JCP2022_095345",
+        "JCP2022_097171",
+        "JCP2022_098546",
+        "JCP2022_098957",
+        "JCP2022_099101",
+        "JCP2022_100200",
+        "JCP2022_100626",
+        "JCP2022_102083",
+        "JCP2022_104655",
+        "JCP2022_105413",
+        "JCP2022_105494",
+        "JCP2022_110159",
+        "JCP2022_113041",
+        "JCP2022_113701",
+        "JCP2022_114461"
+      ],
+      "historical_treatments": 3832,
+      "metadata_rows": 163776,
+      "negative_control_id": "JCP2022_033924",
+      "negative_controls": 1,
+      "treatments": 3775
+    },
+    "version": "jump-lite-current-release-treatment-manifest-v1"
+  },
+  "conclusion": {
+    "combined_to_count_ap_ratio": 1.1164019594986136,
+    "conditional_permutation_p": 0.0004997501249375312,
+    "detectably_better_than_structure": true,
+    "materially_better_than_structure": false,
+    "primary_seed_mean_ari": 0.16241422160818178,
+    "unique_cluster_biological_claims_allowed": false
+  },
+  "counts": {
+    "all": 115721,
+    "current_only": 0,
+    "eligible": 95426,
+    "historical_only": 57,
+    "release_compound_identifiers": 3776,
+    "release_negative_controls_excluded": 1,
+    "selected_treatments": 3775
+  },
+  "design_addendum": {
+    "bytes": 3269,
+    "path": "rebuttal/representativeness/CLUSTER_SELECTION_RELEASE_V1_ADDENDUM.md",
+    "path_scope": "repository_root",
+    "sha256": "36dd74e1894c0df117872c3b84a3206a58f2c9d87e5076941647960270e5b06a"
+  },
+  "frozen_umap": {
+    "bytes": 999039,
+    "path": "rebuttal/representativeness/outputs/profile_cluster_representativeness_v1/compound_cluster_umap.parquet",
+    "path_scope": "repository_root",
+    "sha256": "3b8ac04e817dc65e89926048797bf330e8595966d9dd425de2491dab07f82bba"
+  },
+  "matched_comparator_sensitivity": "omitted: historical comparators have 3,832 rows and are not reused as current evidence",
+  "numpy": "1.26.4",
+  "platform": "Linux-6.12.80-x86_64-with-glibc2.40",
+  "polars": "1.37.1",
+  "python": "3.12.11 (main, Sep 18 2025, 19:47:19) [Clang 20.1.4 ]",
+  "reviewed_fit_identity": {
+    "analysis_helper": {
+      "bytes": 31366,
+      "path": "rebuttal/representativeness/analyze_cluster_representativeness.py",
+      "path_scope": "repository_root",
+      "sha256": "09ac9d4392c7573335d0ec5a4fd467070baeee3fb95d5f7e47306604ab29b645"
+    },
+    "fit_artifacts": {
+      "cluster_assignments_sensitivity_unlabeled.parquet": {
+        "bytes": 11203503,
+        "path": "rebuttal/representativeness/outputs/profile_cluster_representativeness_v1/fit/cluster_assignments_sensitivity_unlabeled.parquet",
+        "path_scope": "repository_root",
+        "sha256": "c3d021bf0c3c56488f5409228383f9cb7991e14307bfc2c4d072b9a2bfc4f45a"
+      },
+      "cluster_assignments_unlabeled.parquet": {
+        "bytes": 1161683,
+        "path": "rebuttal/representativeness/outputs/profile_cluster_representativeness_v1/fit/cluster_assignments_unlabeled.parquet",
+        "path_scope": "repository_root",
+        "sha256": "20a1282d0e81ad6d26cd443d327ba86282cd38981b7751d871bc170bec940613"
+      },
+      "clustering_diagnostics.csv": {
+        "bytes": 4708,
+        "path": "rebuttal/representativeness/outputs/profile_cluster_representativeness_v1/fit/clustering_diagnostics.csv",
+        "path_scope": "repository_root",
+        "sha256": "9df79ab9f92e6c3c1ca0b268e6544a9d59647a5c1e7bb345f86ce0b07e628709"
+      },
+      "computation_identity.json": {
+        "bytes": 1657,
+        "path": "rebuttal/representativeness/outputs/profile_cluster_representativeness_v1/fit/computation_identity.json",
+        "path_scope": "repository_root",
+        "sha256": "153ddc59e136ae6bdb78ac61e76a311d306c73b4c52e4fae9b16c7bc1019941c"
+      },
+      "primary_model.npz": {
+        "bytes": 31712,
+        "path": "rebuttal/representativeness/outputs/profile_cluster_representativeness_v1/fit/primary_model.npz",
+        "path_scope": "repository_root",
+        "sha256": "3546f6abe83ef85b2aa809cdbf4209dd0b2a979b3415c3e7eb956bf4339a8a54"
+      }
+    },
+    "fit_completion": {
+      "bytes": 1135,
+      "path": "rebuttal/representativeness/outputs/profile_cluster_representativeness_v1/fit/fit_complete.json",
+      "path_scope": "repository_root",
+      "sha256": "fee7d3c85d2a4da2223c2962f2c75f247315419745d631785b84ea768036f332"
+    }
+  },
+  "runner": {
+    "bytes": 40191,
+    "path": "rebuttal/representativeness/rescore_cluster_representativeness_release_v1.py",
+    "path_scope": "repository_root",
+    "sha256": "69a3478ccd2de9a537825bb6553f9b9a56f09ac9a85c704e2c771cd7637ece40"
+  },
+  "runtime_seconds": 22.999256932991557,
+  "scipy": "1.17.0",
+  "sklearn": "1.8.0",
+  "version": "profile-cluster-selection-current-release-v1"
+}

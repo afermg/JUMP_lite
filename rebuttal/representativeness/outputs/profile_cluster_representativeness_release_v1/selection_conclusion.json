@@ -1,0 +1,8 @@
+{
+  "combined_to_count_ap_ratio": 1.1164019594986136,
+  "conditional_permutation_p": 0.0004997501249375312,
+  "detectably_better_than_structure": true,
+  "materially_better_than_structure": false,
+  "primary_seed_mean_ari": 0.16241422160818178,
+  "unique_cluster_biological_claims_allowed": false
+}

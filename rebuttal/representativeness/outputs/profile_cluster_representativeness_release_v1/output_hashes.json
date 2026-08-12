@@ -1,0 +1,133 @@
+{
+  "files": [
+    {
+      "bytes": 1828,
+      "path": "REPORT.md",
+      "path_scope": "output_root",
+      "sha256": "8a9173af2b5ef2d41a2aa7036f14d7e43382e1bd5d8d3f458b7ed97619e0ec8c"
+    },
+    {
+      "bytes": 54997,
+      "path": "cluster_selection_all_clusters.png",
+      "path_scope": "output_root",
+      "sha256": "8c109ce1ffbc2495c7c7a1d0459cd90294923f9a6cd98508e4d50d69da5b84d1"
+    },
+    {
+      "bytes": 956319,
+      "path": "cluster_selection_compound_map.pdf",
+      "path_scope": "output_root",
+      "sha256": "59c639a30940bcce5fbbd94669049998ba9f3181164888c839748b35c8b14b3c"
+    },
+    {
+      "bytes": 1525856,
+      "path": "cluster_selection_compound_map.png",
+      "path_scope": "output_root",
+      "sha256": "a436610f578c770913c5e7e14ea25d504ebfc264c3e94bfc278ea1bf4c0103ea"
+    },
+    {
+      "bytes": 1131,
+      "path": "cluster_selection_figure_hashes.json",
+      "path_scope": "output_root",
+      "sha256": "af8e34b765753f232cfdf0ddf26d416ed34e6e5dfb3e2ae44b55d1f7727c664a"
+    },
+    {
+      "bytes": 1781,
+      "path": "cluster_selection_figure_provenance.json",
+      "path_scope": "output_root",
+      "sha256": "5be327d1d243d84d263969d09f5e34402f82c79859316a4b93104ad4d30be805"
+    },
+    {
+      "bytes": 1496,
+      "path": "cluster_selection_summary_table.csv",
+      "path_scope": "output_root",
+      "sha256": "b7312089803aebecb273f799f4f0d2d96151f1fd69fed2b79341de21d44ec84a"
+    },
+    {
+      "bytes": 38582,
+      "path": "cluster_selection_table.csv",
+      "path_scope": "output_root",
+      "sha256": "1a8dcae43d2e0f1ed6da976a7b764978733a2d2fb2c27aa92523858f910e0e4c"
+    },
+    {
+      "bytes": 29833,
+      "path": "cluster_selection_table.parquet",
+      "path_scope": "output_root",
+      "sha256": "61f545b7286063afee999d2841970f1fb209bcb266028459b71ac77334b946ff"
+    },
+    {
+      "bytes": 3000780,
+      "path": "compound_cluster_assignments.parquet",
+      "path_scope": "output_root",
+      "sha256": "ad1752afe8ab9597993c7aabfd99e9ea9c5e121569b972a581400e99f21496bb"
+    },
+    {
+      "bytes": 999015,
+      "path": "compound_cluster_umap.parquet",
+      "path_scope": "output_root",
+      "sha256": "e9194b6afee6f29dfea0088f493f26b8bd9d302a2613cb71f686114782d9352b"
+    },
+    {
+      "bytes": 3819,
+      "path": "computation_identity.json",
+      "path_scope": "output_root",
+      "sha256": "ef5b201284ab496ac19e96611f04b7687837b7a00faa69517c417609d77f42b5"
+    },
+    {
+      "bytes": 2838,
+      "path": "current_release_manifest_provenance.json",
+      "path_scope": "output_root",
+      "sha256": "3cc4944b53e65ab7182c82cb88eba21aff797cc784f23fa5e48ff179eb063395"
+    },
+    {
+      "bytes": 32941,
+      "path": "current_release_treatment_manifest.parquet",
+      "path_scope": "output_root",
+      "sha256": "3d3ca04b51a47d23b9c8f20b62fdc24295cd0c8e44b678b2a123c353fd5ee56b"
+    },
+    {
+      "bytes": 227,
+      "path": "permutation_summary.json",
+      "path_scope": "output_root",
+      "sha256": "a6b312c229c2d255887010de06dd58ec14f4c1b5b99b6908b9047e09f76a604c"
+    },
+    {
+      "bytes": 7086,
+      "path": "provenance.json",
+      "path_scope": "output_root",
+      "sha256": "b10a9e32504c45db15663f293fc0c691b414641436572f677d22306679149ceb"
+    },
+    {
+      "bytes": 402,
+      "path": "representation_summary.json",
+      "path_scope": "output_root",
+      "sha256": "9ef007b2eb2b6987ecd797b918cb297c79ad1974a9ef35d6131e83e366f7cb70"
+    },
+    {
+      "bytes": 1784,
+      "path": "retrieval_metrics.csv",
+      "path_scope": "output_root",
+      "sha256": "5184ceec065a2bba05cda0da52cc41126f7c6353daa61ecb33f24dc3be8a6959"
+    },
+    {
+      "bytes": 4309,
+      "path": "retrieval_partition_sensitivity.csv",
+      "path_scope": "output_root",
+      "sha256": "b49b462fbd9d64342dc102413b996ef6a44d2520964ace865cba02ce02ac2c61"
+    },
+    {
+      "bytes": 299,
+      "path": "selection_conclusion.json",
+      "path_scope": "output_root",
+      "sha256": "51435fb73ec6af1a993aaf435e8768c5db5fed53311984a51e82004fd31327db"
+    },
+    {
+      "bytes": 209,
+      "path": "structural_counts.csv",
+      "path_scope": "output_root",
+      "sha256": "70c4485469e8bf0acb2d83fe56f2cc4f6f45ec6c0ffc01f2cea55b49e8c95909"
+    }
+  ],
+  "path_base_definition": {
+    "output_root": "current release output root"
+  }
+}
