@@ -46,6 +46,9 @@ labels are joined. It is visualization, not additional inferential evidence.
   frozen-label scoring.
 - `rescore_cluster_representativeness_release_v1.py`: fail-closed current
   manifest derivation, scoring, and figure regeneration without refitting.
+- `export_cluster_selection_control.py`: fail-closed, result-only exporter for
+  the compact SI package; it verifies and copies canonical outputs without
+  fitting, rescoring, or recomputing scientific metrics.
 - `score_cluster_partition_sensitivity.py`: fixed partition-sensitivity score.
 - `plot_cluster_selection_compounds.py`: deterministic compound figure and
   compact summary table; it never refits the scientific clusters.
@@ -82,6 +85,10 @@ $PY "$ROOT/score_cluster_partition_sensitivity.py" --output-dir "$OUT"
 # Reproduce current-label scoring and figures without any fit/refit.
 $PY "$ROOT/rescore_cluster_representativeness_release_v1.py" \
   --output-dir /tmp/profile_cluster_representativeness_release_v1_reproduction
+
+# Export the compact SI package from committed canonical results only.
+$PY "$ROOT/export_cluster_selection_control.py" \
+  --output-dir /tmp/cluster_selection_control
 
 # Historical validation remains separate.
 $PY "$ROOT/test_cluster_representativeness.py"
