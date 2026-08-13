@@ -1,6 +1,6 @@
 # JUMP-Lite
 
-**JUMP-Lite** is a compact, analysis-ready subset of the [JUMP Cell Painting dataset](https://registry.opendata.aws/cellpainting-gallery/). It combines compressed five-channel microscopy images with per-site deep-learning embeddings, exact links to the original TIFFs, perturbation metadata, and curated RefChemDB annotations.
+**JUMP-Lite** is a compact, analysis-ready subset of the [JUMP Cell Painting dataset](https://registry.opendata.aws/cellpainting-gallery/). It combines compressed five-channel microscopy images with per-site deep-learning embeddings, exact links to the original TIFFs, perturbation metadata, curated RefChemDB annotations, and publication artifacts for the four-plate Target-2 compression analysis.
 
 > **Release status:** v1.0 is deposited for publication in the Cell Painting Gallery. The public paths below will become available after gallery promotion.
 
@@ -38,6 +38,7 @@ s3://cellpainting-gallery/cpg0016-jump/source_all/
 |---|---|
 | Compressed images | `images/2026_jump_lite_v1.0/images_compressed/<codec>.zarr/` |
 | Metadata and annotations | `workspace/publication_data/2026_jump_lite/metadata/v1.0/` |
+| Target-2 masks, object features, and compact profiles | `workspace/publication_data/2026_jump_lite/target_2/v1.0/` |
 | Per-site embeddings | `workspace_dl/embeddings/<model>-<codec>/2026_jump_lite_v1.0/` |
 
 Start by downloading the small metadata bundle; AWS credentials are not required:
@@ -54,6 +55,7 @@ aws s3 cp --no-sign-request --recursive \
 - **Embeddings:** per-site long-form Parquets from DINOv2, randomly initialized DINOv2, MorphEm, OpenPhenom, and two SubCell input variants. These are site-level outputs, not aggregated well profiles.
 - **Metadata:** `jump_lite_site_index.parquet` is the primary index and links every compressed site to its five original JUMP TIFF URLs. The release also provides a channel-level image index, perturbation metadata, a plate manifest, and a machine-readable manifest.
 - **Annotations:** `jump_lite_refchem_annotations.parquet` contains the release-relevant RefChemDB/JUMP confidence matches, including targets, genes, activity fields, confidence tiers, and direction-match indicators.
+- **Target-2 artifacts:** 163,786 cell/nuclei instance-mask NPZ files (4.304 GB), 86,989 per-site object-level `cp_measure` Parquets (253.990 GB), and 66 canonical compact raw-feature Parquets (506.6 MB) from the four-plate compression subanalysis. Separate manifests record exact codec coverage, mask availability, shapes, empty files, schema and site-set digests, checksums, recorded mask scripts, and a release-time profile-producer code snapshot; partial variants are labeled rather than silently intersected.
 
 Site identifiers have the form:
 
@@ -84,6 +86,7 @@ The generation and analysis resources remain part of this repository:
 - [Image compression implementation](src/compress_tif.py) and [embedding driver](prep/aliby_featurize.py)
 - [Release metadata, validation, and CPG layout](cpg_upload/README.md)
 - [Complete dataset specification and model provenance](cpg_upload/JUMP_LITE_README.md)
+- [Target-2 masks, object-feature, and compact-profile artifact specification](cpg_upload/TARGET2_ARTIFACTS_README.md)
 - [Technical analysis pipeline](PIPELINE.md) and [paper reproduction guide](REPRODUCE.md)
 
 Run `nix develop` followed by `just --list` to inspect the available generation and reproduction recipes.

@@ -99,6 +99,15 @@ complete finalization checklist is below.
   counts and bytes and checkpoints each completed prefix.
 - `JUMP_LITE_README.md`: dataset-facing README copied to the release root by
   the metadata builder and uploaded with the release.
+- `TARGET2_ARTIFACTS_README.md`: dataset-facing README for the publication's
+  separate four-plate Target-2 artifact package.
+- `build_target2_artifacts.py`: validates and hashes the frozen Target-2 masks,
+  per-site object features, and canonical compact profiles, then writes
+  deterministic, source-stat-bound manifests and provenance without
+  regenerating any analysis output.
+- `upload_target2_artifacts_to_staging.py`: dry-run-by-default, checkpointed
+  Target-2 uploader. It withholds package metadata until data upload and exact
+  remote key/size/SHA-256 verification complete.
 
 ## 1. Reconcile site sets when inputs change
 
@@ -208,6 +217,60 @@ well-site object key shown above. It maps internal names
 The original TIFFs and source-specific `load_data_csv` files already exist in
 the six contributing JUMP source folders. They are referenced by the deposited
 indices and are not duplicated under `source_all`.
+
+### Target-2 publication artifacts
+
+Target-2 masks, per-site object features, and compact profiles are a
+publication subanalysis, not part of the frozen JUMP-Lite image/embedding
+cohort. They use a separate version root:
+
+```text
+cpg0016-jump/source_all/workspace/publication_data/2026_jump_lite/
+└── target_2/v1.0/
+    ├── README.md
+    ├── manifests/{masks.parquet,object_features.parquet,profiles.parquet,provenance.json}
+    ├── segmentation/objects/<codec>/<source>/<batch>/<plate>/<well>-<site>/
+    │   ├── cell_mask.npz
+    │   └── nuclei_mask.npz
+    ├── object_features/cp_measure/<codec>/<source>/<batch>/<plate>/
+    │   └── <well>-<site>.parquet
+    └── profiles/
+        ├── cp_measure/<codec>/profiles.parquet
+        ├── cell_count/<codec>/cell_counts.parquet
+        └── deep_learning/<model>/<codec>/profiles.parquet
+```
+
+Build and validate the local package metadata without changing source artifacts:
+
+```bash
+.venv/bin/python cpg_upload/build_target2_artifacts.py
+```
+
+The uploader performs complete manifest-bound local integrity validation in
+dry-run mode and prints sample mappings without requesting credentials:
+
+```bash
+.venv/bin/python cpg_upload/upload_target2_artifacts_to_staging.py
+```
+
+Only after reviewing the manifests, provenance, partial-codec accounting, and
+destination mappings, upload to the private staging bucket:
+
+```bash
+.venv/bin/python cpg_upload/upload_target2_artifacts_to_staging.py \
+  --apply --adopt-existing-verified
+```
+
+The checkpoint is stored under
+`/work/datasets/jump_lite/cpg_upload_state/target_2/v1.0/`. A checkpoint is
+rejected if either the destination prefix or inventory digest changes. The
+explicit `--adopt-existing-verified` extension path first re-verifies every
+previously staged mask and compact profile, requires the new object-feature
+prefix to be empty, and then checkpoints the old inventory as the leading
+segment so it is not re-uploaded. The uploader publishes `README.md` and
+`manifests/` only after all mask/profile/object-feature data pass exact remote
+key, byte-size, and stored SHA-256 verification, then verifies the complete
+version prefix again. Public promotion remains a CPG maintainer action.
 
 ## 5. Activate temporary CPG credentials
 

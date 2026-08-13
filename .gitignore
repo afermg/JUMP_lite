@@ -108,3 +108,13 @@ dataset_curration/input/refchemdb_inchikey.csv
 # Cleanup
 _archive/
 _cleanup_docs/
+
+# Versioned current-release representativeness rescore artifacts.
+!/rebuttal/
+!/rebuttal/representativeness/
+!/rebuttal/representativeness/CLUSTER_SELECTION_RELEASE_V1_ADDENDUM.md
+!/rebuttal/representativeness/rescore_cluster_representativeness_release_v1.py
+!/rebuttal/representativeness/test_cluster_representativeness_release_v1.py
+!/rebuttal/representativeness/outputs/
+!/rebuttal/representativeness/outputs/profile_cluster_representativeness_release_v1/
+!/rebuttal/representativeness/outputs/profile_cluster_representativeness_release_v1/**

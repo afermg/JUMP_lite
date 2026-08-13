@@ -1,0 +1,105 @@
+{
+  "coordinate_digest_sha256_ids_then_float32": "5249f5bf80e939c513b047592601b57f0dbd309c6583398b126eccf93657190e",
+  "counts": {
+    "clusters": 128,
+    "compounds": 115721,
+    "fit_eligible": 95426,
+    "selected": 3832
+  },
+  "environment": {
+    "matplotlib": "3.10.8",
+    "numpy": "1.26.4",
+    "polars": "1.37.1",
+    "scikit_learn": "1.8.0",
+    "umap_learn": "0.5.11"
+  },
+  "inputs": [
+    {
+      "bytes": 40554151,
+      "path": "rebuttal/representativeness/outputs/profile_space/compound_consensus_plate_robust.parquet",
+      "path_scope": "repository_root",
+      "sha256": "dc2f84178a15f2e18177d4475b094af0da8fab10b1856bd3d1e4f6521d6c9d06"
+    },
+    {
+      "bytes": 31712,
+      "path": "rebuttal/representativeness/outputs/profile_cluster_representativeness_v1/fit/primary_model.npz",
+      "path_scope": "repository_root",
+      "sha256": "3546f6abe83ef85b2aa809cdbf4209dd0b2a979b3415c3e7eb956bf4339a8a54"
+    },
+    {
+      "bytes": 1161683,
+      "path": "rebuttal/representativeness/outputs/profile_cluster_representativeness_v1/fit/cluster_assignments_unlabeled.parquet",
+      "path_scope": "repository_root",
+      "sha256": "20a1282d0e81ad6d26cd443d327ba86282cd38981b7751d871bc170bec940613"
+    },
+    {
+      "bytes": 3000851,
+      "path": "rebuttal/representativeness/outputs/profile_cluster_representativeness_v1/compound_cluster_assignments.parquet",
+      "path_scope": "repository_root",
+      "sha256": "01f1d45d9d05bd0d7498e39a48adaf0a2364fd6d205ca79dde37a7a88b984450"
+    },
+    {
+      "bytes": 29857,
+      "path": "rebuttal/representativeness/outputs/profile_cluster_representativeness_v1/cluster_selection_table.parquet",
+      "path_scope": "repository_root",
+      "sha256": "06ad9a73de1e385491563b9be7e1e78fd6a7b11ff4df302d9d289e9f3c14a938"
+    },
+    {
+      "bytes": 1786,
+      "path": "rebuttal/representativeness/outputs/profile_cluster_representativeness_v1/retrieval_metrics.csv",
+      "path_scope": "repository_root",
+      "sha256": "ae4b3945a82e60de7375ef217e66d0b68846ad0934d55c58cd46afd7c39e7949"
+    },
+    {
+      "bytes": 404,
+      "path": "rebuttal/representativeness/outputs/profile_cluster_representativeness_v1/representation_summary.json",
+      "path_scope": "repository_root",
+      "sha256": "fcacac30785d710693a2418226881e9779f06db2ea88bc69c4c20f7bc088e973"
+    },
+    {
+      "bytes": 228,
+      "path": "rebuttal/representativeness/outputs/profile_cluster_representativeness_v1/permutation_summary.json",
+      "path_scope": "repository_root",
+      "sha256": "b044f2d17ed64ac9843d62321d58026e9040e0dc268555236e3f6e963541aaaa"
+    },
+    {
+      "bytes": 4708,
+      "path": "rebuttal/representativeness/outputs/profile_cluster_representativeness_v1/fit/clustering_diagnostics.csv",
+      "path_scope": "repository_root",
+      "sha256": "9df79ab9f92e6c3c1ca0b268e6544a9d59647a5c1e7bb345f86ce0b07e628709"
+    },
+    {
+      "bytes": 33252,
+      "path": "rebuttal/representativeness/outputs/profile_space/manifests/jump_lite_compounds.parquet",
+      "path_scope": "repository_root",
+      "sha256": "a0671dcaae029a2c32ac58fdaf09178806b495d33a5ea439ff859b3c0fbe74de"
+    }
+  ],
+  "label_blind_contract": "UMAP was fit on frozen PCA32 coordinates for eligible compounds before the selected manifest was read or joined; scientific clusters were not refit.",
+  "parameters": {
+    "n_jobs": 1,
+    "seed": 2026,
+    "transform_ineligible_rows": 20295,
+    "umap_fit_rows": 95426,
+    "umap_fit_rule": "all fit_eligible compounds (n_wells >= 4)",
+    "umap_metric": "euclidean",
+    "umap_min_dist": 0.15,
+    "umap_neighbors": 30
+  },
+  "path_base_definitions": {
+    "repository_root": "repository checkout root"
+  },
+  "purpose": "visualization_only",
+  "qualifications": [
+    "UMAP is a display projection and not an inferential result.",
+    "Low seed stability (mean ARI 0.162) prohibits biological class interpretation.",
+    "Cluster occupancy is broad but selection is non-proportional."
+  ],
+  "runner": {
+    "bytes": 21819,
+    "path": "rebuttal/representativeness/plot_cluster_selection_compounds.py",
+    "path_scope": "repository_root",
+    "sha256": "cda3273e6d0936492067910586750f4da65a8c141ae92340a5fa7cf4dab70f55"
+  },
+  "version": "cluster-selection-compound-figure-v1"
+}

@@ -1,0 +1,133 @@
+{
+  "files": [
+    {
+      "bytes": 5038,
+      "path": "REPORT.md",
+      "path_scope": "output_root",
+      "sha256": "9d15b5da936bbd38130a8d85705e4b660fba231eed2c16b10e3ed739348c6ef6"
+    },
+    {
+      "bytes": 55074,
+      "path": "cluster_selection_all_clusters.png",
+      "path_scope": "output_root",
+      "sha256": "3b3b9c1132b197aec0957962965bf1f8dd53c13fcf37396afaeba1e46d086046"
+    },
+    {
+      "bytes": 38571,
+      "path": "cluster_selection_table.csv",
+      "path_scope": "output_root",
+      "sha256": "7a28ba7945dfc2cbdffefbbb651199d198517416c6fbfd53c53688627e8dcaf1"
+    },
+    {
+      "bytes": 29857,
+      "path": "cluster_selection_table.parquet",
+      "path_scope": "output_root",
+      "sha256": "06ad9a73de1e385491563b9be7e1e78fd6a7b11ff4df302d9d289e9f3c14a938"
+    },
+    {
+      "bytes": 3000851,
+      "path": "compound_cluster_assignments.parquet",
+      "path_scope": "output_root",
+      "sha256": "01f1d45d9d05bd0d7498e39a48adaf0a2364fd6d205ca79dde37a7a88b984450"
+    },
+    {
+      "bytes": 4918,
+      "path": "computation_identity.json",
+      "path_scope": "output_root",
+      "sha256": "e5e61d0fec9133918368bd0d33b2b99133239efdedab2065882d3fb22e33cfee"
+    },
+    {
+      "bytes": 26200,
+      "path": "fit_runner_snapshot_13bdd68e.py",
+      "path_scope": "output_root",
+      "sha256": "13bdd68e789194e9b1fc53858498b48920fbef65bd7f5b58512194633620e7a7"
+    },
+    {
+      "bytes": 7528,
+      "path": "matched_retrieval_sensitivity.csv",
+      "path_scope": "output_root",
+      "sha256": "1613933f792cd6ac9dd6c41dc070591330442d2f7871e09601ae1fcff9ff0b4d"
+    },
+    {
+      "bytes": 228,
+      "path": "permutation_summary.json",
+      "path_scope": "output_root",
+      "sha256": "b044f2d17ed64ac9843d62321d58026e9040e0dc268555236e3f6e963541aaaa"
+    },
+    {
+      "bytes": 6034,
+      "path": "provenance.json",
+      "path_scope": "output_root",
+      "sha256": "ad363b526e77201ef40217543064489c5391bccd9163083a2f8741bf4ca8fac0"
+    },
+    {
+      "bytes": 404,
+      "path": "representation_summary.json",
+      "path_scope": "output_root",
+      "sha256": "fcacac30785d710693a2418226881e9779f06db2ea88bc69c4c20f7bc088e973"
+    },
+    {
+      "bytes": 1786,
+      "path": "retrieval_metrics.csv",
+      "path_scope": "output_root",
+      "sha256": "ae4b3945a82e60de7375ef217e66d0b68846ad0934d55c58cd46afd7c39e7949"
+    },
+    {
+      "bytes": 4308,
+      "path": "retrieval_partition_sensitivity.csv",
+      "path_scope": "output_root",
+      "sha256": "aa7edb0578f4ef9170f00e376adccd5848d1b1af390cd26a4e113dbf1133937c"
+    },
+    {
+      "bytes": 26213,
+      "path": "score_runner_snapshot_5177ca70.py",
+      "path_scope": "output_root",
+      "sha256": "5177ca70a64ebeff353360808e467f31ba0da9b3ff518b803f23035769d98822"
+    },
+    {
+      "bytes": 298,
+      "path": "selection_conclusion.json",
+      "path_scope": "output_root",
+      "sha256": "fc4c5da2e45f1069d2322d1c58dca1a2015c4e42e27cb17e8eef297d5b9ceffc"
+    },
+    {
+      "bytes": 11203503,
+      "path": "fit/cluster_assignments_sensitivity_unlabeled.parquet",
+      "path_scope": "output_root",
+      "sha256": "c3d021bf0c3c56488f5409228383f9cb7991e14307bfc2c4d072b9a2bfc4f45a"
+    },
+    {
+      "bytes": 1161683,
+      "path": "fit/cluster_assignments_unlabeled.parquet",
+      "path_scope": "output_root",
+      "sha256": "20a1282d0e81ad6d26cd443d327ba86282cd38981b7751d871bc170bec940613"
+    },
+    {
+      "bytes": 4708,
+      "path": "fit/clustering_diagnostics.csv",
+      "path_scope": "output_root",
+      "sha256": "9df79ab9f92e6c3c1ca0b268e6544a9d59647a5c1e7bb345f86ce0b07e628709"
+    },
+    {
+      "bytes": 1657,
+      "path": "fit/computation_identity.json",
+      "path_scope": "output_root",
+      "sha256": "153ddc59e136ae6bdb78ac61e76a311d306c73b4c52e4fae9b16c7bc1019941c"
+    },
+    {
+      "bytes": 1135,
+      "path": "fit/fit_complete.json",
+      "path_scope": "output_root",
+      "sha256": "fee7d3c85d2a4da2223c2962f2c75f247315419745d631785b84ea768036f332"
+    },
+    {
+      "bytes": 31712,
+      "path": "fit/primary_model.npz",
+      "path_scope": "output_root",
+      "sha256": "3546f6abe83ef85b2aa809cdbf4209dd0b2a979b3415c3e7eb956bf4339a8a54"
+    }
+  ],
+  "path_base_definition": {
+    "output_root": "directory containing output_hashes.json"
+  }
+}

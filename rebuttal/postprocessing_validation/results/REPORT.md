@@ -64,7 +64,9 @@ Generated: 2026-08-11T18:39:18.725962+00:00
 
 This analysis isolates **post-processing configuration selection**: no held-out treatment score was used to choose a configuration. It is not a strict inductive preprocessing holdout. The archived normalized matrices were fitted before the treatment split, and all-profile feature filtering or normalization can therefore expose test-distribution information even though labels and test scores were not used for configuration selection.
 
-The split is treatment-disjoint, not target-disjoint, and the point-estimate model ordering must remain descriptive until paired perturbation/target uncertainty is reported. Validation selection uses a within-family min-max-scaled product, whereas the held-out table reports the unscaled PA mean NAP times PC mean NAP; those products are not directly comparable.
+The split is treatment-disjoint, not target-disjoint. A separate 50,000-replicate paired, stratified cluster bootstrap now quantifies conditional uncertainty over the 21,414 evaluable PA treatment clusters and 443 PC target clusters. It supports MorphEM's lead in all 12 learned-model pairwise comparisons after Holm correction across all 51 same-codec model comparisons, while the Raw middle-model ordering remains unresolved. Validation selection uses a within-family min-max-scaled product, whereas the held-out table reports the unscaled PA mean NAP times PC mean NAP; those products are not directly comparable.
+
+The bootstrap is conditional on the frozen per-unit retrieval results, target eligibility, selected recipes, and normalized profiles. PA and PC margins are resampled independently under a working product-of-margins model because the saved target summaries omit the treatment--target/query decomposition needed to propagate treatment resampling through PC retrieval. The resulting pointwise intervals and centered-bootstrap tests omit unknown PA--PC covariance and may therefore be too narrow or too wide. They do not quantify recipe-selection, split, transform-fitting, control, well/site, or annotation uncertainty; a non-supported contrast is not evidence of equivalence. Full methods, contrasts, rank bounds, diagnostics, and provenance are under `uncertainty/`.
 
 The archived PA validation scores are reusable because each treatment/group NAP was constructed from that treatment's replicates and same-plate/group negative controls; full-cohort PA significance rates were not reused. PC was recomputed because its retrieval population depends on which treatments are present.
 
@@ -78,7 +80,7 @@ CellProfiler and CellCount have Raw profiles only. CellProfiler also retains the
 
 ![Held-out fixed-recipe performance across codecs](heldout_codec_performance.png)
 
-The left panel reports the absolute unscaled PA--PC product; the right panel reports each learned model's point-estimate percentage change from its own Raw score. No uncertainty intervals are shown because the paired uncertainty analysis remains separate.
+The left panel reports the absolute unscaled PA--PC product; the right panel reports each learned model's point-estimate percentage change from its own Raw score. Whiskers are pointwise, conditional 95% percentile intervals from 50,000 paired, stratified cluster-bootstrap resamples of PA treatment IDs and PC target IDs under the working product-of-margins model. The same cluster weights are used across models/codecs within each margin.
 
 ## Output inventory
 
@@ -86,6 +88,7 @@ The left panel reports the absolute unscaled PA--PC product; the right panel rep
 - `validation_config_scores.csv`: all successful Raw validation candidates and ranks.
 - `selected_configs.csv`: pinned family configurations and runner-up margins.
 - `heldout_test_scores.csv`: primary held-out results.
-- `heldout_codec_performance.pdf` and `.png`: reproducible paper figure.
-- `per_unit/*`: held-out PA treatment and PC target tables for uncertainty analyses.
+- `heldout_codec_performance.pdf` and `.png`: reproducible paper figure with conditional intervals.
+- `per_unit/*`: held-out PA treatment and PC target tables used for uncertainty.
+- `uncertainty/*`: interval, codec contrast, pairwise model, rank-bound, diagnostic, report, and provenance outputs.
 - `provenance.json` and `selected_codec_coverage.csv`: archive/config paths, hashes, and coverage.

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+import shutil
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+
+import pandas as pd
 
 HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
@@ -19,6 +22,7 @@ from run_analysis import (  # noqa: E402
     load_checkpoint,
     make_treatment_split,
     minmax_score_candidates,
+    render_report,
     write_checkpoint,
 )
 
@@ -112,6 +116,67 @@ class AnalysisUnitTests(unittest.TestCase):
             self.assertEqual(resumed["result"]["value"], 3)
             with self.assertRaisesRegex(AnalysisError, "protocol mismatch"):
                 load_checkpoint(target, "protocol-b")
+
+    def test_report_requires_a_bound_finite_uncertainty_bundle(self) -> None:
+        source_results = HERE / "results"
+        protocol = json.loads((source_results / "protocol.json").read_text())
+        split_rows = pd.read_csv(source_results / "treatment_split.csv").to_dict("records")
+        selected_rows = pd.read_csv(source_results / "selected_configs.csv").to_dict("records")
+        final_rows = pd.read_csv(source_results / "heldout_test_scores.csv").to_dict("records")
+        coverage_rows = pd.read_csv(source_results / "selected_codec_coverage.csv").to_dict("records")
+        with tempfile.TemporaryDirectory() as tmp:
+            output_dir = Path(tmp) / "results"
+            shutil.copytree(source_results / "uncertainty", output_dir / "uncertainty")
+            for filename in (
+                "artifact_checksums.json",
+                "heldout_codec_performance.pdf",
+                "heldout_codec_performance.png",
+            ):
+                shutil.copy2(source_results / filename, output_dir / filename)
+            render_report(
+                output_dir,
+                protocol,
+                split_rows,
+                selected_rows,
+                final_rows,
+                coverage_rows,
+                [],
+            )
+            report = (output_dir / "REPORT.md").read_text()
+            self.assertIn("50,000-replicate paired", report)
+            self.assertIn("all 12 learned-model pairwise", report)
+            self.assertIn("## Figure", report)
+            self.assertIn("`uncertainty/*`", report)
+
+            summary_path = output_dir / "uncertainty/heldout_uncertainty.csv"
+            original_summary = summary_path.read_bytes()
+            summary = pd.read_csv(summary_path)
+            summary.loc[0, "product_point"] = float("nan")
+            summary.to_csv(summary_path, index=False)
+            with self.assertRaisesRegex(AnalysisError, "non-finite"):
+                render_report(
+                    output_dir, protocol, split_rows, selected_rows,
+                    final_rows, coverage_rows, [],
+                )
+
+            summary_path.write_bytes(original_summary)
+            summary = pd.read_csv(summary_path)
+            summary.loc[0, "product_point"] += 0.01
+            summary.to_csv(summary_path, index=False)
+            with self.assertRaisesRegex(AnalysisError, "stale"):
+                render_report(
+                    output_dir, protocol, split_rows, selected_rows,
+                    final_rows, coverage_rows, [],
+                )
+
+            summary_path.write_bytes(original_summary)
+            diagnostics = output_dir / "uncertainty/bootstrap_diagnostics.csv"
+            diagnostics.write_text("ready\n")
+            with self.assertRaisesRegex(AnalysisError, "missing columns"):
+                render_report(
+                    output_dir, protocol, split_rows, selected_rows,
+                    final_rows, coverage_rows, [],
+                )
 
 
 if __name__ == "__main__":

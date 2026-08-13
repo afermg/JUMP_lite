@@ -1,0 +1,23 @@
+codec,family,display_name,product_point,point_rank,bootstrap_rank_mean,bootstrap_rank_median,bootstrap_rank_ci_low,bootstrap_rank_ci_high,bootstrap_probability_best,simultaneous_rank_lower,simultaneous_rank_upper,significantly_superior_models,significantly_inferior_models,non_equivalence_warning
+Raw,cell_count,CellCount,0.0021041046617598347,6,6.0,6.0,6.0,6.0,0.0,6,6,cellprofiler|dinov2|morphem|openphenom|subcell,dinov2_random,Shared/overlapping rank bounds do not establish equivalence.
+Raw,cellprofiler,CellProfiler,0.02442081225419486,2,1.99942,2.0,2.0,2.0,0.00058,2,2,morphem,cell_count|dinov2|dinov2_random|openphenom|subcell,Shared/overlapping rank bounds do not establish equivalence.
+Raw,dinov2,DINOv2,0.01160756907512477,3,3.6748,3.0,3.0,5.0,0.0,3,5,cellprofiler|morphem,cell_count|dinov2_random,Shared/overlapping rank bounds do not establish equivalence.
+Raw,dinov2_random,ViT-rand,0.0006492692661754863,7,7.0,7.0,7.0,7.0,0.0,7,7,cell_count|cellprofiler|dinov2|morphem|openphenom|subcell,,Shared/overlapping rank bounds do not establish equivalence.
+Raw,morphem,MorphEM,0.028007789478108704,1,1.00058,1.0,1.0,1.0,0.99942,1,1,,cell_count|cellprofiler|dinov2|dinov2_random|openphenom|subcell,Shared/overlapping rank bounds do not establish equivalence.
+Raw,openphenom,OpenPhenom,0.011135469502544383,5,4.25528,4.0,3.0,5.0,0.0,3,5,cellprofiler|morphem,cell_count|dinov2_random,Shared/overlapping rank bounds do not establish equivalence.
+Raw,subcell,SubCell,0.01126463283394038,4,4.06992,4.0,3.0,5.0,0.0,3,5,cellprofiler|morphem,cell_count|dinov2_random,Shared/overlapping rank bounds do not establish equivalence.
+HQ,dinov2,DINOv2,0.010172137904024298,4,3.89828,4.0,3.0,4.0,0.0,2,4,morphem,dinov2_random,Shared/overlapping rank bounds do not establish equivalence.
+HQ,dinov2_random,ViT-rand,0.00041611205434675415,5,5.0,5.0,5.0,5.0,0.0,5,5,dinov2|morphem|openphenom|subcell,,Shared/overlapping rank bounds do not establish equivalence.
+HQ,morphem,MorphEM,0.026858449571801234,1,1.0,1.0,1.0,1.0,1.0,1,1,,dinov2|dinov2_random|openphenom|subcell,Shared/overlapping rank bounds do not establish equivalence.
+HQ,openphenom,OpenPhenom,0.012016727320386727,2,2.1017,2.0,2.0,3.0,0.0,2,4,morphem,dinov2_random,Shared/overlapping rank bounds do not establish equivalence.
+HQ,subcell,SubCell,0.011074268646202133,3,3.00002,3.0,2.0,4.0,0.0,2,4,morphem,dinov2_random,Shared/overlapping rank bounds do not establish equivalence.
+MQ,dinov2,DINOv2,0.007714668817292331,4,3.92478,4.0,3.0,4.0,0.0,3,4,morphem|subcell,dinov2_random,Shared/overlapping rank bounds do not establish equivalence.
+MQ,dinov2_random,ViT-rand,0.000494437582793559,5,5.0,5.0,5.0,5.0,0.0,5,5,dinov2|morphem|openphenom|subcell,,Shared/overlapping rank bounds do not establish equivalence.
+MQ,morphem,MorphEM,0.02299581497624803,1,1.0,1.0,1.0,1.0,1.0,1,1,,dinov2|dinov2_random|openphenom|subcell,Shared/overlapping rank bounds do not establish equivalence.
+MQ,openphenom,OpenPhenom,0.008445785022347892,3,3.07522,3.0,3.0,4.0,0.0,3,4,morphem|subcell,dinov2_random,Shared/overlapping rank bounds do not establish equivalence.
+MQ,subcell,SubCell,0.010864964085695712,2,2.0,2.0,2.0,2.0,0.0,2,2,morphem,dinov2|dinov2_random|openphenom,Shared/overlapping rank bounds do not establish equivalence.
+D20,dinov2,DINOv2,0.005521787677733837,4,3.98984,4.0,4.0,4.0,0.0,3,4,morphem|subcell,dinov2_random,Shared/overlapping rank bounds do not establish equivalence.
+D20,dinov2_random,ViT-rand,0.00012829232107219014,5,5.0,5.0,5.0,5.0,0.0,5,5,dinov2|morphem|openphenom|subcell,,Shared/overlapping rank bounds do not establish equivalence.
+D20,morphem,MorphEM,0.01392082247318115,1,1.0,1.0,1.0,1.0,1.0,1,1,,dinov2|dinov2_random|openphenom|subcell,Shared/overlapping rank bounds do not establish equivalence.
+D20,openphenom,OpenPhenom,0.007446336012012314,3,2.97162,3.0,2.0,3.0,0.0,2,4,morphem,dinov2_random,Shared/overlapping rank bounds do not establish equivalence.
+D20,subcell,SubCell,0.009335478317652218,2,2.03854,2.0,2.0,3.0,0.0,2,3,morphem,dinov2|dinov2_random,Shared/overlapping rank bounds do not establish equivalence.

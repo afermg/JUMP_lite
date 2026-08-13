@@ -1,0 +1,7 @@
+{
+  "interpretation": "finite-cohort design-null; not population inference",
+  "observed_statistic": 3085.775038620623,
+  "one_sided_p": 0.0004997501249375312,
+  "permutations": 2000,
+  "shuffle": "within structural_stratum"
+}

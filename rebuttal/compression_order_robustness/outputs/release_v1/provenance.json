@@ -1,0 +1,676 @@
+{
+  "completed_at": "2026-08-13T11:55:51.957287+00:00",
+  "full_variants": [
+    {
+      "codec": "Raw",
+      "config": "std_ctrl__tvn_efaar_e0.1_c304",
+      "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/dinov2_jump_lite_updated_jpegxl_lossy_raw_raw_features/std_ctrl__tvn_efaar_e0.1_c304/pipeline_config.yaml",
+      "family": "dinov2",
+      "output": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/dinov2_jump_lite_updated_jpegxl_lossy_raw_raw_features/std_ctrl__tvn_efaar_e0.1_c304/output.parquet",
+      "sha256": "5c88cfd8f1ba3027c3840c1142d2ee4d94013cb1747c1f798515c0d99662c2a5",
+      "size": 187801422
+    },
+    {
+      "codec": "HQ",
+      "config": "std_ctrl__tvn_efaar_e0.1_c304",
+      "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/dinov2_jump_lite_updated_jpegxl_lossy_hq_raw_features/std_ctrl__tvn_efaar_e0.1_c304/pipeline_config.yaml",
+      "family": "dinov2",
+      "output": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/dinov2_jump_lite_updated_jpegxl_lossy_hq_raw_features/std_ctrl__tvn_efaar_e0.1_c304/output.parquet",
+      "sha256": "bb5ea27e2fb3d770b34f5de49ffe1a9cdfcff297219a62e000d928d1896c989a",
+      "size": 187802171
+    },
+    {
+      "codec": "MQ",
+      "config": "std_ctrl__tvn_efaar_e0.1_c304",
+      "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/dinov2_jump_lite_updated_jpegxl_lossy_mq_raw_features/std_ctrl__tvn_efaar_e0.1_c304/pipeline_config.yaml",
+      "family": "dinov2",
+      "output": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/dinov2_jump_lite_updated_jpegxl_lossy_mq_raw_features/std_ctrl__tvn_efaar_e0.1_c304/output.parquet",
+      "sha256": "0ef2a0d0da7aa297db336794715baa645ccb3b0c09661f22546fb5e94c18229a",
+      "size": 187753735
+    },
+    {
+      "codec": "D20",
+      "config": "std_ctrl__tvn_efaar_e0.1_c304",
+      "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/dinov2_jump_lite_updated_jpegxl_lossy_d20_raw_features/std_ctrl__tvn_efaar_e0.1_c304/pipeline_config.yaml",
+      "family": "dinov2",
+      "output": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/dinov2_jump_lite_updated_jpegxl_lossy_d20_raw_features/std_ctrl__tvn_efaar_e0.1_c304/output.parquet",
+      "sha256": "3cb2cadae578930f3981263af800edbd3378968e73ccb73bd146548fd40f137f",
+      "size": 187707667
+    },
+    {
+      "codec": "Raw",
+      "config": "std_ctrl__tvn_efaar_e1.0_c304",
+      "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/morphem_jump_lite_updated_jpegxl_lossy_raw_raw_features/std_ctrl__tvn_efaar_e1.0_c304/pipeline_config.yaml",
+      "family": "morphem",
+      "output": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/morphem_jump_lite_updated_jpegxl_lossy_raw_raw_features/std_ctrl__tvn_efaar_e1.0_c304/output.parquet",
+      "sha256": "af6bc214cccf7c8099cb22900ba5e777fa56c5b70b6489838b38000877a7da9f",
+      "size": 187545949
+    },
+    {
+      "codec": "HQ",
+      "config": "std_ctrl__tvn_efaar_e1.0_c304",
+      "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/morphem_jump_lite_updated_jpegxl_lossy_hq_raw_features/std_ctrl__tvn_efaar_e1.0_c304/pipeline_config.yaml",
+      "family": "morphem",
+      "output": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/morphem_jump_lite_updated_jpegxl_lossy_hq_raw_features/std_ctrl__tvn_efaar_e1.0_c304/output.parquet",
+      "sha256": "8a6eaa5fb44e7a039555ed543221391c6b8919136242ff47b786815bc239ea0e",
+      "size": 187574336
+    },
+    {
+      "codec": "MQ",
+      "config": "std_ctrl__tvn_efaar_e1.0_c304",
+      "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/morphem_jump_lite_updated_jpegxl_lossy_mq_raw_features/std_ctrl__tvn_efaar_e1.0_c304/pipeline_config.yaml",
+      "family": "morphem",
+      "output": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/morphem_jump_lite_updated_jpegxl_lossy_mq_raw_features/std_ctrl__tvn_efaar_e1.0_c304/output.parquet",
+      "sha256": "f906c5142b955e18bbf47593f38ac3b35e53175bdbd8fcd635642cf689c32482",
+      "size": 187551117
+    },
+    {
+      "codec": "D20",
+      "config": "std_ctrl__tvn_efaar_e1.0_c304",
+      "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/morphem_jump_lite_updated_jpegxl_lossy_d20_raw_features/std_ctrl__tvn_efaar_e1.0_c304/pipeline_config.yaml",
+      "family": "morphem",
+      "output": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/morphem_jump_lite_updated_jpegxl_lossy_d20_raw_features/std_ctrl__tvn_efaar_e1.0_c304/output.parquet",
+      "sha256": "aa956b1c3e86b6a1e6229d9faa792538458ec7cbdca25801f676850976dc18b8",
+      "size": 187540555
+    },
+    {
+      "codec": "Raw",
+      "config": "std_all__tvn_efaar_e0.2_c150",
+      "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/openphenom_jump_lite_updated_jpegxl_lossy_raw_raw_features/std_all__tvn_efaar_e0.2_c150/pipeline_config.yaml",
+      "family": "openphenom",
+      "output": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/openphenom_jump_lite_updated_jpegxl_lossy_raw_raw_features/std_all__tvn_efaar_e0.2_c150/output.parquet",
+      "sha256": "498fc8f8f605597538db22a92e35f08e04703b53b78a1e62a7afd6c6d66e2998",
+      "size": 93866675
+    },
+    {
+      "codec": "HQ",
+      "config": "std_all__tvn_efaar_e0.2_c150",
+      "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/openphenom_jump_lite_updated_jpegxl_lossy_hq_raw_features/std_all__tvn_efaar_e0.2_c150/pipeline_config.yaml",
+      "family": "openphenom",
+      "output": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/openphenom_jump_lite_updated_jpegxl_lossy_hq_raw_features/std_all__tvn_efaar_e0.2_c150/output.parquet",
+      "sha256": "97debf73dd3b9e1e14944c9b71b288a9117be03f1136151e9a5022a1eaca3d32",
+      "size": 95630646
+    },
+    {
+      "codec": "MQ",
+      "config": "std_all__tvn_efaar_e0.2_c150",
+      "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/openphenom_jump_lite_updated_jpegxl_lossy_mq_raw_features/std_all__tvn_efaar_e0.2_c150/pipeline_config.yaml",
+      "family": "openphenom",
+      "output": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/openphenom_jump_lite_updated_jpegxl_lossy_mq_raw_features/std_all__tvn_efaar_e0.2_c150/output.parquet",
+      "sha256": "f605e56aa414cbc86be51411694d1330ddf2a53b4be350c127b28353897a2c1d",
+      "size": 95660458
+    },
+    {
+      "codec": "D20",
+      "config": "std_all__tvn_efaar_e0.2_c150",
+      "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/openphenom_jump_lite_updated_jpegxl_lossy_d20_raw_features/std_all__tvn_efaar_e0.2_c150/pipeline_config.yaml",
+      "family": "openphenom",
+      "output": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/openphenom_jump_lite_updated_jpegxl_lossy_d20_raw_features/std_all__tvn_efaar_e0.2_c150/output.parquet",
+      "sha256": "229b16d7868362b2874f4ed928843620bf4a3a13043889c3b31795e27e680a4d",
+      "size": 95670929
+    },
+    {
+      "codec": "Raw",
+      "config": "std_ctrl__tvn_efaar_e0.2_c96",
+      "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/subcell__clip01_jump_lite_updated_jpegxl_lossy_raw_raw_features/std_ctrl__tvn_efaar_e0.2_c96/pipeline_config.yaml",
+      "family": "subcell",
+      "output": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/subcell__clip01_jump_lite_updated_jpegxl_lossy_raw_raw_features/std_ctrl__tvn_efaar_e0.2_c96/output.parquet",
+      "sha256": "2c87a61573aa4939cb965f19e49495d627ac5710c6b712e0274662b222c1719c",
+      "size": 61039932
+    },
+    {
+      "codec": "HQ",
+      "config": "std_ctrl__tvn_efaar_e0.2_c96",
+      "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/subcell__clip01_jump_lite_updated_jpegxl_lossy_hq_raw_features/std_ctrl__tvn_efaar_e0.2_c96/pipeline_config.yaml",
+      "family": "subcell",
+      "output": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/subcell__clip01_jump_lite_updated_jpegxl_lossy_hq_raw_features/std_ctrl__tvn_efaar_e0.2_c96/output.parquet",
+      "sha256": "5b631028c42bded099a01c55a8fbc4e30f71ac9c94e92b1a93a0632311484f0e",
+      "size": 61052035
+    },
+    {
+      "codec": "MQ",
+      "config": "std_ctrl__tvn_efaar_e0.2_c96",
+      "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/subcell__clip01_jump_lite_updated_jpegxl_lossy_mq_raw_features/std_ctrl__tvn_efaar_e0.2_c96/pipeline_config.yaml",
+      "family": "subcell",
+      "output": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/subcell__clip01_jump_lite_updated_jpegxl_lossy_mq_raw_features/std_ctrl__tvn_efaar_e0.2_c96/output.parquet",
+      "sha256": "33943c7d7a1416366a8901f1edad4eeb880fb2784498d40c3b93b2bd12688c04",
+      "size": 61040841
+    },
+    {
+      "codec": "D20",
+      "config": "std_ctrl__tvn_efaar_e0.2_c96",
+      "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/subcell__clip01_jump_lite_updated_jpegxl_lossy_d20_raw_features/std_ctrl__tvn_efaar_e0.2_c96/pipeline_config.yaml",
+      "family": "subcell",
+      "output": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/subcell__clip01_jump_lite_updated_jpegxl_lossy_d20_raw_features/std_ctrl__tvn_efaar_e0.2_c96/output.parquet",
+      "sha256": "79229282b443cd38d4e6f7ee4127245d273d8a43baa236a206fe1181bbb1c877",
+      "size": 61021349
+    }
+  ],
+  "manifest": {
+    "annotation_digest": "08d50980a167a15cb5d226e507f5855c8105c708f82922c0e535327c871a5497",
+    "eligible_stratum_counts": {
+      "group_high": 290,
+      "group_high|group_low": 496,
+      "group_low": 1567
+    },
+    "n_common_pc_population": 24135,
+    "n_manifest_plate_group_rows": 340296,
+    "n_manifest_treatment_rows": 612000,
+    "n_manifest_well_rows": 2960000,
+    "pc_consensus_query_count": 181484,
+    "pc_modified_sample_count": 3,
+    "pc_modified_sample_fraction": 0.0015,
+    "pc_no_negative_query_count": 2,
+    "pc_no_positive_query_count": 9043,
+    "pc_record_only_query_count": 9032,
+    "pc_recorded_sample_count": 1968,
+    "pc_recorded_sample_fraction": 0.984,
+    "pc_removed_consensus_row_count": 13,
+    "pc_removed_profile_row_count": 52,
+    "pc_undefined_query_count": 9045,
+    "pc_undefined_query_fraction": 0.049839104273654976,
+    "quotas": {
+      "group_high": 38,
+      "group_high|group_low": 64,
+      "group_low": 204
+    }
+  },
+  "matched_full_inputs": [
+    {
+      "codec": "D20",
+      "family": "dinov2",
+      "pa_path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/dinov2__D20__pa_treatments.csv",
+      "pa_sha256": "b998b64f7f5fa151b32d17af2c5582c3255d0502ae130197d0e858554f1b262c",
+      "pc_path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/dinov2__D20__pc_targets.csv",
+      "pc_sha256": "91800ae656addc3b431bb51f42be3f1365930cfa9fa8995ec30e84644ef37052"
+    },
+    {
+      "codec": "HQ",
+      "family": "dinov2",
+      "pa_path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/dinov2__HQ__pa_treatments.csv",
+      "pa_sha256": "e565a4b93356c8bb20119f9d34f61d897d8e2402e9509e77b04f30cecf5dd673",
+      "pc_path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/dinov2__HQ__pc_targets.csv",
+      "pc_sha256": "7b0540a53a0c6c65bfd283aa5b1aeaa5b1a52d79a9b718cf1c020753a6ab0cbb"
+    },
+    {
+      "codec": "MQ",
+      "family": "dinov2",
+      "pa_path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/dinov2__MQ__pa_treatments.csv",
+      "pa_sha256": "56d44bef0c04524c7faff6c432620f5ea56c820041d6c66a5dcac1047bc8c9b1",
+      "pc_path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/dinov2__MQ__pc_targets.csv",
+      "pc_sha256": "4bb32eb96257d8b0189c0d325fc5194384f9192499b23203c328d4e8b6d880ac"
+    },
+    {
+      "codec": "Raw",
+      "family": "dinov2",
+      "pa_path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/dinov2__Raw__pa_treatments.csv",
+      "pa_sha256": "c5035dfbc20bc5787071f7ab263fd90aff4faf13ea04e0e93197e9b4484ec0b4",
+      "pc_path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/dinov2__Raw__pc_targets.csv",
+      "pc_sha256": "bae20ecb636987d33379d40bb961968da1aebfb7d9c4fb1caeb8b32f2b07797a"
+    },
+    {
+      "codec": "D20",
+      "family": "morphem",
+      "pa_path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/morphem__D20__pa_treatments.csv",
+      "pa_sha256": "8d78cce0edf7a16eee2b3bc6b471b04d064eaecae52bd5450b030546b5c21eaa",
+      "pc_path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/morphem__D20__pc_targets.csv",
+      "pc_sha256": "9e1ec47c36db1f3057018184630982aec48d8371439eb0af55b40fedea040d01"
+    },
+    {
+      "codec": "HQ",
+      "family": "morphem",
+      "pa_path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/morphem__HQ__pa_treatments.csv",
+      "pa_sha256": "17361a18b6ad8efb10bb5824556e8a8e14bb0197daac7c22c05c9b9552d54ccc",
+      "pc_path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/morphem__HQ__pc_targets.csv",
+      "pc_sha256": "6f96d16e26b9ef06137aee2a85acf8a20ce387f49dc692cb48f2022865a04473"
+    },
+    {
+      "codec": "MQ",
+      "family": "morphem",
+      "pa_path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/morphem__MQ__pa_treatments.csv",
+      "pa_sha256": "08dae5c979b85b946bda44d1de97e818efc98350df713b245f1e228f52cc9320",
+      "pc_path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/morphem__MQ__pc_targets.csv",
+      "pc_sha256": "f51c5a5906714da583627d3471297d140ecfd2c46ebb77a64e6cfab9a124df99"
+    },
+    {
+      "codec": "Raw",
+      "family": "morphem",
+      "pa_path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/morphem__Raw__pa_treatments.csv",
+      "pa_sha256": "cafe6328cfed6e676d02a99ba309395ff6d3437afd42cfc68084977405df88fb",
+      "pc_path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/morphem__Raw__pc_targets.csv",
+      "pc_sha256": "9375b5da33f3d066268506a3070a7c296469a10cdd50bc4d466d61ed80c47d5b"
+    },
+    {
+      "codec": "D20",
+      "family": "openphenom",
+      "pa_path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/openphenom__D20__pa_treatments.csv",
+      "pa_sha256": "0d75a0c627460c5ffe57e9de7af4908077a4251d9edaadfb38702d1454b83206",
+      "pc_path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/openphenom__D20__pc_targets.csv",
+      "pc_sha256": "a525d85c24cedcfc246ac7085820a12b219aeb0d64fae1fc1ca5e4357de5f9b1"
+    },
+    {
+      "codec": "HQ",
+      "family": "openphenom",
+      "pa_path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/openphenom__HQ__pa_treatments.csv",
+      "pa_sha256": "4b67e37519d3acb2390e8d44af9b81aeefd8c43d9843046f8f3eb3589310f2cf",
+      "pc_path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/openphenom__HQ__pc_targets.csv",
+      "pc_sha256": "c00603aeeb8b21b4799c116aba7b9e1f5c1ce8fb4f60cfd8c1a011e116e7a325"
+    },
+    {
+      "codec": "MQ",
+      "family": "openphenom",
+      "pa_path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/openphenom__MQ__pa_treatments.csv",
+      "pa_sha256": "c24828ea7c94e581dbabc86768942123e7c8ac3bb727c5847e7babcdfb250b99",
+      "pc_path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/openphenom__MQ__pc_targets.csv",
+      "pc_sha256": "aee01f5e9addd7d5e1dd91d76b3ef3e6be70ec0fced3ee41c7be05670ee25bab"
+    },
+    {
+      "codec": "Raw",
+      "family": "openphenom",
+      "pa_path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/openphenom__Raw__pa_treatments.csv",
+      "pa_sha256": "eeb14c88f9f23882293ef2cdb80e5c48ef1b23460289a8b9e8b27d81e927004b",
+      "pc_path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/openphenom__Raw__pc_targets.csv",
+      "pc_sha256": "78ce997b8944a3742c0fc367472e8d9084d40ce740b0710b3fc6f41e109a3655"
+    },
+    {
+      "codec": "D20",
+      "family": "subcell",
+      "pa_path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/subcell__D20__pa_treatments.csv",
+      "pa_sha256": "96a51dd8b27d2c26851b4b63e487efcdd3770f40ceea963e5260ae62bfbcab4c",
+      "pc_path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/subcell__D20__pc_targets.csv",
+      "pc_sha256": "0faf9159edee3ca98c61f52da54d35455c63ae7857408bd0256b8933b5f0a63e"
+    },
+    {
+      "codec": "HQ",
+      "family": "subcell",
+      "pa_path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/subcell__HQ__pa_treatments.csv",
+      "pa_sha256": "d2b2a4a8f06c70956c2cd0536c540f9d5542a43538f65b46040d723301f0fb68",
+      "pc_path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/subcell__HQ__pc_targets.csv",
+      "pc_sha256": "913ec2b6fb2e3b5bcfcdb3d72e07756f15031bc2440ea8ce7a864e8ce702d0f1"
+    },
+    {
+      "codec": "MQ",
+      "family": "subcell",
+      "pa_path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/subcell__MQ__pa_treatments.csv",
+      "pa_sha256": "e1279eac8f868f7011d973a1a7094156f8f6ebdda67e0f45d5cdb5505a474905",
+      "pc_path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/subcell__MQ__pc_targets.csv",
+      "pc_sha256": "39c29dd91e137aab207b712fc6309a76d914360d97e24490396182b6bb0c6365"
+    },
+    {
+      "codec": "Raw",
+      "family": "subcell",
+      "pa_path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/subcell__Raw__pa_treatments.csv",
+      "pa_sha256": "68090913fd2e482439cf2b8f684631f486c4ce84ca7aa53cc068afb8ee43ae79",
+      "pc_path": "/work/users/amunoz/projects/JUMP_lite/rebuttal/postprocessing_validation/results/per_unit/subcell__Raw__pc_targets.csv",
+      "pc_sha256": "c4d432ad7a85d700a84d3c24f3bcfbdc07ffa9314d29b5ae93f2c5b25efb0de6"
+    }
+  ],
+  "n_samples": 2000,
+  "n_treatments": 306,
+  "production_protocol": true,
+  "protocol_id": "d8fa73b744148b6c616f6dac56002ad298907d09b5f7e7d725e11fa54973d2b1",
+  "protocol_version": 2,
+  "qualification": "Conditional archived-profile sensitivity; full samples are not literal four-plate replicas; affected subsample PCs are modified restricted estimands; PA and PC Target-2 bootstrap margins use a working independence approximation.",
+  "repo_head": "d8d81b213b1219bd5fa7fb6aa501716cff5f1c16",
+  "runner_sha256": "5351f5de8e96a51f87679255178ca3f0d1c549bcccb4584b352bfa1d88d99f26",
+  "runtimes": {
+    "completed_at": "2026-08-13T11:55:51.957287+00:00",
+    "full_seconds": 6313.912578885909,
+    "target_seconds": 1.3069921738933772,
+    "total_seconds": 6411.583535844926,
+    "workers": [
+      {
+        "checkpoint": "/work/users/amunoz/projects/JUMP_lite/rebuttal/compression_order_robustness/outputs/release_v1/checkpoints/dinov2__Raw.csv",
+        "codec": "Raw",
+        "family": "dinov2",
+        "rows": 2000,
+        "runtime_seconds": 4601.855966611998
+      },
+      {
+        "checkpoint": "/work/users/amunoz/projects/JUMP_lite/rebuttal/compression_order_robustness/outputs/release_v1/checkpoints/dinov2__HQ.csv",
+        "codec": "HQ",
+        "family": "dinov2",
+        "rows": 2000,
+        "runtime_seconds": 6010.66443291516
+      },
+      {
+        "checkpoint": "/work/users/amunoz/projects/JUMP_lite/rebuttal/compression_order_robustness/outputs/release_v1/checkpoints/dinov2__MQ.csv",
+        "codec": "MQ",
+        "family": "dinov2",
+        "rows": 2000,
+        "runtime_seconds": 4706.11270506517
+      },
+      {
+        "checkpoint": "/work/users/amunoz/projects/JUMP_lite/rebuttal/compression_order_robustness/outputs/release_v1/checkpoints/dinov2__D20.csv",
+        "codec": "D20",
+        "family": "dinov2",
+        "rows": 2000,
+        "runtime_seconds": 5126.83881642879
+      },
+      {
+        "checkpoint": "/work/users/amunoz/projects/JUMP_lite/rebuttal/compression_order_robustness/outputs/release_v1/checkpoints/morphem__Raw.csv",
+        "codec": "Raw",
+        "family": "morphem",
+        "rows": 2000,
+        "runtime_seconds": 4572.768263418926
+      },
+      {
+        "checkpoint": "/work/users/amunoz/projects/JUMP_lite/rebuttal/compression_order_robustness/outputs/release_v1/checkpoints/morphem__HQ.csv",
+        "codec": "HQ",
+        "family": "morphem",
+        "rows": 2000,
+        "runtime_seconds": 5229.931486388901
+      },
+      {
+        "checkpoint": "/work/users/amunoz/projects/JUMP_lite/rebuttal/compression_order_robustness/outputs/release_v1/checkpoints/morphem__MQ.csv",
+        "codec": "MQ",
+        "family": "morphem",
+        "rows": 2000,
+        "runtime_seconds": 4563.60135008581
+      },
+      {
+        "checkpoint": "/work/users/amunoz/projects/JUMP_lite/rebuttal/compression_order_robustness/outputs/release_v1/checkpoints/morphem__D20.csv",
+        "codec": "D20",
+        "family": "morphem",
+        "rows": 2000,
+        "runtime_seconds": 6300.215714531951
+      },
+      {
+        "checkpoint": "/work/users/amunoz/projects/JUMP_lite/rebuttal/compression_order_robustness/outputs/release_v1/checkpoints/openphenom__Raw.csv",
+        "codec": "Raw",
+        "family": "openphenom",
+        "rows": 2000,
+        "runtime_seconds": 4990.556829089066
+      },
+      {
+        "checkpoint": "/work/users/amunoz/projects/JUMP_lite/rebuttal/compression_order_robustness/outputs/release_v1/checkpoints/openphenom__HQ.csv",
+        "codec": "HQ",
+        "family": "openphenom",
+        "rows": 2000,
+        "runtime_seconds": 4994.133189467946
+      },
+      {
+        "checkpoint": "/work/users/amunoz/projects/JUMP_lite/rebuttal/compression_order_robustness/outputs/release_v1/checkpoints/openphenom__MQ.csv",
+        "codec": "MQ",
+        "family": "openphenom",
+        "rows": 2000,
+        "runtime_seconds": 4242.810123841045
+      },
+      {
+        "checkpoint": "/work/users/amunoz/projects/JUMP_lite/rebuttal/compression_order_robustness/outputs/release_v1/checkpoints/openphenom__D20.csv",
+        "codec": "D20",
+        "family": "openphenom",
+        "rows": 2000,
+        "runtime_seconds": 4275.1941815030295
+      },
+      {
+        "checkpoint": "/work/users/amunoz/projects/JUMP_lite/rebuttal/compression_order_robustness/outputs/release_v1/checkpoints/subcell__Raw.csv",
+        "codec": "Raw",
+        "family": "subcell",
+        "rows": 2000,
+        "runtime_seconds": 3984.4138927080203
+      },
+      {
+        "checkpoint": "/work/users/amunoz/projects/JUMP_lite/rebuttal/compression_order_robustness/outputs/release_v1/checkpoints/subcell__HQ.csv",
+        "codec": "HQ",
+        "family": "subcell",
+        "rows": 2000,
+        "runtime_seconds": 3972.3372175539844
+      },
+      {
+        "checkpoint": "/work/users/amunoz/projects/JUMP_lite/rebuttal/compression_order_robustness/outputs/release_v1/checkpoints/subcell__MQ.csv",
+        "codec": "MQ",
+        "family": "subcell",
+        "rows": 2000,
+        "runtime_seconds": 4008.462678655982
+      },
+      {
+        "checkpoint": "/work/users/amunoz/projects/JUMP_lite/rebuttal/compression_order_robustness/outputs/release_v1/checkpoints/subcell__D20.csv",
+        "codec": "D20",
+        "family": "subcell",
+        "rows": 2000,
+        "runtime_seconds": 4388.738592743175
+      }
+    ]
+  },
+  "seed": 20260814,
+  "software": {
+    "numpy": "1.26.4",
+    "pandas": "3.0.0",
+    "platform": "Linux-6.12.80-x86_64-with-glibc2.40",
+    "polars": "1.37.1",
+    "python": "3.12.11 (main, Sep 18 2025, 19:47:19) [Clang 20.1.4 ]"
+  },
+  "target2_inputs": [
+    {
+      "codec": "Zstd",
+      "config": "robustmad_ctrl__prune0.9__tvn_efaar_e0.05",
+      "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/dinov2_jump_target2_4plate_zstd_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/pipeline_config.yaml",
+      "config_sha256": "6bd84faa38181e434dd2ca956fa2fc6ae1f0cb87fb86142ca2b5966b8cfc8d6f",
+      "family": "dinov2",
+      "metrics_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/dinov2_jump_target2_4plate_zstd_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/results/metrics.json",
+      "metrics_sha256": "35a8340e8ddbd75ccfe8420e27125ac9eb3e149b1da59098792f50fb5543de77",
+      "output_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/dinov2_jump_target2_4plate_zstd_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/output.parquet",
+      "output_sha256": "793dd9d7a6b299a9381bbd49fa6466668f7ed2c69ed125641ff15e0573f60c15",
+      "pa_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/dinov2_jump_target2_4plate_zstd_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/results/phenotypic_activity_map.csv",
+      "pa_point": 0.4911714260561172,
+      "pa_sha256": "2b0dc9199bf19c8a449bbfde7ef4c9474334c054274032f12d66f2ae7fd23ef8",
+      "pc_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/dinov2_jump_target2_4plate_zstd_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/results/phenotypic_consistency_per_target.csv",
+      "pc_point": 0.059687685511970553,
+      "pc_sha256": "fbd472a2770b7c800f34fc1251e924f687ff556ab50307cff59781ae301552d2",
+      "product_point": 0.02931688561090362,
+      "selection_metric": "PA*PC/100 on Zstd only"
+    },
+    {
+      "codec": "D10",
+      "config": "robustmad_ctrl__prune0.9__tvn_efaar_e0.05",
+      "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/dinov2_jump_target2_4plate_jpegxl_lossy_d10_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/pipeline_config.yaml",
+      "config_sha256": "8aee17f0b38d5f44c43913359c8ced4bb074eb0ad6c5c0aec95df40219e2270a",
+      "family": "dinov2",
+      "metrics_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/dinov2_jump_target2_4plate_jpegxl_lossy_d10_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/results/metrics.json",
+      "metrics_sha256": "605368a1ff48ca97c88b598a3d189f652ae1388938bed652f6d4fa078de9155b",
+      "output_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/dinov2_jump_target2_4plate_jpegxl_lossy_d10_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/output.parquet",
+      "output_sha256": "7faca055a0384792f20a495a36bbae98f4eaa2863790a8483b2f4146203e22bd",
+      "pa_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/dinov2_jump_target2_4plate_jpegxl_lossy_d10_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/results/phenotypic_activity_map.csv",
+      "pa_point": 0.43450759247260323,
+      "pa_sha256": "24c9b8f72a3eb4d8cc513ed4aa0ec147021a73d9af22b5e8c2ac9cd2173f06ec",
+      "pc_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/dinov2_jump_target2_4plate_jpegxl_lossy_d10_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/results/phenotypic_consistency_per_target.csv",
+      "pc_point": 0.04854195624673414,
+      "pc_sha256": "48775d75b5c691a8d761bbbc72e376d55b27af3d9c336cdd14f58745f04e0429",
+      "product_point": 0.021091848542678895,
+      "selection_metric": "PA*PC/100 on Zstd only"
+    },
+    {
+      "codec": "D15",
+      "config": "robustmad_ctrl__prune0.9__tvn_efaar_e0.05",
+      "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/dinov2_jump_target2_4plate_jpegxl_lossy_d15_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/pipeline_config.yaml",
+      "config_sha256": "8ca00ab74c6349b0bfd0b651259f078c9447542b1fd86d045fb3083e5137a50e",
+      "family": "dinov2",
+      "metrics_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/dinov2_jump_target2_4plate_jpegxl_lossy_d15_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/results/metrics.json",
+      "metrics_sha256": "879c985797ee6ee34ca156315d889aa6da78d6b8e8988b1a11f712864a6dfd26",
+      "output_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/dinov2_jump_target2_4plate_jpegxl_lossy_d15_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/output.parquet",
+      "output_sha256": "5c8737ae62a63ba3cca55f33abce181d0d17c5c9706d8017c979cfdd3390fbe1",
+      "pa_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/dinov2_jump_target2_4plate_jpegxl_lossy_d15_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/results/phenotypic_activity_map.csv",
+      "pa_point": 0.4236584617985665,
+      "pa_sha256": "bc7b9a6e7a6186d252f6ddf47dee9afe63ec86f11f302dbc76a20388898315d6",
+      "pc_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/dinov2_jump_target2_4plate_jpegxl_lossy_d15_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/results/phenotypic_consistency_per_target.csv",
+      "pc_point": 0.044323769606159524,
+      "pc_sha256": "12fd88c499283fa83f15242554976e32fa8df19fc68f909c1690553a15e76331",
+      "product_point": 0.018778140052459598,
+      "selection_metric": "PA*PC/100 on Zstd only"
+    },
+    {
+      "codec": "Zstd",
+      "config": "robustmad_all__prune0.9__tvn_efaar_e0.05",
+      "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/morphem_jump_target2_4plate_zstd_raw_features/robustmad_all__prune0.9__tvn_efaar_e0.05/pipeline_config.yaml",
+      "config_sha256": "61973bc8a77fb606240fe6f5c1c955f344be21f7c9b32f071660e2850bed2946",
+      "family": "morphem",
+      "metrics_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/morphem_jump_target2_4plate_zstd_raw_features/robustmad_all__prune0.9__tvn_efaar_e0.05/results/metrics.json",
+      "metrics_sha256": "40c4ca943bc3c88f11ab35a6467fe3bdce0024b319173ae95effba0b394ef75a",
+      "output_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/morphem_jump_target2_4plate_zstd_raw_features/robustmad_all__prune0.9__tvn_efaar_e0.05/output.parquet",
+      "output_sha256": "a8c2e7676dbad374d3dc517ff1e995dab42e710e95b1d104dc3ce83780936663",
+      "pa_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/morphem_jump_target2_4plate_zstd_raw_features/robustmad_all__prune0.9__tvn_efaar_e0.05/results/phenotypic_activity_map.csv",
+      "pa_point": 0.4810254806956372,
+      "pa_sha256": "41cde0c5ee58926073b2aa93a2e31360142d6cdaa0fafa0b7069da1ed2881e89",
+      "pc_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/morphem_jump_target2_4plate_zstd_raw_features/robustmad_all__prune0.9__tvn_efaar_e0.05/results/phenotypic_consistency_per_target.csv",
+      "pc_point": 0.08996936857790164,
+      "pc_sha256": "da21c1a85207f840a0794b0ec2d979751b98254915bfcb58f46d337425871217",
+      "product_point": 0.043277558768068096,
+      "selection_metric": "PA*PC/100 on Zstd only"
+    },
+    {
+      "codec": "D10",
+      "config": "robustmad_all__prune0.9__tvn_efaar_e0.05",
+      "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/morphem_jump_target2_4plate_jpegxl_lossy_d10_raw_features/robustmad_all__prune0.9__tvn_efaar_e0.05/pipeline_config.yaml",
+      "config_sha256": "0ef75260ca6aa831eac2d2df9f9bb353df22f13ba9940bac2201abc0c8064518",
+      "family": "morphem",
+      "metrics_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/morphem_jump_target2_4plate_jpegxl_lossy_d10_raw_features/robustmad_all__prune0.9__tvn_efaar_e0.05/results/metrics.json",
+      "metrics_sha256": "f71b4082cba4544713be8857493fc901382cdc92f101a6bdf01da2a37165e9aa",
+      "output_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/morphem_jump_target2_4plate_jpegxl_lossy_d10_raw_features/robustmad_all__prune0.9__tvn_efaar_e0.05/output.parquet",
+      "output_sha256": "a91c680f85a8555878483d24b0cefef33f04c71c0573b08621e74bcbd491896e",
+      "pa_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/morphem_jump_target2_4plate_jpegxl_lossy_d10_raw_features/robustmad_all__prune0.9__tvn_efaar_e0.05/results/phenotypic_activity_map.csv",
+      "pa_point": 0.47660133742879657,
+      "pa_sha256": "1767a4576b5038286108ac7b9593d52db4af8b3bea92b9aaaf944cd47010790f",
+      "pc_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/morphem_jump_target2_4plate_jpegxl_lossy_d10_raw_features/robustmad_all__prune0.9__tvn_efaar_e0.05/results/phenotypic_consistency_per_target.csv",
+      "pc_point": 0.0665445672211229,
+      "pc_sha256": "e51aa1906c29d2cf3e231fb1c175babc3b6103492e74c2bac2f12cb84b8e62fe",
+      "product_point": 0.03171522973620763,
+      "selection_metric": "PA*PC/100 on Zstd only"
+    },
+    {
+      "codec": "D15",
+      "config": "robustmad_all__prune0.9__tvn_efaar_e0.05",
+      "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/morphem_jump_target2_4plate_jpegxl_lossy_d15_raw_features/robustmad_all__prune0.9__tvn_efaar_e0.05/pipeline_config.yaml",
+      "config_sha256": "aaea9f1edf4117ccc5cd29fdc0001118a6336b74996f0762274e9fe15d07b00d",
+      "family": "morphem",
+      "metrics_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/morphem_jump_target2_4plate_jpegxl_lossy_d15_raw_features/robustmad_all__prune0.9__tvn_efaar_e0.05/results/metrics.json",
+      "metrics_sha256": "3a1e33b11d89ccacd1119113e0ab950d254ca00f75feb68142b99362d3fbd3e9",
+      "output_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/morphem_jump_target2_4plate_jpegxl_lossy_d15_raw_features/robustmad_all__prune0.9__tvn_efaar_e0.05/output.parquet",
+      "output_sha256": "f359f451bf5391efb2c6afab5e393cb281a12fffa8894dec1ebd8f2ce742e098",
+      "pa_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/morphem_jump_target2_4plate_jpegxl_lossy_d15_raw_features/robustmad_all__prune0.9__tvn_efaar_e0.05/results/phenotypic_activity_map.csv",
+      "pa_point": 0.48256856002702503,
+      "pa_sha256": "fad7fa3847a310efcbec5fc7ae9e902ddc48612e45e29753bbb81ba3eec09111",
+      "pc_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/morphem_jump_target2_4plate_jpegxl_lossy_d15_raw_features/robustmad_all__prune0.9__tvn_efaar_e0.05/results/phenotypic_consistency_per_target.csv",
+      "pc_point": 0.06612671647802161,
+      "pc_sha256": "dc18491ed1c4667b93dac49ec8292ca2ffd671dfa42019ec3e195d68f5227515",
+      "product_point": 0.031910674350114236,
+      "selection_metric": "PA*PC/100 on Zstd only"
+    },
+    {
+      "codec": "Zstd",
+      "config": "std_all__prune0.9__tvn_efaar_e0.05",
+      "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/openphenom_jump_target2_4plate_zstd_raw_features/std_all__prune0.9__tvn_efaar_e0.05/pipeline_config.yaml",
+      "config_sha256": "2f16acdf5af2ab5b4cf5189969aebe9cf55f7734bf43e5fe274f0f1b6fcc34e6",
+      "family": "openphenom",
+      "metrics_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/openphenom_jump_target2_4plate_zstd_raw_features/std_all__prune0.9__tvn_efaar_e0.05/results/metrics.json",
+      "metrics_sha256": "a2957ceb768a4397601895a62046d94d4443b5475a375a3a6407620fdc5cc676",
+      "output_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/openphenom_jump_target2_4plate_zstd_raw_features/std_all__prune0.9__tvn_efaar_e0.05/output.parquet",
+      "output_sha256": "3bd6de670116126178498458cdd0a79f027da491815ac9581157e181bc906985",
+      "pa_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/openphenom_jump_target2_4plate_zstd_raw_features/std_all__prune0.9__tvn_efaar_e0.05/results/phenotypic_activity_map.csv",
+      "pa_point": 0.3751573581116567,
+      "pa_sha256": "024bb6843637f0de7412c6a6796c003652ff0a31a6cd3424ebf2a62630c63806",
+      "pc_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/openphenom_jump_target2_4plate_zstd_raw_features/std_all__prune0.9__tvn_efaar_e0.05/results/phenotypic_consistency_per_target.csv",
+      "pc_point": 0.052554538831771185,
+      "pc_sha256": "198fd2ed7c497c85a13c18ba286c64c753c39b6db846492d0adf65a0e2b3ad14",
+      "product_point": 0.019716221944903748,
+      "selection_metric": "PA*PC/100 on Zstd only"
+    },
+    {
+      "codec": "D10",
+      "config": "std_all__prune0.9__tvn_efaar_e0.05",
+      "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/openphenom_jump_target2_4plate_jpegxl_lossy_d10_raw_features/std_all__prune0.9__tvn_efaar_e0.05/pipeline_config.yaml",
+      "config_sha256": "cb283b7efc72aa5cd7e42868f87bbee0b0988327a2748e58292bdc45fbb08867",
+      "family": "openphenom",
+      "metrics_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/openphenom_jump_target2_4plate_jpegxl_lossy_d10_raw_features/std_all__prune0.9__tvn_efaar_e0.05/results/metrics.json",
+      "metrics_sha256": "3a4c787e9a32d9bf5ff3dfb1d2fb2c2abd77ea33aaf009a15e6ed0251fe685b6",
+      "output_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/openphenom_jump_target2_4plate_jpegxl_lossy_d10_raw_features/std_all__prune0.9__tvn_efaar_e0.05/output.parquet",
+      "output_sha256": "2c55ab84d52a6250e855d16253f15ea78e530d09b4b5ae3265115b4ec5e5a7f4",
+      "pa_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/openphenom_jump_target2_4plate_jpegxl_lossy_d10_raw_features/std_all__prune0.9__tvn_efaar_e0.05/results/phenotypic_activity_map.csv",
+      "pa_point": 0.4199956853073956,
+      "pa_sha256": "32956deca22a19e76219f20659233ffb8b65876d39bcd6aff9d22adc588175ca",
+      "pc_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/openphenom_jump_target2_4plate_jpegxl_lossy_d10_raw_features/std_all__prune0.9__tvn_efaar_e0.05/results/phenotypic_consistency_per_target.csv",
+      "pc_point": 0.03513899127662987,
+      "pc_sha256": "d122ca0a6a1a43ac337b64ed45359df246529d165630d0cd052319a0a9f856da",
+      "product_point": 0.01475822472223876,
+      "selection_metric": "PA*PC/100 on Zstd only"
+    },
+    {
+      "codec": "D15",
+      "config": "std_all__prune0.9__tvn_efaar_e0.05",
+      "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/openphenom_jump_target2_4plate_jpegxl_lossy_d15_raw_features/std_all__prune0.9__tvn_efaar_e0.05/pipeline_config.yaml",
+      "config_sha256": "d54883fdb009a7c016c6431ccb09b3b275cb9cd8f0b63e89f3e79b136abc79e8",
+      "family": "openphenom",
+      "metrics_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/openphenom_jump_target2_4plate_jpegxl_lossy_d15_raw_features/std_all__prune0.9__tvn_efaar_e0.05/results/metrics.json",
+      "metrics_sha256": "cb2d8163bb6c8ae61c4b90022cb3302a3a016f0f4030ee674e03a20dc3f5743c",
+      "output_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/openphenom_jump_target2_4plate_jpegxl_lossy_d15_raw_features/std_all__prune0.9__tvn_efaar_e0.05/output.parquet",
+      "output_sha256": "7c8d6e571c0f5c833e4f8649c18e3ef2463a883f810f46a827a52524ca24e564",
+      "pa_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/openphenom_jump_target2_4plate_jpegxl_lossy_d15_raw_features/std_all__prune0.9__tvn_efaar_e0.05/results/phenotypic_activity_map.csv",
+      "pa_point": 0.412813012387583,
+      "pa_sha256": "07944e333db19eb14b38834ea7189b66d212312adc7366d573bc6175cce2fabe",
+      "pc_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/openphenom_jump_target2_4plate_jpegxl_lossy_d15_raw_features/std_all__prune0.9__tvn_efaar_e0.05/results/phenotypic_consistency_per_target.csv",
+      "pc_point": 0.0332691328144103,
+      "pc_sha256": "ab6ff6d61caeb57475b578eb288cbd90cb36c61640a70b6346396b6a481bc593",
+      "product_point": 0.013733930936639304,
+      "selection_metric": "PA*PC/100 on Zstd only"
+    },
+    {
+      "codec": "Zstd",
+      "config": "robustmad_ctrl__prune0.9__tvn_efaar_e0.05",
+      "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/subcell__clip01_jump_target2_4plate_zstd_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/pipeline_config.yaml",
+      "config_sha256": "2b743622fb49b3aaa36fe29fa226207aefecd601faabb210d5c4a2185b45ce04",
+      "family": "subcell",
+      "metrics_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/subcell__clip01_jump_target2_4plate_zstd_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/results/metrics.json",
+      "metrics_sha256": "94457ebd675b2d01fe1aeab175b08dc0c90fda87e778292e0ccaa63af3c4d2a6",
+      "output_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/subcell__clip01_jump_target2_4plate_zstd_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/output.parquet",
+      "output_sha256": "5ea5e89a9b02a881b74274d4fdaf271231219493ab7383f06fce2a7ab10f1007",
+      "pa_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/subcell__clip01_jump_target2_4plate_zstd_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/results/phenotypic_activity_map.csv",
+      "pa_point": 0.45637910975818663,
+      "pa_sha256": "ad186f1fa3d769cec97a22e44f4bccb242012e0d0d1d5618a668ab94b5a3b43b",
+      "pc_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/subcell__clip01_jump_target2_4plate_zstd_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/results/phenotypic_consistency_per_target.csv",
+      "pc_point": 0.07445700510806662,
+      "pc_sha256": "6881c98274af199bd5ce4abf27d24cbef5f164799f7ce82fad77852d6226cfb6",
+      "product_point": 0.033980621706480196,
+      "selection_metric": "PA*PC/100 on Zstd only"
+    },
+    {
+      "codec": "D10",
+      "config": "robustmad_ctrl__prune0.9__tvn_efaar_e0.05",
+      "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/subcell__clip01_jump_target2_4plate_jpegxl_lossy_d10_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/pipeline_config.yaml",
+      "config_sha256": "3010496d7c7ad84d5d3db26bbb988a7f9bed027041e1d209ab1e85d2402763d9",
+      "family": "subcell",
+      "metrics_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/subcell__clip01_jump_target2_4plate_jpegxl_lossy_d10_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/results/metrics.json",
+      "metrics_sha256": "8faf88094399ecb8a3dd6adc0098d9dd226b1cd888b72f02132318f8b8cf99a3",
+      "output_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/subcell__clip01_jump_target2_4plate_jpegxl_lossy_d10_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/output.parquet",
+      "output_sha256": "8ce41e3f988d342338d58570cb460ef3b2b6b9228e63b047cc4f941e44b2a007",
+      "pa_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/subcell__clip01_jump_target2_4plate_jpegxl_lossy_d10_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/results/phenotypic_activity_map.csv",
+      "pa_point": 0.44911185373524,
+      "pa_sha256": "1770dd59bbe0db303af4029202c454da52372eb3612c5b87382b53c63191a2fe",
+      "pc_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/subcell__clip01_jump_target2_4plate_jpegxl_lossy_d10_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/results/phenotypic_consistency_per_target.csv",
+      "pc_point": 0.0469584589192389,
+      "pc_sha256": "b90bc8c87d8b1272c52495bab70fdfb0782a956d992d3f8dc6ef586841682798",
+      "product_point": 0.021089600533769497,
+      "selection_metric": "PA*PC/100 on Zstd only"
+    },
+    {
+      "codec": "D15",
+      "config": "robustmad_ctrl__prune0.9__tvn_efaar_e0.05",
+      "config_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/subcell__clip01_jump_target2_4plate_jpegxl_lossy_d15_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/pipeline_config.yaml",
+      "config_sha256": "3dd9edfd6ad5594b8d42348aa31f5f760819a406e5b97f35a03e4e45ca061721",
+      "family": "subcell",
+      "metrics_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/subcell__clip01_jump_target2_4plate_jpegxl_lossy_d15_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/results/metrics.json",
+      "metrics_sha256": "3ef832d52db5e10a585fff51603d34022e055061c747ae110734247b0ef8164d",
+      "output_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/subcell__clip01_jump_target2_4plate_jpegxl_lossy_d15_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/output.parquet",
+      "output_sha256": "ba93c335153ab9a51979f1b20dab1fa69b594203485c718b1fb1279eaa73494c",
+      "pa_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/subcell__clip01_jump_target2_4plate_jpegxl_lossy_d15_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/results/phenotypic_activity_map.csv",
+      "pa_point": 0.4635507458858658,
+      "pa_sha256": "afeff519d760edc9df30e3683993b7e14ed4828bbb0a6432febd6fcea7f7e238",
+      "pc_path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/subcell__clip01_jump_target2_4plate_jpegxl_lossy_d15_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/results/phenotypic_consistency_per_target.csv",
+      "pc_point": 0.0644567573999149,
+      "pc_sha256": "8c0c0848028d2171f1114fe7296446dcb0c3a9c82137899a522663e1e09d3a23",
+      "product_point": 0.02987897797011485,
+      "selection_metric": "PA*PC/100 on Zstd only"
+    }
+  ],
+  "target_bootstraps": 50000,
+  "wells_per_treatment_group": 4
+}

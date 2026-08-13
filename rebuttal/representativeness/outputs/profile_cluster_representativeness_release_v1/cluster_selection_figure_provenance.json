@@ -1,0 +1,49 @@
+{
+  "coordinate_digest_sha256_ids_then_float32": "5249f5bf80e939c513b047592601b57f0dbd309c6583398b126eccf93657190e",
+  "counts": {
+    "clusters": 128,
+    "compounds": 115721,
+    "fit_eligible": 95426,
+    "selected_treatments": 3775
+  },
+  "inputs": [
+    {
+      "bytes": 999039,
+      "path": "rebuttal/representativeness/outputs/profile_cluster_representativeness_v1/compound_cluster_umap.parquet",
+      "path_scope": "repository_root",
+      "sha256": "3b8ac04e817dc65e89926048797bf330e8595966d9dd425de2491dab07f82bba"
+    },
+    {
+      "bytes": 32941,
+      "path": "current_release_treatment_manifest.parquet",
+      "path_scope": "output_root",
+      "sha256": "3d3ca04b51a47d23b9c8f20b62fdc24295cd0c8e44b678b2a123c353fd5ee56b"
+    },
+    {
+      "bytes": 1784,
+      "path": "retrieval_metrics.csv",
+      "path_scope": "output_root",
+      "sha256": "5184ceec065a2bba05cda0da52cc41126f7c6353daa61ecb33f24dc3be8a6959"
+    },
+    {
+      "bytes": 402,
+      "path": "representation_summary.json",
+      "path_scope": "output_root",
+      "sha256": "9ef007b2eb2b6987ecd797b918cb297c79ad1974a9ef35d6131e83e366f7cb70"
+    },
+    {
+      "bytes": 227,
+      "path": "permutation_summary.json",
+      "path_scope": "output_root",
+      "sha256": "a6b312c229c2d255887010de06dd58ec14f4c1b5b99b6908b9047e09f76a604c"
+    }
+  ],
+  "label_blind_contract": "The existing label-blind UMAP and cluster coordinates were reused byte-for-byte before current-release labels were joined; no fit was run.",
+  "purpose": "visualization_only",
+  "qualifications": [
+    "UMAP is display-only and not inferential.",
+    "Coverage is broad, not proportional.",
+    "Low ARI prohibits biological-class interpretation."
+  ],
+  "version": "cluster-selection-current-release-compound-figure-v1"
+}

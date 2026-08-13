@@ -1,0 +1,37 @@
+{
+  "files": [
+    {
+      "bytes": 999039,
+      "path": "compound_cluster_umap.parquet",
+      "path_scope": "figure_output_root",
+      "sha256": "3b8ac04e817dc65e89926048797bf330e8595966d9dd425de2491dab07f82bba"
+    },
+    {
+      "bytes": 1507352,
+      "path": "cluster_selection_compound_map.png",
+      "path_scope": "figure_output_root",
+      "sha256": "7d256af86379ce7d911f2aadce8470ada6e36a1fdd77bf43d6d50fd4072b7436"
+    },
+    {
+      "bytes": 955825,
+      "path": "cluster_selection_compound_map.pdf",
+      "path_scope": "figure_output_root",
+      "sha256": "06b3fa2043e0c5fd7e9db6a92e93c7a41a46399141d98168f279f708b115e69c"
+    },
+    {
+      "bytes": 1493,
+      "path": "cluster_selection_summary_table.csv",
+      "path_scope": "figure_output_root",
+      "sha256": "c50538b17d6a9a73c4f81b82a44e80e796212076fbb3b40030d7867087dc6b76"
+    },
+    {
+      "bytes": 4264,
+      "path": "cluster_selection_figure_provenance.json",
+      "path_scope": "figure_output_root",
+      "sha256": "5cffa010a1646e50dfba3be1514d5cca9412511243554a04ac63a8bef1dd15ff"
+    }
+  ],
+  "path_base_definition": {
+    "figure_output_root": "directory containing cluster_selection_figure_hashes.json"
+  }
+}
