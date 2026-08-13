@@ -1,0 +1,8 @@
+{
+  "codec": "HQ",
+  "config": "std_ctrl__tvn_efaar_e0.2_c96",
+  "family": "subcell",
+  "n_samples": 2000,
+  "output": "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/subcell__clip01_jump_lite_updated_jpegxl_lossy_hq_raw_features/std_ctrl__tvn_efaar_e0.2_c96/output.parquet",
+  "protocol_id": "41f793a4f02f3f24f75d8d7ac6996313cb39d15a59d8c55e8e040cd1f30ca92a"
+}
