@@ -29,8 +29,13 @@ python test_analyze.py
 python analyze.py --verify-only
 ```
 
-The production input is pinned by byte count and SHA-256. The script aborts on
-input drift, missing codecs/families/configurations, duplicate keys, factor
-mismatch across codecs, nonfinite metrics, or output checksum drift. It never
-writes to the canonical archive and performs no extraction, normalization, or
-retrieval rescoring.
+The production input is pinned by byte count and SHA-256. Generation occurs in
+a clean sibling staging directory, verifies the complete release, and only then
+publishes it by same-filesystem rename; a failed generation leaves the prior
+release unchanged. `--verify-only` binds the current analysis source and frozen
+input to the exact flat output inventory, provenance, semantic row/key counts,
+and every artifact byte/hash. The script aborts on input drift, missing
+codecs/families/configurations, duplicate keys, factor mismatch across codecs,
+nonfinite metrics, extra/missing/symlinked output paths, or source/artifact
+drift. It never writes to the canonical archive and performs no extraction,
+normalization, or retrieval rescoring.

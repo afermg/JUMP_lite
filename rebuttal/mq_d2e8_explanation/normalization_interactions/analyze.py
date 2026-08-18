@@ -13,6 +13,8 @@ import hashlib
 import json
 import math
 import re
+import shutil
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
@@ -33,6 +35,20 @@ INPUT_SIZE = 1_096_114
 INPUT_SHA256 = "08923c7bd27bca54c0a3f484429ced31d1b48ad097c974773591a89ac63eb53a"
 EXPECTED_INPUT_ROWS = 2_860
 EXPECTED_CONFIGS = 48
+RELEASE_FILES = {
+    "REPORT.md",
+    "artifact_checksums.json",
+    "factor_summary.csv",
+    "family_factor_summary.csv",
+    "family_summary.csv",
+    "normalization_interactions.pdf",
+    "normalization_interactions.png",
+    "paired_recipe_deltas.csv",
+    "provenance.json",
+    "recipe_sign_consistency.csv",
+    "variation_decomposition.csv",
+}
+ARTIFACT_FILES = RELEASE_FILES - {"artifact_checksums.json"}
 
 MODEL_PAIRS = {
     "cp_measure": (
@@ -351,8 +367,10 @@ def plot_panel(paired: pd.DataFrame, output_png: Path, output_pdf: Path) -> None
     vmax = float(np.nanmax(np.abs(matrix.to_numpy())))
 
     sns.set_theme(style="white", context="paper")
-    fig = plt.figure(figsize=(7.2, 3.45))
-    grid = fig.add_gridspec(1, 2, width_ratios=[8.4, 1.35], wspace=0.22)
+    # Deliberately wide and vector-backed so the 24 paired structural labels
+    # remain readable when this panel is used at full manuscript text width.
+    fig = plt.figure(figsize=(10.5, 4.6))
+    grid = fig.add_gridspec(1, 2, width_ratios=[9.2, 1.45], wspace=0.20)
     ax = fig.add_subplot(grid[0, 0])
     cax = ax.inset_axes([0.02, -0.25, 0.52, 0.06])
     sns.heatmap(
@@ -397,10 +415,10 @@ def plot_panel(paired: pd.DataFrame, output_png: Path, output_pdf: Path) -> None
         pair_labels.append(f"{norm}{scope}{prune}\n{float(row['tvn_epsilon']):g}")
         pair_positions.append(start + 1)
     ax.set_xticks(pair_positions)
-    ax.set_xticklabels(pair_labels, fontsize=4.7, rotation=90, ha="center")
+    ax.set_xticklabels(pair_labels, fontsize=6.5, rotation=90, ha="center")
     ax.tick_params(axis="x", length=0, pad=1)
     ax.text(0.5, 1.03, "R/S: robust MAD/standardize; A/C: all/control fit; L/H: lower/higher pruning; each pair: c96/c128",
-            transform=ax.transAxes, ha="center", va="bottom", fontsize=5.8)
+            transform=ax.transAxes, ha="center", va="bottom", fontsize=7.2)
 
     ax_bar = fig.add_subplot(grid[0, 1])
     colors = ["#b2182b" if value > 0 else "#2166ac" for value in family_means]
@@ -425,7 +443,7 @@ def plot_panel(paired: pd.DataFrame, output_png: Path, output_pdf: Path) -> None
             clip_on=True,
         )
 
-    fig.subplots_adjust(left=0.12, right=0.985, top=0.86, bottom=0.31)
+    fig.subplots_adjust(left=0.09, right=0.99, top=0.87, bottom=0.30)
     metadata = {
         "Title": "Target-2 MQ minus D2-E8 normalization-recipe interactions",
         "Author": "JUMP-lite",
@@ -456,21 +474,107 @@ def _artifact_records(paths: Iterable[Path], root: Path) -> list[dict[str, objec
     return records
 
 
-def verify_artifacts(output_dir: Path) -> None:
-    manifest_path = output_dir / "artifact_checksums.json"
-    manifest = json.loads(manifest_path.read_text())
-    for record in manifest["artifacts"]:
-        path = output_dir / record["path"]
-        if not path.is_file():
-            raise FileNotFoundError(path)
+def verify_release(
+    output_dir: Path,
+    input_path: Path = INPUT,
+    source_path: Path | None = None,
+) -> None:
+    """Fail closed on input, source, inventory, provenance, or artifact drift."""
+    source_path = Path(__file__) if source_path is None else source_path
+    validate_input(input_path)
+    if not source_path.is_file():
+        raise FileNotFoundError(source_path)
+    if not output_dir.is_dir() or output_dir.is_symlink():
+        raise ValueError(f"release directory missing or unsafe: {output_dir}")
+    entries = list(output_dir.iterdir())
+    if any(not entry.is_file() or entry.is_symlink() for entry in entries):
+        raise ValueError("release inventory contains a directory or symlink")
+    actual = {entry.name for entry in entries}
+    if actual != RELEASE_FILES:
+        raise ValueError(
+            f"release inventory drift: missing={sorted(RELEASE_FILES - actual)}, "
+            f"extra={sorted(actual - RELEASE_FILES)}"
+        )
+
+    manifest = json.loads((output_dir / "artifact_checksums.json").read_text())
+    if manifest.get("schema_version") != 1:
+        raise ValueError("unsupported checksum-manifest schema")
+    expected_input = {
+        "path": str(input_path),
+        "bytes": INPUT_SIZE,
+        "sha256": INPUT_SHA256,
+        "rows": EXPECTED_INPUT_ROWS,
+    }
+    if manifest.get("input") != expected_input:
+        raise ValueError("checksum-manifest input identity drift")
+    expected_source = {"path": "analyze.py", "sha256": sha256_file(source_path)}
+    if manifest.get("source") != expected_source:
+        raise ValueError("checksum-manifest source identity drift")
+    records = manifest.get("artifacts")
+    if not isinstance(records, list) or {record.get("path") for record in records} != ARTIFACT_FILES:
+        raise ValueError("checksum-manifest artifact inventory drift")
+    if len(records) != len(ARTIFACT_FILES):
+        raise ValueError("duplicate checksum-manifest artifact record")
+    for record in records:
+        rel = record["path"]
+        if Path(rel).name != rel:
+            raise ValueError(f"unsafe artifact path: {rel}")
+        path = output_dir / rel
         if path.stat().st_size != record["bytes"]:
             raise ValueError(f"artifact size drift: {path}")
         if sha256_file(path) != record["sha256"]:
             raise ValueError(f"artifact hash drift: {path}")
 
+    provenance = json.loads((output_dir / "provenance.json").read_text())
+    if provenance.get("input") != expected_input:
+        raise ValueError("provenance input identity drift")
+    if provenance.get("source_sha256") != expected_source["sha256"]:
+        raise ValueError("provenance source identity drift")
+    if provenance.get("paired_rows") != len(MODEL_PAIRS) * EXPECTED_CONFIGS:
+        raise ValueError("provenance paired-row drift")
+    paired = pd.read_csv(output_dir / "paired_recipe_deltas.csv")
+    if len(paired) != len(MODEL_PAIRS) * EXPECTED_CONFIGS:
+        raise ValueError("paired output row-count drift")
+    if paired.duplicated(["family", "config"]).any():
+        raise ValueError("paired output key duplication")
+    if set(paired["family"]) != set(FAMILY_ORDER):
+        raise ValueError("paired output family drift")
+    if paired.groupby("family").size().to_dict() != {family: EXPECTED_CONFIGS for family in FAMILY_ORDER}:
+        raise ValueError("paired output family coverage drift")
+    decomposition = pd.read_csv(output_dir / "variation_decomposition.csv")
+    if len(decomposition) != 3 or not np.isclose(
+        decomposition["fraction_of_total_variation"].sum(), 1.0, rtol=0.0, atol=2e-12
+    ):
+        raise ValueError("variation decomposition drift")
+    signs = pd.read_csv(output_dir / "recipe_sign_consistency.csv")
+    if len(signs) != EXPECTED_CONFIGS or signs["recipe_order"].nunique() != EXPECTED_CONFIGS:
+        raise ValueError("recipe-sign output drift")
 
-def run(input_path: Path, output_dir: Path) -> None:
-    validate_input(input_path)
+
+def _publish_staged(staged: Path, output_dir: Path) -> None:
+    """Replace a release directory by same-filesystem rename, restoring on error."""
+    output_dir.parent.mkdir(parents=True, exist_ok=True)
+    backup: Path | None = None
+    if output_dir.exists():
+        if not output_dir.is_dir() or output_dir.is_symlink():
+            raise ValueError(f"refusing to replace unsafe output path: {output_dir}")
+        backup = Path(tempfile.mkdtemp(prefix=f".{output_dir.name}.backup-", dir=output_dir.parent))
+        backup.rmdir()
+        output_dir.rename(backup)
+    try:
+        staged.rename(output_dir)
+    except Exception:
+        if backup is not None and backup.exists() and not output_dir.exists():
+            backup.rename(output_dir)
+        raise
+    else:
+        if backup is not None:
+            shutil.rmtree(backup)
+
+
+def _generate_release(input_path: Path, output_dir: Path, source_path: Path) -> None:
+    if any(output_dir.iterdir()):
+        raise ValueError(f"staging directory is not empty: {output_dir}")
     frame = pd.read_csv(input_path)
     if len(frame) != EXPECTED_INPUT_ROWS:
         raise ValueError(f"input row count drift: {len(frame)} != {EXPECTED_INPUT_ROWS}")
@@ -578,19 +682,42 @@ def run(input_path: Path, output_dir: Path) -> None:
         "families": FAMILY_ORDER,
         "paired_rows": len(paired),
         "recipes_per_family": EXPECTED_CONFIGS,
-        "source_sha256": sha256_file(Path(__file__)),
+        "source_sha256": sha256_file(source_path),
         "canonical_inputs_read_only": True,
         "normalization_or_extraction_rerun": False,
     }
     _write_json(output_dir / "provenance.json", provenance)
 
-    artifacts = [
-        path
-        for path in output_dir.iterdir()
-        if path.is_file() and path.name != "artifact_checksums.json"
-    ]
-    _write_json(output_dir / "artifact_checksums.json", {"artifacts": _artifact_records(artifacts, output_dir)})
-    verify_artifacts(output_dir)
+    artifacts = [output_dir / name for name in sorted(ARTIFACT_FILES)]
+    _write_json(
+        output_dir / "artifact_checksums.json",
+        {
+            "schema_version": 1,
+            "input": {
+                "path": str(input_path),
+                "bytes": INPUT_SIZE,
+                "sha256": INPUT_SHA256,
+                "rows": EXPECTED_INPUT_ROWS,
+            },
+            "source": {"path": "analyze.py", "sha256": sha256_file(source_path)},
+            "artifacts": _artifact_records(artifacts, output_dir),
+        },
+    )
+
+
+def run(input_path: Path, output_dir: Path) -> None:
+    """Generate a complete staged release and publish it only after verification."""
+    validate_input(input_path)
+    output_dir.parent.mkdir(parents=True, exist_ok=True)
+    staged = Path(tempfile.mkdtemp(prefix=f".{output_dir.name}.staging-", dir=output_dir.parent))
+    try:
+        _generate_release(input_path, staged, Path(__file__))
+        verify_release(staged, input_path, Path(__file__))
+        _publish_staged(staged, output_dir)
+        verify_release(output_dir, input_path, Path(__file__))
+    finally:
+        if staged.exists():
+            shutil.rmtree(staged)
 
 
 def parse_args() -> argparse.Namespace:
@@ -608,9 +735,8 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     if args.verify_only:
-        validate_input(args.input)
-        verify_artifacts(args.output_dir)
-        print("input and artifact checksums verified")
+        verify_release(args.output_dir, args.input, Path(__file__))
+        print("input, source, inventory, provenance, and artifact checksums verified")
         return
     run(args.input, args.output_dir)
     print(f"wrote {args.output_dir}")

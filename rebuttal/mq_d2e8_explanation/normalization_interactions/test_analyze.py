@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import numpy as np
 import pandas as pd
@@ -64,19 +66,65 @@ class AnalysisTests(unittest.TestCase):
         self.assertAlmostEqual(result["fraction_of_total_variation"].sum(), 1.0)
         self.assertTrue((result["sum_squares"] >= 0).all())
 
-    def test_artifact_verification_detects_drift(self) -> None:
+    def test_verify_release_rejects_extra_inventory(self) -> None:
+        release = Path(analyze.__file__).resolve().parent / "outputs" / "release_v1"
+        with tempfile.TemporaryDirectory() as temp:
+            copy = Path(temp) / "release"
+            shutil.copytree(release, copy)
+            analyze.verify_release(copy)
+            (copy / "extra.txt").write_text("not inventoried\n")
+            with self.assertRaisesRegex(ValueError, "release inventory drift"):
+                analyze.verify_release(copy)
+
+    def test_verify_release_rejects_artifact_drift(self) -> None:
+        release = Path(analyze.__file__).resolve().parent / "outputs" / "release_v1"
+        with tempfile.TemporaryDirectory() as temp:
+            copy = Path(temp) / "release"
+            shutil.copytree(release, copy)
+            with (copy / "REPORT.md").open("a") as stream:
+                stream.write("drift\n")
+            with self.assertRaisesRegex(ValueError, "artifact size drift|artifact hash drift"):
+                analyze.verify_release(copy)
+
+    def test_verify_release_binds_current_source(self) -> None:
+        release = Path(analyze.__file__).resolve().parent / "outputs" / "release_v1"
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / "analyze.py"
+            source.write_text(Path(analyze.__file__).read_text() + "# drift\n")
+            with self.assertRaisesRegex(ValueError, "source identity drift"):
+                analyze.verify_release(release, source_path=source)
+
+    def test_publish_staged_atomically_replaces_directory(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            artifact = root / "value.txt"
-            artifact.write_text("stable\n")
-            analyze._write_json(
-                root / "artifact_checksums.json",
-                {"artifacts": analyze._artifact_records([artifact], root)},
-            )
-            analyze.verify_artifacts(root)
-            artifact.write_text("drift\n")
-            with self.assertRaisesRegex(ValueError, "artifact size drift|artifact hash drift"):
-                analyze.verify_artifacts(root)
+            output = root / "release"
+            staged = root / "staged"
+            output.mkdir()
+            staged.mkdir()
+            (output / "old.txt").write_text("old\n")
+            (staged / "new.txt").write_text("new\n")
+            analyze._publish_staged(staged, output)
+            self.assertFalse(staged.exists())
+            self.assertFalse((output / "old.txt").exists())
+            self.assertEqual((output / "new.txt").read_text(), "new\n")
+            self.assertEqual(list(root.glob(".release.backup-*")), [])
+
+    def test_generation_failure_preserves_existing_release(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            output = root / "release"
+            output.mkdir()
+            (output / "sentinel.txt").write_text("original\n")
+
+            def fail_after_partial(_input: Path, staged: Path, _source: Path) -> None:
+                (staged / "partial.txt").write_text("partial\n")
+                raise RuntimeError("injected failure")
+
+            with mock.patch.object(analyze, "_generate_release", side_effect=fail_after_partial):
+                with self.assertRaisesRegex(RuntimeError, "injected failure"):
+                    analyze.run(analyze.INPUT, output)
+            self.assertEqual((output / "sentinel.txt").read_text(), "original\n")
+            self.assertEqual(list(root.glob(".release.staging-*")), [])
 
 
 if __name__ == "__main__":
