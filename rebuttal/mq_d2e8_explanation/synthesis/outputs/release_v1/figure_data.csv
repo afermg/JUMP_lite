@@ -1,0 +1,16 @@
+panel,family,unit,point,low,high,detail
+B,cp_measure,fixed_recipe_bootstrap,0.00126959745085,-0.00339819809366,0.00616139904037,unresolved
+B,dinov2,fixed_recipe_bootstrap,0.00184536531773,-0.00207997487968,0.00580977702027,unresolved
+B,morphem,fixed_recipe_bootstrap,-0.00895369400858,-0.0136452586688,-0.00443899891107,D2-E8>MQ
+B,openphenom,fixed_recipe_bootstrap,-0.0034019222684,-0.0072693629105,0.000285264856384,unresolved
+B,subcell,fixed_recipe_bootstrap,-0.00239518448399,-0.00528237289033,0.000363932127806,unresolved
+E,cp_measure,effort_sensitivity,-0.00228110968584,-0.00658107135199,0.00196837011307,unresolved
+E,dinov2,effort_sensitivity,0.00349992431322,0.000324634097909,0.00658781828954,unresolved
+E,morphem,effort_sensitivity,0.00503056250403,0.0014279833357,0.00895103912367,E3>HQ
+E,openphenom,effort_sensitivity,0.0047056678444,0.000164836615504,0.00939484665483,unresolved
+E,subcell,effort_sensitivity,0.00951005890234,0.00436103505692,0.0151088148955,E3>HQ
+D,cp_measure,top_10_absolute_share,0.151406862282,,,descriptive
+D,dinov2,top_10_absolute_share,0.201295049501,,,descriptive
+D,morphem,top_10_absolute_share,0.146418584499,,,descriptive
+D,openphenom,top_10_absolute_share,0.160197894221,,,descriptive
+D,subcell,top_10_absolute_share,0.182235988938,,,descriptive

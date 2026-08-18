@@ -1,0 +1,35 @@
+{
+  "artifacts": [
+    {
+      "path": "CAPTION.md",
+      "sha256": "f3b6261bbe52e1c49c6c26628e394d3b777f9e9dbe719fbaf51fab2affb4aa20",
+      "size_bytes": 2490
+    },
+    {
+      "path": "REPORT.md",
+      "sha256": "98e5b30daa38c35c725b4b11ce93f78304d6e41532fb9f2e281ce4570f29da33",
+      "size_bytes": 824
+    },
+    {
+      "path": "figure_data.csv",
+      "sha256": "b84ab769e3ffed4c23281aba83d24d867969fdc24e86437041f7550654cf4acd",
+      "size_bytes": 1287
+    },
+    {
+      "path": "mq_d2e8_synthesis.pdf",
+      "sha256": "ca6a2c1a4539137077d69cc7440320b7dcf456af0c0f29e776071528a45564f2",
+      "size_bytes": 53392
+    },
+    {
+      "path": "mq_d2e8_synthesis.png",
+      "sha256": "2237cc4e4b35f86ef05eb9c3c59b1d70ca9dfcf49797835921c8bf9ee3a5fa2c",
+      "size_bytes": 562811
+    },
+    {
+      "path": "provenance.json",
+      "sha256": "885edae6d4a20b51013cf3554c93326cb4e27d85a2ab367f0418d8ea5c5810f3",
+      "size_bytes": 4213
+    }
+  ],
+  "root": "."
+}
