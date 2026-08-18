@@ -1,0 +1,11 @@
+[Unit]
+Description=Review compression allocation at three-hour wall-clock intervals
+
+[Timer]
+OnCalendar=*-*-* 00/3:00:00
+Persistent=true
+AccuracySec=5min
+Unit=jump-full-compression-governor.service
+
+[Install]
+WantedBy=timers.target

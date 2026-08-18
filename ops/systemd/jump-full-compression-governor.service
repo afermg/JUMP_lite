@@ -1,0 +1,15 @@
+[Unit]
+Description=Fail-closed full-JUMP candidate compression governor
+After=default.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/work/datasets/jump_lite/full_jump_compression_state/v1.0/candidate.env
+ExecStart=/run/current-system/sw/bin/env PYTHONPATH=${DEPLOY_ROOT}/src /work/users/amunoz/projects/JUMP_lite/.venv/bin/python -m jump_full_compression governor --apply --candidate-id ${CANDIDATE_ID} --config-sha256 ${CONFIG_SHA256} --feature-root ${FEATURE_ROOT} --state-root ${STATE_ROOT} --output-filesystem /work/datasets
+Nice=19
+CPUWeight=1
+IOWeight=1
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/work/datasets/jump_lite/full_jump_compression_state
