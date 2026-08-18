@@ -1,6 +1,6 @@
 # Approximate effort sensitivity
 
-HQ and E3 both use JPEG XL distance 1 in the archived producer source. HQ omitted the effort argument while E3 set effort 3. The historical numeric default and encoder build are not frozen, so this is an approximate sensitivity—not a controlled effort experiment.
+HQ and E3 both use JPEG XL distance 1 in the archived producer declaration. HQ omitted the effort argument while E3 set effort 3. The historical numeric default and encoder build are not frozen, so this is an approximate sensitivity—not a controlled effort experiment.
 
 ## Fixed-recipe paired bootstrap
 
@@ -23,4 +23,4 @@ One Zstd-selected recipe was frozen across codecs. PA (306 compound clusters) an
 
 ## Limitation
 
-The available codecs are not a distance-by-effort factorial: HQ=(D1, default/omitted effort), E3=(D1,E3), D2-E8=(D2,E8), and MQ=(D3, default/omitted effort). This analysis cannot attribute D2-E8 versus MQ behavior to effort.
+The available codecs are not a distance-by-effort factorial: HQ=(D1, default/omitted effort), E3=(D1,E3), D2-E8=(D2,E8), and MQ=(D3, default/omitted effort). Therefore this sensitivity cannot explain or attribute the D2-E8-versus-MQ behavior to effort.

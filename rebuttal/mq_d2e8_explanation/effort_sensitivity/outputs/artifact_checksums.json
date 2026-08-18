@@ -2,8 +2,8 @@
   "artifacts": [
     {
       "path": "REPORT.md",
-      "sha256": "a690bc9bb1b9856f29f67d42f4007d974912587ef6e194f8bd42f86de876ed82",
-      "size_bytes": 1549
+      "sha256": "0fec16be2bd9778f49ac95fb78dd0e9caddc182bd81ea4b77031f69d274c881d",
+      "size_bytes": 1582
     },
     {
       "path": "e3_vs_hq_bootstrap.csv",
@@ -12,13 +12,13 @@
     },
     {
       "path": "effort_sensitivity.pdf",
-      "sha256": "28ce5ca469224d1994e3922eb7e60a4ad7373f230447926e7120fdcf1b309d65",
-      "size_bytes": 31259
+      "sha256": "c37a99af9a765b636ac0b5132fe7f329fe22c1d08b45b7ab2479997fb15e8b8c",
+      "size_bytes": 33482
     },
     {
       "path": "effort_sensitivity.png",
-      "sha256": "a214acde766faf600bce82b0b601d3a17d9667e06c2ac24dc2ec61f1aeca84d7",
-      "size_bytes": 103863
+      "sha256": "064fb61d289fd02f53f5387f07b2f31f503061d065ae18680492a494b460e34d",
+      "size_bytes": 121702
     },
     {
       "path": "feature_correlation_summary.csv",
@@ -32,8 +32,8 @@
     },
     {
       "path": "provenance.json",
-      "sha256": "33fce25a5e6fa0a08dbe20a06c9de7af2b003ab7adf70f6368f7c0599478e4ba",
-      "size_bytes": 28891
+      "sha256": "92cceec761ff982ccbb1aa372723b96bb7c8cc6431dd28ced2a713df0d15a323",
+      "size_bytes": 29550
     },
     {
       "path": "score_intervals.csv",

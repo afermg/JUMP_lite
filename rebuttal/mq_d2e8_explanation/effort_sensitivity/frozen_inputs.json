@@ -1,10 +1,4 @@
 {
-  "analysis_code_sha256": "4a09a03f4c5bc113e8975aba3f21081ccf6af338b3396d3b8260b453dd12efb8",
-  "bootstrap_replicates": 50000,
-  "codec_grid": "Not a distance-by-effort factorial; cannot isolate effort for D2-E8 versus MQ.",
-  "current_lock_imagecodecs": "2026.1.14 (current lock only; not historical producer proof)",
-  "frozen_inputs_path": "rebuttal/mq_d2e8_explanation/effort_sensitivity/frozen_inputs.json",
-  "frozen_inputs_sha256": "11adb132ea866d7e8c9cf58af82ef3a0f68ce0285472c728f3831efca276caad",
   "inputs": [
     {
       "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/cp_measure_jump_target2_4plate_jpegxl_lossy_effort_3_raw_features/std_ctrl__outlier100__INT__prune0.9__tvn_efaar_e0.05/output.parquet",
@@ -423,20 +417,12 @@
     "sha256": "9bb6bec0a23a8fb091c1e1990f62690c55b74e34d1a49165b21bbb1aabaa54bf",
     "size_bytes": 8396
   },
-  "protocol": "effort_sensitivity_v2",
-  "qualification": "Approximate fixed-distance sensitivity: HQ omitted effort in producer source; E3 set effort=3. Numeric historical default and encoder build are not frozen. PA and PC margins are independently resampled under a working-independence approximation.",
-  "seed": 20260818,
+  "protocol": "effort_sensitivity_inputs_v1",
   "selected_recipes": {
     "cp_measure": "std_ctrl__outlier100__INT__prune0.9__tvn_efaar_e0.05",
     "dinov2": "robustmad_ctrl__prune0.9__tvn_efaar_e0.05",
     "morphem": "robustmad_all__prune0.9__tvn_efaar_e0.05",
     "openphenom": "std_all__prune0.9__tvn_efaar_e0.05",
     "subcell": "robustmad_ctrl__prune0.9__tvn_efaar_e0.05"
-  },
-  "software": {
-    "numpy": "1.26.4",
-    "pandas": "3.0.0",
-    "platform": "Linux-6.12.80-x86_64-with-glibc2.40",
-    "python": "3.12.11 (main, Sep 18 2025, 19:47:19) [Clang 20.1.4 ]"
   }
 }

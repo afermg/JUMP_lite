@@ -8,11 +8,13 @@ sensitivity, not a controlled distance-by-effort factorial.
 """
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import math
 import os
 import platform
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -32,6 +34,9 @@ IMAGE_QUALITY = Path("/work/users/jfredinh/projects/cleaning-JUMP_CORE/analysis/
 FEATURE_CORR = Path("/work/users/jfredinh/projects/cleaning-JUMP_CORE/analysis/output/codec_feature_correlation.csv")
 SEGMENTATION = Path("/work/users/jfredinh/projects/cleaning-JUMP_CORE/analysis/segmentation/output/segmentation_comparison/detailed_results")
 COMPRESS_SOURCE = REPO / "src/compress_tif.py"
+FROZEN_INPUTS = HERE / "frozen_inputs.json"
+OUTPUT_DIR = HERE / "outputs"
+PRODUCER_REPOSITORY_COMMIT = "0ed6a2617279e028f789a96fe154cd2464c57210"
 
 EXPECTED = {
     str(SWEEP_CSV): (1_096_114, "08923c7bd27bca54c0a3f484429ced31d1b48ad097c974773591a89ac63eb53a"),
@@ -89,6 +94,75 @@ def write_csv(path: Path, df: pd.DataFrame) -> None:
 
 def write_json(path: Path, obj: Any) -> None:
     atomic_text(path, json.dumps(obj, indent=2, sort_keys=True) + "\n")
+
+def normalized_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return sorted(
+        ({"path": str(r["path"]), "size_bytes": int(r["size_bytes"]), "sha256": str(r["sha256"])} for r in records),
+        key=lambda r: r["path"],
+    )
+
+def load_frozen_manifest() -> dict[str, Any]:
+    verify(FROZEN_INPUTS)
+    manifest = json.loads(FROZEN_INPUTS.read_text())
+    if manifest.get("protocol") != "effort_sensitivity_inputs_v1":
+        raise AnalysisError("frozen input protocol drift")
+    return manifest
+
+def verify_frozen_inputs(records: list[dict[str, Any]], recipes: dict[str, str], source_record: dict[str, Any]) -> dict[str, Any]:
+    manifest = load_frozen_manifest()
+    if manifest.get("selected_recipes") != recipes:
+        raise AnalysisError("selected-recipe drift against frozen manifest")
+    if normalized_records(records) != manifest.get("inputs"):
+        raise AnalysisError("input identity drift against frozen manifest")
+    producer = manifest.get("producer_source", {})
+    expected_producer = {
+        "repository_commit": PRODUCER_REPOSITORY_COMMIT,
+        "path": str(COMPRESS_SOURCE.relative_to(REPO)),
+        "size_bytes": source_record["size_bytes"],
+        "sha256": source_record["sha256"],
+    }
+    if producer != expected_producer:
+        raise AnalysisError("producer-source identity drift")
+    return manifest
+
+def verify_release(out: Path) -> None:
+    checks_path = out / "artifact_checksums.json"
+    if not checks_path.is_file():
+        raise AnalysisError("missing release checksum manifest")
+    checks = json.loads(checks_path.read_text())
+    records = checks.get("artifacts")
+    if not isinstance(records, list) or not records:
+        raise AnalysisError("invalid release checksum manifest")
+    expected_names = {str(r["path"]) for r in records} | {"artifact_checksums.json"}
+    actual_names = {p.name for p in out.iterdir() if p.is_file()}
+    if actual_names != expected_names:
+        raise AnalysisError(f"release inventory drift: expected {sorted(expected_names)}, got {sorted(actual_names)}")
+    for record in records:
+        path = out / str(record["path"])
+        current = verify(path)
+        if (current["size_bytes"], current["sha256"]) != (int(record["size_bytes"]), str(record["sha256"])):
+            raise AnalysisError(f"release artifact drift: {path}")
+    provenance = json.loads((out / "provenance.json").read_text())
+    if provenance.get("frozen_inputs_sha256") != sha256(FROZEN_INPUTS):
+        raise AnalysisError("release provenance/frozen-input identity drift")
+    if provenance.get("analysis_code_sha256") != sha256(Path(__file__)):
+        raise AnalysisError("release provenance/analysis-code identity drift")
+
+def promote_clean_release(staged: Path, destination: Path) -> None:
+    backup = destination.parent / f".{destination.name}.backup-{os.getpid()}"
+    if backup.exists():
+        shutil.rmtree(backup)
+    if destination.exists():
+        os.replace(destination, backup)
+    try:
+        os.replace(staged, destination)
+    except Exception:
+        if backup.exists() and not destination.exists():
+            os.replace(backup, destination)
+        raise
+    finally:
+        if backup.exists():
+            shutil.rmtree(backup)
 
 def model_name(family: str, codec_folder: str) -> str:
     return f"{MODEL[family]}{codec_folder}_raw"
@@ -238,42 +312,91 @@ def plot_panel(contrasts: pd.DataFrame, q: pd.DataFrame, f: pd.DataFrame, seg: p
                     ecolor=colors[i],elinewidth=2,capsize=3,markersize=6,zorder=2)
     ax.axvline(0,color="black",lw=.9)
     ax.set_yticks(y,frame.display_family); ax.invert_yaxis(); ax.set_xlabel("E3 − HQ PA–PC NAP product")
-    ax.set_title("Approximate fixed-distance effort sensitivity",fontweight="bold")
+    ax.set_title("Approximate HQ-vs-E3 sensitivity (not factorial)",fontweight="bold")
     for i,row in frame.iterrows(): ax.text(max(frame.product_delta_ci_high)*1.04,i,f"$p_{{Holm}}$={row.product_holm_p:.3g}",va="center",fontsize=8)
     ax.grid(axis="x",alpha=.2)
     fig.subplots_adjust(left=.20,right=.84,top=.88,bottom=.28)
-    fig.text(.20,.035,f"Pixel fidelity (median): HQ SSIM {q.loc[q.codec=='jpegxl_lossy_hq','ssim_median'].iloc[0]:.6f}; E3 {q.loc[q.codec=='jpegxl_lossy_effort_3','ssim_median'].iloc[0]:.6f}\ncp_measure features: E3 > HQ for {100*f.fraction_e3_gt_hq.iloc[0]:.1f}% of 790; segmentation uses 9,216 common sites per compartment",fontsize=8,va="bottom")
+    fig.text(.20,.035,f"Approximate only: HQ=(D1, omitted/default effort), E3=(D1,E3); historical default/build are unfrozen.\nCannot explain MQ-vs-D2-E8 because that contrast changes both distance and effort.  HQ/E3 SSIM: {q.loc[q.codec=='jpegxl_lossy_hq','ssim_median'].iloc[0]:.6f}/{q.loc[q.codec=='jpegxl_lossy_effort_3','ssim_median'].iloc[0]:.6f}; E3 > HQ for {100*f.fraction_e3_gt_hq.iloc[0]:.1f}% of 790 features.",fontsize=8,va="bottom")
     fig.savefig(out.with_suffix(".png"),dpi=220,bbox_inches="tight")
     fig.savefig(out.with_suffix(".pdf"),bbox_inches="tight",metadata={"CreationDate":None,"ModDate":None}); plt.close(fig)
 
-def main() -> None:
-    out=HERE/"outputs"; out.mkdir(parents=True,exist_ok=True)
-    base_inputs=[verify(p,EXPECTED[str(p)]) for p in (SWEEP_CSV,IMAGE_QUALITY,FEATURE_CORR)]
-    source_record=verify(COMPRESS_SOURCE)
-    source=COMPRESS_SOURCE.read_text()
+def build_release(out: Path) -> None:
+    out.mkdir(parents=True, exist_ok=False)
+    base_inputs = [verify(p, EXPECTED[str(p)]) for p in (SWEEP_CSV, IMAGE_QUALITY, FEATURE_CORR)]
+    source_record = verify(COMPRESS_SOURCE)
+    source = COMPRESS_SOURCE.read_text()
     if '"jpegxl_lossy_hq": Jpegxl(lossless=False, distance=1.0)' not in source or '"jpegxl_lossy_effort_3": Jpegxl(lossless=False, distance=1.0, effort=3)' not in source:
         raise AnalysisError("producer codec declarations drift")
-    sweep=pd.read_csv(SWEEP_CSV); pa,pc,selected,fixed_inputs=load_fixed_inputs(sweep)
-    summary,contrast=bootstrap(pa,pc); quality,features,seg,extra_inputs=evidence_summaries()
-    write_csv(out/"selected_recipes.csv",selected); write_csv(out/"score_intervals.csv",summary); write_csv(out/"e3_vs_hq_bootstrap.csv",contrast)
-    write_csv(out/"image_quality_summary.csv",quality); write_csv(out/"feature_correlation_summary.csv",features); write_csv(out/"segmentation_common_site_summary.csv",seg)
-    plot_panel(contrast,quality,features,seg,out/"effort_sensitivity")
-    provenance={"protocol":"effort_sensitivity_v1","seed":SEED,"bootstrap_replicates":REPLICATES,
-                "qualification":"Approximate fixed-distance sensitivity: HQ omitted effort in producer source; E3 set effort=3. Numeric historical default and encoder build are not frozen. PA and PC margins are independently resampled under a working-independence approximation.",
-                "codec_grid":"Not a distance-by-effort factorial; cannot isolate effort for D2-E8 versus MQ.",
-                "producer_source":source_record,"current_lock_imagecodecs":"2026.1.14 (current lock only; not historical producer proof)",
-                "software":{"python":sys.version,"platform":platform.platform(),"numpy":np.__version__,"pandas":pd.__version__},
-                "inputs":base_inputs+fixed_inputs+extra_inputs}
-    write_json(out/"provenance.json",provenance)
-    lines=["# Approximate effort sensitivity","","HQ and E3 both use JPEG XL distance 1 in the archived producer source. HQ omitted the effort argument while E3 set effort 3. The historical numeric default and encoder build are not frozen, so this is an approximate sensitivity—not a controlled effort experiment.","","## Fixed-recipe paired bootstrap","","| Family | E3 − HQ product (95% interval) | Holm result |","|---|---:|---|"]
-    for _,r in contrast.iterrows(): lines.append(f"| {r.display_family} | {r.product_delta_e3_minus_hq:+.5f} [{r.product_delta_ci_low:+.5f}, {r.product_delta_ci_high:+.5f}] | {r.supported_direction} ($p_{{Holm}}={r.product_holm_p:.4g}$) |")
-    lines += ["","One Zstd-selected recipe was frozen across codecs. PA (306 compound clusters) and PC (201 target clusters) were independently resampled 50,000 times with shared weights across model/codec columns. Product intervals omit unknown PA–PC covariance.","","## Supporting archived evidence",f"","- Pixel metrics use 100 matched sites per codec.",f"- HQ/E3 median SSIM: {quality.loc[quality.codec=='jpegxl_lossy_hq','ssim_median'].iloc[0]:.6f}/{quality.loc[quality.codec=='jpegxl_lossy_effort_3','ssim_median'].iloc[0]:.6f}.",f"- E3 exceeds HQ correlation for {100*features.fraction_e3_gt_hq.iloc[0]:.1f}% of 790 cp_measure features.","- Cell and nuclei segmentation comparisons use the exact 9,216-site common set.","","## Limitation","","The available codecs are not a distance-by-effort factorial: HQ=(D1, default/omitted effort), E3=(D1,E3), D2-E8=(D2,E8), and MQ=(D3, default/omitted effort). This analysis cannot attribute D2-E8 versus MQ behavior to effort.",""]
-    atomic_text(out/"REPORT.md","\n".join(lines))
-    artifacts=[]
+    sweep = pd.read_csv(SWEEP_CSV)
+    recipes = select_recipes(sweep)
+    pa, pc, selected, fixed_inputs = load_fixed_inputs(sweep)
+    summary, contrast = bootstrap(pa, pc)
+    quality, features, seg, extra_inputs = evidence_summaries()
+    all_inputs = base_inputs + fixed_inputs + extra_inputs
+    frozen = verify_frozen_inputs(all_inputs, recipes, source_record)
+    write_csv(out / "selected_recipes.csv", selected)
+    write_csv(out / "score_intervals.csv", summary)
+    write_csv(out / "e3_vs_hq_bootstrap.csv", contrast)
+    write_csv(out / "image_quality_summary.csv", quality)
+    write_csv(out / "feature_correlation_summary.csv", features)
+    write_csv(out / "segmentation_common_site_summary.csv", seg)
+    plot_panel(contrast, quality, features, seg, out / "effort_sensitivity")
+    provenance = {
+        "protocol": "effort_sensitivity_v2",
+        "seed": SEED,
+        "bootstrap_replicates": REPLICATES,
+        "qualification": "Approximate fixed-distance sensitivity: HQ omitted effort in producer source; E3 set effort=3. Numeric historical default and encoder build are not frozen. PA and PC margins are independently resampled under a working-independence approximation.",
+        "codec_grid": "Not a distance-by-effort factorial; cannot isolate effort for D2-E8 versus MQ.",
+        "producer_source": frozen["producer_source"],
+        "frozen_inputs_path": str(FROZEN_INPUTS.relative_to(REPO)),
+        "frozen_inputs_sha256": sha256(FROZEN_INPUTS),
+        "analysis_code_sha256": sha256(Path(__file__)),
+        "current_lock_imagecodecs": "2026.1.14 (current lock only; not historical producer proof)",
+        "selected_recipes": recipes,
+        "software": {"python": sys.version, "platform": platform.platform(), "numpy": np.__version__, "pandas": pd.__version__},
+        "inputs": normalized_records(all_inputs),
+    }
+    write_json(out / "provenance.json", provenance)
+    lines = ["# Approximate effort sensitivity", "", "HQ and E3 both use JPEG XL distance 1 in the archived producer declaration. HQ omitted the effort argument while E3 set effort 3. The historical numeric default and encoder build are not frozen, so this is an approximate sensitivity—not a controlled effort experiment.", "", "## Fixed-recipe paired bootstrap", "", "| Family | E3 − HQ product (95% interval) | Holm result |", "|---|---:|---|"]
+    for _, r in contrast.iterrows():
+        lines.append(f"| {r.display_family} | {r.product_delta_e3_minus_hq:+.5f} [{r.product_delta_ci_low:+.5f}, {r.product_delta_ci_high:+.5f}] | {r.supported_direction} ($p_{{Holm}}={r.product_holm_p:.4g}$) |")
+    lines += ["", "One Zstd-selected recipe was frozen across codecs. PA (306 compound clusters) and PC (201 target clusters) were independently resampled 50,000 times with shared weights across model/codec columns. Product intervals omit unknown PA–PC covariance.", "", "## Supporting archived evidence", "", "- Pixel metrics use 100 matched sites per codec.", f"- HQ/E3 median SSIM: {quality.loc[quality.codec=='jpegxl_lossy_hq','ssim_median'].iloc[0]:.6f}/{quality.loc[quality.codec=='jpegxl_lossy_effort_3','ssim_median'].iloc[0]:.6f}.", f"- E3 exceeds HQ correlation for {100*features.fraction_e3_gt_hq.iloc[0]:.1f}% of 790 cp_measure features.", "- Cell and nuclei segmentation comparisons use the exact 9,216-site common set.", "", "## Limitation", "", "The available codecs are not a distance-by-effort factorial: HQ=(D1, default/omitted effort), E3=(D1,E3), D2-E8=(D2,E8), and MQ=(D3, default/omitted effort). Therefore this sensitivity cannot explain or attribute the D2-E8-versus-MQ behavior to effort.", ""]
+    atomic_text(out / "REPORT.md", "\n".join(lines))
+    artifacts = []
     for p in sorted(out.iterdir()):
-        if p.name=="artifact_checksums.json": continue
-        artifacts.append({"path":p.name,"size_bytes":p.stat().st_size,"sha256":sha256(p)})
-    write_json(out/"artifact_checksums.json",{"artifacts":artifacts})
-    print(contrast[["display_family","product_delta_e3_minus_hq","product_delta_ci_low","product_delta_ci_high","product_holm_p","supported_direction"]].to_string(index=False))
+        if p.name == "artifact_checksums.json":
+            continue
+        artifacts.append({"path": p.name, "size_bytes": p.stat().st_size, "sha256": sha256(p)})
+    write_json(out / "artifact_checksums.json", {"artifacts": artifacts})
+    verify_release(out)
+    print(contrast[["display_family", "product_delta_e3_minus_hq", "product_delta_ci_low", "product_delta_ci_high", "product_holm_p", "supported_direction"]].to_string(index=False))
 
-if __name__=="__main__": main()
+
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--verify-only", action="store_true", help="Validate frozen inputs and the committed release without writing")
+    args = parser.parse_args(argv)
+    if args.verify_only:
+        manifest = load_frozen_manifest()
+        source_record = verify(COMPRESS_SOURCE)
+        sweep = pd.read_csv(SWEEP_CSV)
+        pa, pc, _selected, fixed_inputs = load_fixed_inputs(sweep)
+        del pa, pc
+        base_inputs = [verify(p, EXPECTED[str(p)]) for p in (SWEEP_CSV, IMAGE_QUALITY, FEATURE_CORR)]
+        _quality, _features, _seg, extra_inputs = evidence_summaries()
+        verify_frozen_inputs(base_inputs + fixed_inputs + extra_inputs, select_recipes(sweep), source_record)
+        verify_release(OUTPUT_DIR)
+        print(f"Verified {len(manifest['inputs'])} frozen inputs and {len(json.loads((OUTPUT_DIR / 'artifact_checksums.json').read_text())['artifacts'])} release artifacts")
+        return
+    staged = Path(tempfile.mkdtemp(prefix=".effort-release-", dir=HERE))
+    shutil.rmtree(staged)
+    try:
+        build_release(staged)
+        promote_clean_release(staged, OUTPUT_DIR)
+    finally:
+        if staged.exists():
+            shutil.rmtree(staged)
+
+
+if __name__ == "__main__":
+    main()
