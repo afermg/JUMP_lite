@@ -201,12 +201,22 @@ def _source_tree_identity(repo: Path) -> str:
 
 def software_identity(*, require_clean: bool) -> dict[str, Any]:
     repo = Path(__file__).resolve().parents[2]
+    configured_git = os.environ.get("GIT_EXECUTABLE")
+    git_path = Path(configured_git) if configured_git else None
+    if git_path is None:
+        discovered = shutil.which("git")
+        git_path = Path(discovered) if discovered else None
+    if git_path is None or not git_path.is_absolute() or not os.access(git_path, os.X_OK):
+        raise RuntimeError("an absolute executable GIT_EXECUTABLE is required")
+    if require_clean and configured_git is None:
+        raise RuntimeError("live apply requires explicit GIT_EXECUTABLE provenance")
+    git = str(git_path.resolve())
     commit = subprocess.check_output(
-        ["git", "-C", str(repo), "rev-parse", "HEAD"], text=True
+        [git, "-C", str(repo), "rev-parse", "HEAD"], text=True
     ).strip()
     dirty = bool(
         subprocess.check_output(
-            ["git", "-C", str(repo), "status", "--porcelain", "--untracked-files=all"],
+            [git, "-C", str(repo), "status", "--porcelain", "--untracked-files=all"],
             text=True,
         ).strip()
     )
@@ -214,7 +224,7 @@ def software_identity(*, require_clean: bool) -> dict[str, Any]:
     tracked = {
         line.strip()
         for line in subprocess.check_output(
-            ["git", "-C", str(repo), "ls-files", "src/jump_full_compression/*.py"],
+            [git, "-C", str(repo), "ls-files", "src/jump_full_compression/*.py"],
             text=True,
         ).splitlines()
     }
@@ -233,6 +243,8 @@ def software_identity(*, require_clean: bool) -> dict[str, Any]:
         raise RuntimeError("libjxl version unavailable")
     return {
         "git_commit": commit,
+        "git_executable": git,
+        "git_executable_sha256": sha256_file(Path(git)),
         "tracked_tree_clean": not dirty,
         "package_files_tracked": package_tracked,
         "package_source_sha256": _source_tree_identity(repo),

@@ -126,13 +126,15 @@ free-form argument string. It must contain one reviewed, whitespace-free value
 for each of:
 
 ```text
-DEPLOY_ROOT CANDIDATE_ID MANIFEST AUDIT_REPORT INVENTORY_DIGEST
+DEPLOY_ROOT GIT_EXECUTABLE CANDIDATE_ID MANIFEST AUDIT_REPORT INVENTORY_DIGEST
 MANIFEST_SHA256 MANIFEST_SIZE OUTPUT_ROOT STATE_ROOT BATCH_SIZE
 CONFIG_SHA256 FEATURE_ROOT CANONICAL_ROOT
 ```
 
 `DEPLOY_ROOT` must be an immutable reviewed checkout; all paths are absolute.
-Untracked non-ignored files anywhere in that deployment, including importable
+`GIT_EXECUTABLE` must be the absolute executable path recorded in every receipt;
+the service never depends on an ambient `PATH`. Untracked non-ignored files
+anywhere in that deployment, including importable
 shadow modules under `src/`, block live bootstrap and apply.
 The service templates remain uninstalled until this file and every field are
 reviewed together.

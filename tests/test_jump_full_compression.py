@@ -499,9 +499,15 @@ print(json.dumps({'tasks': runtime_task_count(), 'status': result['status'],
             raise AssertionError(command)
 
         try:
-            with mock.patch(
-                "jump_full_compression.pipeline.subprocess.check_output",
-                side_effect=git_output,
+            with (
+                mock.patch.dict(
+                    os.environ,
+                    {"GIT_EXECUTABLE": str(Path(shutil.which("git") or "git").resolve())},
+                ),
+                mock.patch(
+                    "jump_full_compression.pipeline.subprocess.check_output",
+                    side_effect=git_output,
+                ),
             ):
                 with self.assertRaises(RuntimeError):
                     software_identity(require_clean=True)
