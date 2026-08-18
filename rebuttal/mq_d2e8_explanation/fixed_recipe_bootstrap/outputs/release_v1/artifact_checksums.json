@@ -2,38 +2,38 @@
   "artifacts": [
     {
       "path": "REPORT.md",
-      "sha256": "515c00f898901241a6e498e61df55827e6633e61ec202dc93fe2cae846e62244",
-      "size_bytes": 1851
+      "sha256": "53d018dc263cf55a6756a2d5576cca390f03a1157440048dfb05e9d07975510b",
+      "size_bytes": 2261
     },
     {
       "path": "fixed_recipe_bootstrap.pdf",
-      "sha256": "7f3ea5faf76eb9d34e4b23d0f30d4582afa774cee2c2f8d560415983610d0248",
-      "size_bytes": 15822
+      "sha256": "89574d4257f5628e0f01ce21338281f0ef8bf3b742af7d438d8b3593e32792cc",
+      "size_bytes": 15820
     },
     {
       "path": "fixed_recipe_bootstrap.png",
-      "sha256": "510922584339c7c8455f7bbb7e6aa61d525fd719a06cdb7a1fca00105c971ef4",
-      "size_bytes": 78983
+      "sha256": "e02a5e08ccaeef87318597111d89cb73e95c7cf5ac158a7fee5a5ecdbcf997be",
+      "size_bytes": 78956
     },
     {
       "path": "manifests/selected_recipes.csv",
-      "sha256": "fa6672ac76c557f306911294cb63a7a59ecd76c7985c02dd8df20d7f0d56cbaa",
-      "size_bytes": 28468
+      "sha256": "666be4164d02158d899a9a23600fd01db0bbf84e2724b1825bbb14bd216e4b97",
+      "size_bytes": 28948
     },
     {
       "path": "provenance.json",
-      "sha256": "f1556d831ae3794188f6c5793ef9dc88a401e09b3c3abbe1287c67dd099ee279",
-      "size_bytes": 39981
+      "sha256": "497d261cd19ff85488d80b369bec3d284ab96012e0ea9484eb6e0552f338ac34",
+      "size_bytes": 42283
     },
     {
       "path": "results/mq_vs_d2e8.csv",
-      "sha256": "cada838ac0ec741979773aea67b28f989dd5824fbae03a136cd43f0400c1440e",
-      "size_bytes": 2593
+      "sha256": "28019c50c85850b21a2ce162c4cfb36cf38952610db71d458442b87ad1e44612",
+      "size_bytes": 2590
     },
     {
       "path": "results/score_intervals.csv",
-      "sha256": "b6911f7d1827033aac2a6bbf8ed807dddb46aaffa8a0daa571f72247df575b87",
-      "size_bytes": 3413
+      "sha256": "3851ba04a942e34afb4881984f6d4a22669611dd6ff0b9d209d9447a01572e69",
+      "size_bytes": 3412
     }
   ],
   "root": "."

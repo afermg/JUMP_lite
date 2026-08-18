@@ -12,10 +12,11 @@ import argparse
 import hashlib
 import json
 import os
+import shutil
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -67,6 +68,14 @@ EXPECTED_PA_QUERY_ROWS = {
         for codec in ("Zstd", "D2-E8", "MQ")
     },
 }
+EXPECTED_COMMON_PA_QUERY_ROWS = {
+    "cp_measure": 1263,
+    "dinov2": 1280,
+    "morphem": 1280,
+    "openphenom": 1280,
+    "subcell": 1280,
+}
+CREATED_UTC = "2026-08-18T18:00:00+00:00"
 
 
 class AnalysisError(RuntimeError):
@@ -174,7 +183,47 @@ def align_tables(tables: list[pd.DataFrame], key: str, expected: int) -> pd.Data
     return base.sort_values(key).reset_index(drop=True)
 
 
+def restrict_to_common_pa_queries(
+    queries: dict[str, pd.DataFrame], expected_common: int
+) -> dict[str, pd.DataFrame]:
+    """Return exact common-ID query tables after validating cluster mappings."""
+    if len(queries) < 2:
+        raise AnalysisError("at least two PA query variants are required")
+    common_ids = set.intersection(*(set(table.Metadata_id.astype(str)) for table in queries.values()))
+    if len(common_ids) != expected_common:
+        raise AnalysisError(f"unexpected common PA query count: {len(common_ids)}")
+    common_ids_sorted = sorted(common_ids)
+    result: dict[str, pd.DataFrame] = {}
+    expected_mapping: pd.DataFrame | None = None
+    for codec, table in queries.items():
+        current = table.copy()
+        current["Metadata_id"] = current.Metadata_id.astype(str)
+        current["Metadata_broad_sample"] = current.Metadata_broad_sample.astype(str)
+        filtered = (
+            current.loc[current.Metadata_id.isin(common_ids_sorted)]
+            .sort_values("Metadata_id")
+            .reset_index(drop=True)
+        )
+        if len(filtered) != expected_common or filtered.Metadata_id.duplicated().any():
+            raise AnalysisError(f"common PA query coverage mismatch for {codec}")
+        mapping = filtered[["Metadata_id", "Metadata_broad_sample"]]
+        if expected_mapping is None:
+            expected_mapping = mapping
+        elif not mapping.equals(expected_mapping):
+            raise AnalysisError(f"PA query-to-cluster mapping mismatch for {codec}")
+        result[codec] = filtered
+    return result
+
+
 def validate_inputs(sweep: pd.DataFrame) -> tuple[list[dict[str, Any]], pd.DataFrame, pd.DataFrame]:
+    """Load fixed-recipe inputs and align PA on exact within-family query rows.
+
+    Archived aggregate points are validated before restriction.  Each family's
+    three codecs are then restricted to their exact common ``Metadata_id`` set,
+    with a required one-to-one and codec-invariant mapping from query ID to broad
+    sample.  This avoids silently comparing the unequal cp_measure query
+    populations while preserving all 306 broad-sample bootstrap clusters.
+    """
     winners = select_recipes(sweep)
     pa_tables: list[pd.DataFrame] = []
     pc_tables: list[pd.DataFrame] = []
@@ -183,6 +232,7 @@ def validate_inputs(sweep: pd.DataFrame) -> tuple[list[dict[str, Any]], pd.DataF
     for family in FAMILIES:
         config = winners[family]
         prefix = PREFIX[family]
+        variants: list[dict[str, Any]] = []
         for codec, folder_codec, label in CODECS:
             folder = SWEEP / f"{prefix}_jump_target2_4plate_{folder_codec}_raw_features" / config
             results = folder / "results"
@@ -202,31 +252,44 @@ def validate_inputs(sweep: pd.DataFrame) -> tuple[list[dict[str, Any]], pd.DataF
             pa_required = {"Metadata_broad_sample", "Metadata_id", "normalized_average_precision"}
             if missing := pa_required.difference(pa_query.columns):
                 raise AnalysisError(f"PA query columns missing for {family}/{codec}: {sorted(missing)}")
+            if pa_query[list(pa_required)].isna().any().any():
+                raise AnalysisError(f"null PA query identity/value for {family}/{codec}")
+            pa_query = pa_query.copy()
+            pa_query["Metadata_id"] = pa_query.Metadata_id.astype(str)
+            pa_query["Metadata_broad_sample"] = pa_query.Metadata_broad_sample.astype(str)
             if pa_query.Metadata_id.duplicated().any() or len(pa_query) != EXPECTED_PA_QUERY_ROWS[(family, codec)]:
                 raise AnalysisError(f"invalid PA query keys/count for {family}/{codec}")
-            pa_agg = (
+            original_agg = (
                 pa_query.groupby("Metadata_broad_sample", as_index=False, sort=True)
                 .normalized_average_precision.mean()
                 .rename(columns={"normalized_average_precision": "mean_normalized_average_precision"})
             )
-            if len(pa_agg) != PA_CLUSTERS or pa_agg.Metadata_broad_sample.duplicated().any():
+            if len(original_agg) != PA_CLUSTERS or original_agg.Metadata_broad_sample.duplicated().any():
                 raise AnalysisError(f"unexpected PA cluster count for {family}/{codec}")
-            pa_cluster_key_sets.append(set(pa_agg.Metadata_broad_sample.astype(str)))
-            expected_pa = pa_map[["Metadata_broad_sample", "mean_normalized_average_precision"]].sort_values("Metadata_broad_sample").reset_index(drop=True)
-            if len(expected_pa) != PA_CLUSTERS or not np.allclose(
-                pa_agg.mean_normalized_average_precision,
-                expected_pa.mean_normalized_average_precision,
-                rtol=0.0,
-                atol=2e-15,
+            expected_pa = pa_map[["Metadata_broad_sample", "mean_normalized_average_precision"]].copy()
+            expected_pa["Metadata_broad_sample"] = expected_pa.Metadata_broad_sample.astype(str)
+            expected_pa = expected_pa.sort_values("Metadata_broad_sample").reset_index(drop=True)
+            if (
+                len(expected_pa) != PA_CLUSTERS
+                or not original_agg.Metadata_broad_sample.equals(expected_pa.Metadata_broad_sample)
+                or not np.allclose(
+                    original_agg.mean_normalized_average_precision,
+                    expected_pa.mean_normalized_average_precision,
+                    rtol=0.0,
+                    atol=2e-15,
+                )
             ):
                 raise AnalysisError(f"PA query aggregation mismatch for {family}/{codec}")
             if len(pc) != PC_CLUSTERS or pc.Metadata_target.duplicated().any():
                 raise AnalysisError(f"unexpected PC target keys for {family}/{codec}")
-            pa_point = float(pa_agg.mean_normalized_average_precision.mean())
+            archived_pa_point = float(original_agg.mean_normalized_average_precision.mean())
             pc_point = float(pc.mean_normalized_average_precision.mean())
-            if not np.isfinite([pa_point, pc_point]).all():
+            if not np.isfinite([archived_pa_point, pc_point]).all():
                 raise AnalysisError(f"non-finite aggregate for {family}/{codec}")
-            if abs(pa_point - float(metrics["PA_mean_nap"])) > 1e-12 or abs(pc_point - float(metrics["PC_mean_nap"])) > 1e-12:
+            if (
+                abs(archived_pa_point - float(metrics["PA_mean_nap"])) > 1e-12
+                or abs(pc_point - float(metrics["PC_mean_nap"])) > 1e-12
+            ):
                 raise AnalysisError(f"metrics.json aggregate mismatch for {family}/{codec}")
             sweep_model = MODEL[family] if codec == "Zstd" else (
                 f"{prefix}_{folder_codec}_raw" if family != "cp_measure" else f"{folder_codec}_raw"
@@ -237,26 +300,64 @@ def validate_inputs(sweep: pd.DataFrame) -> tuple[list[dict[str, Any]], pd.DataF
             for field in ("PA", "PC", "PA_mean_nap", "PC_mean_nap"):
                 if abs(float(row.iloc[0][field]) - float(metrics[field])) > 1e-12:
                     raise AnalysisError(f"sweep/metrics {field} mismatch for {family}/{codec}")
-            column = f"{family}__{label}"
-            pa_tables.append(pa_agg.rename(columns={"mean_normalized_average_precision": column}))
+            variants.append(
+                {
+                    "codec": codec,
+                    "label": label,
+                    "folder_codec": folder_codec,
+                    "pa_query": pa_query,
+                    "pc": pc,
+                    "metrics": metrics,
+                    "paths": paths,
+                    "identities": identities,
+                    "archived_pa_point": archived_pa_point,
+                    "pc_point": pc_point,
+                }
+            )
+
+        common_queries = restrict_to_common_pa_queries(
+            {variant["codec"]: variant["pa_query"] for variant in variants},
+            EXPECTED_COMMON_PA_QUERY_ROWS[family],
+        )
+        for variant in variants:
+            common_query = common_queries[variant["codec"]]
+            common_agg = (
+                common_query.groupby("Metadata_broad_sample", as_index=False, sort=True)
+                .normalized_average_precision.mean()
+                .rename(columns={"normalized_average_precision": "mean_normalized_average_precision"})
+            )
+            if len(common_agg) != PA_CLUSTERS or common_agg.Metadata_broad_sample.duplicated().any():
+                raise AnalysisError(f"common PA restriction lost broad-sample clusters for {family}/{variant['codec']}")
+            pa_cluster_key_sets.append(set(common_agg.Metadata_broad_sample))
+            common_pa_point = float(common_agg.mean_normalized_average_precision.mean())
+            if not np.isfinite(common_pa_point):
+                raise AnalysisError(f"non-finite common PA aggregate for {family}/{variant['codec']}")
+            column = f"{family}__{variant['label']}"
+            pa_tables.append(common_agg.rename(columns={"mean_normalized_average_precision": column}))
             pc_tables.append(
-                pc[["Metadata_target", "mean_normalized_average_precision"]].rename(
+                variant["pc"][["Metadata_target", "mean_normalized_average_precision"]].rename(
                     columns={"mean_normalized_average_precision": column}
                 )
             )
+            paths = variant["paths"]
+            identities = variant["identities"]
+            original_rows = len(variant["pa_query"])
             records.append(
                 {
                     "family": family,
                     "display_family": DISPLAY[family],
-                    "codec": label,
+                    "codec": variant["label"],
                     "config": config,
                     "selection_metric": "PA*PC/100 on Zstd only; lexical exact-tie resolution",
                     "pa_clusters": PA_CLUSTERS,
                     "pc_clusters": PC_CLUSTERS,
-                    "pa_query_rows": len(pa_query),
-                    "pa_point": pa_point,
-                    "pc_point": pc_point,
-                    "product_point": pa_point * pc_point,
+                    "pa_query_rows_original": original_rows,
+                    "pa_query_rows_common": len(common_query),
+                    "pa_query_rows_dropped": original_rows - len(common_query),
+                    "pa_point_archived": variant["archived_pa_point"],
+                    "pa_point_common": common_pa_point,
+                    "pc_point": variant["pc_point"],
+                    "product_point_common": common_pa_point * variant["pc_point"],
                     **{f"{name}_path": str(paths[name]) for name in paths},
                     **{f"{name}_sha256": identities[name]["sha256"] for name in paths},
                     **{f"{name}_size_bytes": identities[name]["size_bytes"] for name in paths},
@@ -268,7 +369,6 @@ def validate_inputs(sweep: pd.DataFrame) -> tuple[list[dict[str, Any]], pd.DataF
     pa = align_tables(pa_tables, "Metadata_broad_sample", PA_CLUSTERS)
     pc = align_tables(pc_tables, "Metadata_target", PC_CLUSTERS)
     return records, pa, pc
-
 
 def bootstrap(pa: pd.DataFrame, pc: pd.DataFrame, replicates: int, seed: int) -> tuple[pd.DataFrame, pd.DataFrame]:
     columns = [c for c in pa.columns if c != "Metadata_broad_sample"]
@@ -380,13 +480,24 @@ def report(records: list[dict[str, Any]], contrasts: pd.DataFrame, output_dir: P
             f"{row.product_delta_mq_minus_d2e8:+.5f} [{row.product_delta_ci_low:+.5f}, {row.product_delta_ci_high:+.5f}] | "
             f"{row.product_supported_direction} (p_Holm={row.product_holm_p:.4g}) |"
         )
+    cp_coverage = {
+        row["codec"]: (row["pa_query_rows_original"], row["pa_query_rows_common"], row["pa_query_rows_dropped"])
+        for row in records
+        if row["family"] == "cp_measure"
+    }
+    coverage_line = ", ".join(
+        f"{codec} {original}/{common}/{dropped}"
+        for codec, (original, common, dropped) in cp_coverage.items()
+    )
     content = "\n".join(
         [
             "# Fixed-recipe Target-2 MQ versus D2-E8 bootstrap",
             "",
             "## Design",
             "",
-            "One recipe per Figure-3c family was selected using Zstd PA×PC/100 only, with lexical exact-tie resolution, then fixed across D2-E8 and MQ. The archived 306 PA broad-sample clusters and 201 PC target clusters were resampled independently with shared weights across every family/codec within each margin for 50,000 deterministic PCG64DXSM replicates.",
+            "One recipe per Figure-3c family was selected using Zstd PA×PC/100 only, with lexical exact-tie resolution, then fixed across D2-E8 and MQ. Within each family, PA query rows were restricted to the exact Metadata_id intersection across Zstd, D2-E8, and MQ before aggregation to all 306 broad-sample clusters. The 306 PA clusters and 201 PC target clusters were then resampled independently with shared weights across every family/codec within each margin for 50,000 deterministic PCG64DXSM replicates.",
+            "",
+            f"cp_measure PA query original/common/dropped counts are: {coverage_line}. All learned-family variants retain 1,280/1,280/0 rows. Query-to-broad-sample mappings are required to be identical across codecs on the common rows.",
             "",
             "The product is a working product-of-margins model. Its interval and test omit unknown PA–PC covariance and are conditional on archived normalized outputs and the selected recipes; they are not end-to-end uncertainty.",
             "",
@@ -429,33 +540,50 @@ def verify_release(output_dir: Path) -> None:
     if not checksums.is_file() or not provenance_path.is_file():
         raise AnalysisError("release checksums/provenance missing")
     payload = json.loads(checksums.read_text())
+    listed = {record["path"] for record in payload["artifacts"]}
+    actual = {
+        path.relative_to(output_dir).as_posix()
+        for path in output_dir.rglob("*")
+        if path.is_file() and path.name != "artifact_checksums.json"
+    }
+    if listed != actual:
+        raise AnalysisError(f"release inventory drift: missing={sorted(listed - actual)}, extra={sorted(actual - listed)}")
     for record in payload["artifacts"]:
         path = output_dir / record["path"]
         if path.stat().st_size != record["size_bytes"] or sha256_file(path) != record["sha256"]:
             raise AnalysisError(f"release artifact drift: {path}")
     provenance = json.loads(provenance_path.read_text())
-    if file_record(SWEEP_CSV)["sha256"] != provenance["sweep_input"]["sha256"]:
+    sweep_record = file_record(SWEEP_CSV)
+    if sweep_record["sha256"] != provenance["sweep_input"]["sha256"] or sweep_record["size_bytes"] != provenance["sweep_input"]["size_bytes"]:
         raise AnalysisError("sweep input drift from release provenance")
-    for record in provenance["selected_inputs"]:
+    if provenance.get("protocol_version") != 2:
+        raise AnalysisError("unexpected release protocol version")
+    selected = provenance["selected_inputs"]
+    if len(selected) != len(FAMILIES) * len(CODECS):
+        raise AnalysisError("selected input manifest count drift")
+    for record in selected:
+        expected_common = EXPECTED_COMMON_PA_QUERY_ROWS[record["family"]]
+        if record["pa_query_rows_common"] != expected_common or record["pa_query_rows_original"] - record["pa_query_rows_dropped"] != expected_common:
+            raise AnalysisError("PA query coverage provenance drift")
         for name in ("metrics", "pa_queries", "pa_map", "pc", "config", "output"):
             path = Path(record[f"{name}_path"])
             if sha256_file(path) != record[f"{name}_sha256"] or path.stat().st_size != record[f"{name}_size_bytes"]:
                 raise AnalysisError(f"selected input drift: {path}")
 
 
-def run(output_dir: Path, replicates: int, seed: int) -> None:
+def build_release(output_dir: Path, replicates: int, seed: int) -> None:
     sweep = validate_sweep()
     records, pa, pc = validate_inputs(sweep)
     scores, contrasts = bootstrap(pa, pc, replicates, seed)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=False)
     atomic_csv(output_dir / "manifests/selected_recipes.csv", pd.DataFrame(records))
     atomic_csv(output_dir / "results/score_intervals.csv", scores)
     atomic_csv(output_dir / "results/mq_vs_d2e8.csv", contrasts)
     plot_panel(contrasts, output_dir)
     report(records, contrasts, output_dir)
     provenance = {
-        "protocol_version": 1,
-        "created_utc": datetime.now(UTC).isoformat(),
+        "protocol_version": 2,
+        "created_utc": CREATED_UTC,
         "analysis": "fixed-recipe paired Target-2 MQ versus D2-E8 cluster bootstrap",
         "seed": seed,
         "replicates": replicates,
@@ -465,6 +593,7 @@ def run(output_dir: Path, replicates: int, seed: int) -> None:
         "sweep_input": file_record(SWEEP_CSV),
         "selected_inputs": records,
         "selection": "Zstd PA*PC/100, lexical exact-tie resolution",
+        "pa_query_alignment": "Exact within-family Metadata_id intersection before aggregation; codec-invariant Metadata_id-to-Metadata_broad_sample mapping required; all 306 broad-sample clusters retained.",
         "inference": "PA and PC margins independently resampled; common weights across family/codecs within margin; percentile intervals; centered bootstrap; Holm over five product contrasts",
         "qualification": "Conditional working product-of-margins inference omits unknown PA-PC covariance; no denoising or biological-improvement interpretation.",
     }
@@ -472,6 +601,38 @@ def run(output_dir: Path, replicates: int, seed: int) -> None:
     write_checksums(output_dir)
     verify_release(output_dir)
 
+
+def publish_release(output_dir: Path, builder: Callable[[Path], None]) -> None:
+    """Build and verify in a fresh sibling directory before replacing release."""
+    output_dir = output_dir.resolve()
+    output_dir.parent.mkdir(parents=True, exist_ok=True)
+    staged = Path(tempfile.mkdtemp(prefix=f".{output_dir.name}.staged.", dir=output_dir.parent))
+    # build_release requires its destination not to exist.
+    staged.rmdir()
+    backup = output_dir.parent / f".{output_dir.name}.backup"
+    if backup.exists():
+        raise AnalysisError(f"stale release backup exists: {backup}")
+    try:
+        builder(staged)
+        verify_release(staged)
+        if output_dir.exists():
+            os.replace(output_dir, backup)
+        try:
+            os.replace(staged, output_dir)
+        except Exception:
+            if backup.exists() and not output_dir.exists():
+                os.replace(backup, output_dir)
+            raise
+        if backup.exists():
+            shutil.rmtree(backup)
+    finally:
+        if staged.exists():
+            shutil.rmtree(staged)
+
+
+def run(output_dir: Path, replicates: int, seed: int) -> None:
+    publish_release(output_dir, lambda staged: build_release(staged, replicates, seed))
+    verify_release(output_dir)
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
