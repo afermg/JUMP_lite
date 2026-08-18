@@ -5,7 +5,7 @@ ConditionPathExists=/work/datasets/jump_lite/full_jump_compression_state/v1.0/ca
 [Service]
 Type=exec
 EnvironmentFile=/work/datasets/jump_lite/full_jump_compression_state/v1.0/candidate.env
-Environment=OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 BLIS_NUM_THREADS=1 VECLIB_MAXIMUM_THREADS=1 NUMEXPR_NUM_THREADS=1 TBB_NUM_THREADS=1
+Environment=OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 BLIS_NUM_THREADS=1 VECLIB_MAXIMUM_THREADS=1 NUMEXPR_NUM_THREADS=1 TBB_NUM_THREADS=1 ARROW_NUM_THREADS=1 POLARS_MAX_THREADS=1 RAYON_NUM_THREADS=1
 ExecStart=/run/current-system/sw/bin/env PYTHONPATH=${DEPLOY_ROOT}/src /work/users/amunoz/projects/JUMP_lite/.venv/bin/python -m jump_full_compression run --apply --candidate-id ${CANDIDATE_ID} --manifest ${MANIFEST} --audit-report ${AUDIT_REPORT} --inventory-digest ${INVENTORY_DIGEST} --manifest-sha256 ${MANIFEST_SHA256} --manifest-size ${MANIFEST_SIZE} --output-root ${OUTPUT_ROOT} --state-root ${STATE_ROOT} --batch-size ${BATCH_SIZE}
 Restart=on-failure
 RestartSec=5min

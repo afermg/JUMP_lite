@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from .governor import GovernorPaths, run_governor
 from .inventory import audit_inventory
-from .model import CandidateConfig
+from .model import CandidateConfig, assert_runtime_task_ceiling
 from .pipeline import (
     acknowledge_errors,
     bootstrap_candidate,
@@ -87,6 +87,7 @@ def parser():
 def main(argv=None):
     args = parser().parse_args(argv)
     if args.command == "audit":
+        assert_runtime_task_ceiling()
         print(
             json.dumps(
                 audit_inventory(args.input, args.report, kind=args.kind), indent=2

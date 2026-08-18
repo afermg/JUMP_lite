@@ -11,7 +11,7 @@ import math
 from pathlib import Path
 from typing import Any, Iterator, Mapping
 
-import duckdb
+import pyarrow.parquet as pq
 
 from .model import (
     CHANNELS,
@@ -22,10 +22,6 @@ from .model import (
     sha256_file,
     site_key,
 )
-
-
-def _sql_path(path: Path) -> str:
-    return str(path.absolute()).replace("'", "''")
 
 
 def _json_safe(value: Any) -> Any:
@@ -85,45 +81,57 @@ def inventory_digest_from_report(report: Mapping[str, Any]) -> str:
     return digest_json({key: report[key] for key in sorted(set(report) - excluded)})
 
 
-def schema(path: Path) -> tuple[list[tuple[Any, ...]], tuple[str, ...]]:
-    con = duckdb.connect()
-    try:
-        description = con.execute(
-            f"DESCRIBE SELECT * FROM read_parquet('{_sql_path(path)}')"
-        ).fetchall()
-    finally:
-        con.close()
-    return description, tuple(row[0] for row in description)
+def schema(path: Path) -> tuple[list[dict[str, Any]], tuple[str, ...]]:
+    parquet = pq.ParquetFile(path)
+    arrow_schema = parquet.schema_arrow
+    description = [
+        {
+            "name": field.name,
+            "type": str(field.type),
+            "nullable": field.nullable,
+            "metadata": _json_safe(field.metadata),
+        }
+        for field in arrow_schema
+    ]
+    return description, tuple(arrow_schema.names)
 
 
 def row_count(path: Path) -> int:
-    con = duckdb.connect()
-    try:
-        return int(
-            con.execute(
-                f"SELECT count(*) FROM read_parquet('{_sql_path(path)}')"
-            ).fetchone()[0]
-        )
-    finally:
-        con.close()
+    return int(pq.ParquetFile(path).metadata.num_rows)
+
+
+def _physical_order_key(row: Mapping[str, Any]) -> tuple[Any, ...]:
+    """Return the typed canonical identity tuple used for physical-order checks."""
+    site_key(row)  # validates missing, separators, and path-like identity values
+    return tuple(row[column] for column in IDENTITY_COLUMNS)
 
 
 def iter_inventory(
     path: Path, columns: tuple[str, ...] | None = None, batch_size: int = 1024
 ) -> Iterator[dict[str, Any]]:
-    columns = columns or schema(path)[1]
-    selected = ",".join(f'"{name.replace(chr(34), chr(34) * 2)}"' for name in columns)
-    order = ",".join(IDENTITY_COLUMNS)
-    con = duckdb.connect()
-    cursor = con.execute(
-        f"SELECT {selected} FROM read_parquet('{_sql_path(path)}') ORDER BY {order}"
-    )
-    try:
-        while rows := cursor.fetchmany(batch_size):
-            for values in rows:
-                yield dict(zip(columns, values))
-    finally:
-        con.close()
+    """Stream a physically identity-ordered Parquet without sorting or threads."""
+    parquet = pq.ParquetFile(path)
+    columns = columns or tuple(parquet.schema_arrow.names)
+    previous: tuple[Any, ...] | None = None
+    for batch in parquet.iter_batches(
+        batch_size=batch_size, columns=list(columns), use_threads=False
+    ):
+        values = batch.to_pydict()
+        for index in range(batch.num_rows):
+            row = {column: values[column][index] for column in columns}
+            try:
+                current = _physical_order_key(row)
+                out_of_order = previous is not None and current <= previous
+            except Exception as error:
+                raise RuntimeError(
+                    "manifest identity values are invalid or not order-comparable"
+                ) from error
+            if out_of_order:
+                raise RuntimeError(
+                    "manifest is not in strict physical canonical identity order"
+                )
+            previous = current
+            yield row
 
 
 def audit_inventory(
@@ -148,7 +156,6 @@ def audit_inventory(
     anomalies: list[dict[str, Any]] = []
     anomaly_count = 0
     counts: Counter[str] = Counter()
-    previous_key: str | None = None
     processed = 0
     if not missing_columns:
         for raw in iter_inventory(path, columns):
@@ -156,9 +163,6 @@ def audit_inventory(
             try:
                 normalized = _canonical_row(raw, columns)
                 key = normalized["Metadata_Site_Key"]
-                if previous_key == key:
-                    raise ValueError("duplicate/ambiguous key or multiple URL sets")
-                previous_key = key
                 key_hash.update(key.encode() + b"\n")
                 row_hash.update(
                     json.dumps(
@@ -175,7 +179,8 @@ def audit_inventory(
                             "row": processed,
                             "error": str(error),
                             "identity": [
-                                _json_safe(raw.get(c)) for c in IDENTITY_COLUMNS
+                                _json_safe(raw.get(column))
+                                for column in IDENTITY_COLUMNS
                             ],
                         }
                     )

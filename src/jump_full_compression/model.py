@@ -31,6 +31,7 @@ INITIAL_WORKERS = 4
 MAX_WORKERS = 16
 MAX_CANDIDATE_ROWS = 256
 MAX_CUMULATIVE_ERRORS = 1_000_000
+MAX_RUNTIME_TASKS = 24
 THREAD_ENV = (
     "OMP_NUM_THREADS",
     "OPENBLAS_NUM_THREADS",
@@ -39,7 +40,27 @@ THREAD_ENV = (
     "VECLIB_MAXIMUM_THREADS",
     "NUMEXPR_NUM_THREADS",
     "TBB_NUM_THREADS",
+    "ARROW_NUM_THREADS",
+    "POLARS_MAX_THREADS",
+    "RAYON_NUM_THREADS",
 )
+
+
+def runtime_task_count() -> int:
+    task_root = Path("/proc/self/task")
+    if not task_root.is_dir():
+        raise RuntimeError("Linux task telemetry unavailable")
+    return sum(1 for _ in task_root.iterdir())
+
+
+def assert_runtime_task_ceiling(additional_tasks: int = 0) -> int:
+    observed = runtime_task_count()
+    if observed > MAX_RUNTIME_TASKS or observed + additional_tasks > MAX_RUNTIME_TASKS:
+        raise RuntimeError(
+            f"runtime task ceiling exceeded: observed={observed} "
+            f"additional={additional_tasks} ceiling={MAX_RUNTIME_TASKS}"
+        )
+    return observed
 
 
 def canonical_json(value: Any) -> bytes:

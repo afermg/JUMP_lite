@@ -6,6 +6,8 @@ import json
 import os
 from pathlib import Path
 import shutil
+import subprocess
+import sys
 import tempfile
 import time
 import unittest
@@ -30,6 +32,8 @@ from jump_full_compression.model import (
     CODECS,
     COMPRESSION_CPUS,
     CandidateConfig,
+    LIVE_CANDIDATE_PARENT,
+    LIVE_STATE_PARENT,
     THREAD_ENV,
 )
 from jump_full_compression.pipeline import (
@@ -162,6 +166,11 @@ class FullJumpCompressionTests(unittest.TestCase):
                 audit["inventory_digest"],
                 kind="candidate",
             )
+
+    def test_audit_rejects_physically_unsorted_manifest(self):
+        manifest = self._manifest([self._row(site=2), self._row(site=1)])
+        with self.assertRaisesRegex(RuntimeError, "physical canonical identity order"):
+            audit_inventory(manifest, kind="candidate")
 
     def test_audit_rejects_duplicate_ambiguous_missing_extra_and_malformed(self):
         row = self._row()
@@ -407,6 +416,69 @@ class FullJumpCompressionTests(unittest.TestCase):
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             with self.assertRaises(RuntimeError):
                 run_candidate(config, True)
+
+    def test_subprocess_audit_and_prepare_stay_within_task_ceiling(self):
+        config, _ = self._config(rows=[self._row()])
+        report = self.root / "subprocess-audit.json"
+        script = r"""
+import json, os, sys
+from pathlib import Path
+from jump_full_compression.cli import main
+from jump_full_compression.model import CandidateConfig, runtime_task_count
+from jump_full_compression.pipeline import run_candidate
+manifest, report, output, state = map(Path, sys.argv[1:])
+main(['audit', '--input', str(manifest), '--report', str(report), '--kind', 'candidate'])
+audit = json.loads(report.read_text())
+config = CandidateConfig('test-subprocess', manifest, report, output, state,
+    audit['inventory_digest'], audit['manifest']['sha256'], audit['manifest']['bytes'],
+    test_mode=True)
+result = run_candidate(config, False)
+print(json.dumps({'tasks': runtime_task_count(), 'status': result['status'],
+    'duckdb_loaded': 'duckdb' in sys.modules}))
+"""
+        environment = os.environ.copy()
+        environment["PYTHONPATH"] = str(Path("src").absolute())
+        for name in THREAD_ENV:
+            environment.pop(name, None)
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                script,
+                str(config.manifest),
+                str(report),
+                str(self.root / "subprocess-output"),
+                str(self.root / "subprocess-state"),
+            ],
+            cwd=Path.cwd(),
+            env=environment,
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        payload = json.loads(result.stdout.strip().splitlines()[-1])
+        self.assertEqual(payload["status"], "dry-run")
+        self.assertLessEqual(payload["tasks"], 24)
+        self.assertFalse(payload["duckdb_loaded"])
+
+    def test_live_prepare_rejects_excess_preexisting_tasks(self):
+        config, audit = self._config(rows=[self._row()])
+        live = CandidateConfig(
+            "live-task-gate",
+            config.manifest,
+            config.audit_report,
+            LIVE_CANDIDATE_PARENT / "live-task-gate",
+            LIVE_STATE_PARENT / "live-task-gate",
+            audit["inventory_digest"],
+            audit["manifest"]["sha256"],
+            audit["manifest"]["bytes"],
+        )
+        with mock.patch(
+            "jump_full_compression.pipeline.assert_runtime_task_ceiling",
+            side_effect=RuntimeError("runtime task ceiling exceeded: observed=25"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "observed=25"):
+                run_candidate(live, False)
 
     def test_live_clean_producer_rejects_untracked_importable_source(self):
         shadow = Path("src/boto3.py")
@@ -817,6 +889,13 @@ class FullJumpCompressionTests(unittest.TestCase):
         ):
             self.assertIn(field, compressor)
         self.assertIn("${CANONICAL_ROOT}", governor)
+        self.assertIn("ARROW_NUM_THREADS=1", compressor + governor)
+        self.assertIn("POLARS_MAX_THREADS=1", compressor + governor)
+        self.assertIn("TasksMax=256", compressor)
+        package_text = "\n".join(
+            path.read_text() for path in Path("src/jump_full_compression").glob("*.py")
+        )
+        self.assertNotIn("import duckdb", package_text)
         self.assertIn(
             "/work/users/amunoz/projects/JUMP_lite/.venv/bin/python",
             compressor + governor,

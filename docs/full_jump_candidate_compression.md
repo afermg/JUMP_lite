@@ -10,7 +10,11 @@ a final `jump_full` dataset or a CPG prefix.
 - Channel order is `AGP,DNA,ER,Mito,RNA`; `source_15` is exactly
   `AGP,DNA,ER,Mito`. RNA is never synthesized.
 - One source decode feeds both codecs.
-- OMP/OpenBLAS/MKL/BLIS/VecLib/NumExpr/TBB are capped at one and recorded.
+- OMP/OpenBLAS/MKL/BLIS/VecLib/NumExpr/TBB/PyArrow/Polars/Rayon are capped at
+  one before third-party imports and recorded.
+- Python DuckDB and Polars are not part of the compressor/audit runtime.
+  Preparation rejects more than 24 existing Linux tasks, and each worker batch
+  is rejected unless current tasks plus workers remains at most 24.
 
 Live candidate data and operational state are candidate-bound and separate:
 
@@ -31,6 +35,24 @@ controllers, bootstrap, and acknowledgement.
 `audit --kind raw` streams an arbitrary inventory and is not runnable input. A
 separately selected `--kind candidate` manifest is capped at 256 rows and keeps
 all selection/provenance columns. Every column participates in row identity.
+PyArrow reads Parquet batches with `use_threads=False`; no in-process sort is
+performed. All raw, candidate, and frozen manifests must already be in strict
+physical order by `Metadata_Source,Metadata_Batch,Metadata_Plate,Metadata_Well,Metadata_Site`.
+Duplicate or decreasing identity tuples fail closed.
+
+If a large raw inventory is not ordered, sort it as a separate pre-processing
+operation outside this package. For example, a reviewed DuckDB **CLI** job may
+use one thread and an explicitly provisioned temporary directory:
+
+```bash
+duckdb -c "SET threads=1; SET temp_directory='/bounded/scratch/duckdb'; \
+COPY (SELECT * FROM read_parquet('raw.parquet') ORDER BY Metadata_Source, \
+Metadata_Batch, Metadata_Plate, Metadata_Well, Metadata_Site) \
+TO 'canonical.parquet' (FORMAT PARQUET);"
+```
+
+Validate storage bounds separately. Never import Python `duckdb` into the
+candidate deployment or service runtime.
 
 `inventory_digest` is portable content identity: schema, manifest SHA-256 and
 byte count, ordered keys/rows, source counts, audit fields and anomaly results.

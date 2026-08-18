@@ -47,6 +47,7 @@ from .model import (
     MAX_WORKERS,
     CandidateConfig,
     assert_no_symlinks,
+    assert_runtime_task_ceiling,
     atomic_json,
     fsync_dir,
     sha256_file,
@@ -641,6 +642,8 @@ def _prepare(
     config: CandidateConfig,
 ) -> tuple[dict[str, Any], list[dict[str, Any]], dict[str, Any]]:
     config.validate()
+    if not config.test_mode:
+        assert_runtime_task_ceiling()
     audit = load_audit(
         config.audit_report, config.manifest, config.inventory_digest, kind="candidate"
     )
@@ -832,8 +835,15 @@ def run_candidate(config: CandidateConfig, apply: bool) -> dict[str, Any]:
                 cumulative_errors=cumulative_errors,
             )
             try:
+                if not config.test_mode:
+                    assert_runtime_task_ceiling(
+                        additional_tasks=min(workers, len(batch))
+                    )
                 with ThreadPoolExecutor(
-                    max_workers=min(workers, len(batch))
+                    max_workers=min(workers, len(batch)),
+                    initializer=(
+                        assert_runtime_task_ceiling if not config.test_mode else None
+                    ),
                 ) as executor:
                     results = list(
                         executor.map(
