@@ -67,7 +67,7 @@ The required order is:
    PYTHONPATH=/immutable/deployment/src .venv/bin/python -m jump_full_compression audit \
      --kind candidate --input /absolute/candidate.parquet \
      --report /absolute/candidate-audit.json
-   git status --short                       # must be empty in deployment
+   git status --short --untracked-files=all # must be empty in deployment
    ```
 2. **Bootstrap once, paused.** Dry-run first, then explicit apply:
    ```bash
@@ -81,8 +81,8 @@ The required order is:
    ```bash
    python -m jump_full_compression governor --apply \
      --candidate-id candidate-001 --config-sha256 CONFIG_SHA \
-     --feature-root FEATURE_ROOT --state-root STATE_ROOT \
-     --output-filesystem /work/datasets
+     --feature-root FEATURE_ROOT --canonical-root CANONICAL_ROOT \
+     --state-root STATE_ROOT --output-filesystem /work/datasets
    ```
 4. **Verify control before starting compression.** `status` must show a fresh,
    identity-bound `control.json`, expected CPUs `64..80`, no telemetry errors,
@@ -106,10 +106,12 @@ for each of:
 ```text
 DEPLOY_ROOT CANDIDATE_ID MANIFEST AUDIT_REPORT INVENTORY_DIGEST
 MANIFEST_SHA256 MANIFEST_SIZE OUTPUT_ROOT STATE_ROOT BATCH_SIZE
-CONFIG_SHA256 FEATURE_ROOT
+CONFIG_SHA256 FEATURE_ROOT CANONICAL_ROOT
 ```
 
 `DEPLOY_ROOT` must be an immutable reviewed checkout; all paths are absolute.
+Untracked non-ignored files anywhere in that deployment, including importable
+shadow modules under `src/`, block live bootstrap and apply.
 The service templates remain uninstalled until this file and every field are
 reviewed together.
 
@@ -140,9 +142,16 @@ moves, promotes, publishes, or uploads data.
 
 ## Governor boundary
 
+The governor accepts live state only at the literal
+`/work/datasets/jump_lite/full_jump_compression_state/v1.0/<candidate-id>` path.
+It rejects redirected shared parents and symlinks in state, control, compression,
+or snapshot paths before reading or writing. Temporary roots require the hidden
+test-mode seam and are never used by the service.
+
 The three-hour persistent timer is `OnCalendar=*-*-* 00/3:00:00`. The governor
-checks feature heartbeats, independent unfinished mask/profile progress, every
-profile PID, all segmentation cgroup descendants, active-service MainPID,
+checks feature heartbeats and independently scans the canonical mask-receipt
+and profile-Parquet roots for exact current unfinished progress, then checks
+every profile PID, all segmentation cgroup descendants, active-service MainPID,
 compression heartbeat/progress/errors, load, memory, storage, and I/O pressure.
 Missing or racy telemetry fails closed. Two healthy windows permit one
 four-worker ramp and reset the window count.

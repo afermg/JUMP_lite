@@ -15,7 +15,12 @@ import numpy as np
 from PIL import Image
 import polars as pl
 
-from jump_full_compression.governor import GovernorPaths, decide, run_governor
+from jump_full_compression.governor import (
+    GovernorPaths,
+    collect_metrics,
+    decide,
+    run_governor,
+)
 from jump_full_compression.inventory import (
     audit_inventory,
     inventory_digest_from_report,
@@ -34,6 +39,7 @@ from jump_full_compression.pipeline import (
     bootstrap_candidate,
     read_source,
     run_candidate,
+    software_identity,
     sha256_file,
     validate_adoption_seam,
 )
@@ -114,6 +120,8 @@ class FullJumpCompressionTests(unittest.TestCase):
             "feature_processes_mutated": False,
         }
         value.update(changes)
+        if value["acknowledged_error_count"] > 0:
+            value["acknowledgement_source"] = "explicit-cli"
         (config.state_root / "control.json").write_text(json.dumps(value))
         return value
 
@@ -400,6 +408,37 @@ class FullJumpCompressionTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 run_candidate(config, True)
 
+    def test_live_clean_producer_rejects_untracked_importable_source(self):
+        shadow = Path("src/boto3.py")
+        self.assertFalse(shadow.exists())
+        shadow.write_text("raise RuntimeError('must never be importable')\n")
+        calls = []
+
+        def git_output(command, text=True):
+            calls.append(command)
+            if "rev-parse" in command:
+                return "a" * 40 + "\n"
+            if "status" in command:
+                return "?? src/boto3.py\n"
+            if "ls-files" in command:
+                return "\n".join(
+                    str(path) for path in Path("src/jump_full_compression").glob("*.py")
+                )
+            raise AssertionError(command)
+
+        try:
+            with mock.patch(
+                "jump_full_compression.pipeline.subprocess.check_output",
+                side_effect=git_output,
+            ):
+                with self.assertRaises(RuntimeError):
+                    software_identity(require_clean=True)
+        finally:
+            shadow.unlink(missing_ok=True)
+        status_call = next(command for command in calls if "status" in command)
+        self.assertIn("--untracked-files=all", status_call)
+        self.assertFalse(shadow.exists())
+
     def test_s3_allowlist_truncation_and_retry(self):
         with self.assertRaises(ValueError):
             read_source("s3://evil/key", attempts=1)
@@ -441,6 +480,13 @@ class FullJumpCompressionTests(unittest.TestCase):
             "candidate_id": "candidate",
             "config_sha256": "a" * 64,
             "feature_states": states,
+            "authoritative_progress": {
+                codec: {
+                    "receipt_backed_masks": masks,
+                    "canonical_profiles": profiles,
+                }
+                for codec in states
+            },
             "profile_worker_affinities": {
                 codec: {"1": list(range(288, 300))} for codec in states
             },
@@ -473,9 +519,25 @@ class FullJumpCompressionTests(unittest.TestCase):
             "io_pressure_avg10": 1,
         }
 
+    def _governor_control(self, metrics, acknowledged=0):
+        return {
+            "format_version": "full-jump-compression-control-v2",
+            "candidate_id": metrics["candidate_id"],
+            "config_sha256": metrics["config_sha256"],
+            "paused": True,
+            "desired_workers": 4,
+            "max_workers": 16,
+            "consecutive_healthy_windows": 0,
+            "compression_cpus": list(COMPRESSION_CPUS),
+            "acknowledged_error_count": acknowledged,
+            "acknowledgement_source": "explicit-cli" if acknowledged else "zero",
+            "observed_at_unix": metrics["observed_at_unix"],
+            "feature_processes_mutated": False,
+        }
+
     def test_governor_multiwindow_independent_progress_and_error_ack(self):
         m1 = self._metrics()
-        c1 = decide(m1)
+        c1 = decide(m1, self._governor_control(m1))
         self.assertEqual(c1["desired_workers"], 4)
         m2 = self._metrics(processed=11, masks=51, profiles=21)
         c2 = decide(m2, c1, m1)
@@ -490,8 +552,84 @@ class FullJumpCompressionTests(unittest.TestCase):
         self.assertTrue(decide(stalled, c4, m4)["paused"])
         errored = self._metrics(errors=1)
         self.assertTrue(decide(errored)["paused"])
-        acknowledged = {**c4, "acknowledged_error_count": 1}
+        acknowledged = {
+            **c4,
+            "acknowledged_error_count": 1,
+            "acknowledgement_source": "explicit-cli",
+        }
         self.assertFalse(decide(errored, acknowledged)["paused"])
+
+    def test_invalid_prior_controls_reset_acknowledgement_to_zero(self):
+        metrics = self._metrics(errors=1)
+        valid = {
+            "format_version": "full-jump-compression-control-v2",
+            "candidate_id": "candidate",
+            "config_sha256": "a" * 64,
+            "paused": True,
+            "desired_workers": 4,
+            "max_workers": 16,
+            "consecutive_healthy_windows": 0,
+            "compression_cpus": list(COMPRESSION_CPUS),
+            "acknowledged_error_count": 1,
+            "acknowledgement_source": "explicit-cli",
+            "observed_at_unix": metrics["observed_at_unix"],
+            "feature_processes_mutated": False,
+        }
+        self.assertFalse(decide(metrics, valid)["paused"])
+        invalid = (
+            {**valid, "candidate_id": "foreign"},
+            {**valid, "desired_workers": "malformed"},
+            {**valid, "observed_at_unix": metrics["observed_at_unix"] - 20_000},
+            {**valid, "acknowledged_error_count": 2},
+            {**valid, "observed_at_unix": metrics["observed_at_unix"] + 1},
+            {**valid, "acknowledgement_source": "forged"},
+        )
+        for prior in invalid:
+            decision = decide(metrics, prior)
+            self.assertTrue(decision["paused"])
+            self.assertEqual(decision["acknowledged_error_count"], 0)
+
+    def test_foreign_control_cannot_bypass_acknowledgement_in_two_windows(self):
+        first_metrics = self._metrics(errors=1)
+        foreign = {
+            "format_version": "full-jump-compression-control-v2",
+            "candidate_id": "foreign",
+            "config_sha256": "b" * 64,
+            "paused": False,
+            "desired_workers": 16,
+            "max_workers": 16,
+            "consecutive_healthy_windows": 1,
+            "compression_cpus": list(COMPRESSION_CPUS),
+            "acknowledged_error_count": 1,
+            "acknowledgement_source": "explicit-cli",
+            "observed_at_unix": first_metrics["observed_at_unix"],
+            "feature_processes_mutated": False,
+        }
+        first = decide(first_metrics, foreign)
+        self.assertTrue(first["paused"])
+        self.assertEqual(first["acknowledged_error_count"], 0)
+        second_metrics = self._metrics(processed=11, masks=51, profiles=21, errors=1)
+        second = decide(second_metrics, first, first_metrics)
+        self.assertTrue(second["paused"])
+        self.assertEqual(second["acknowledged_error_count"], 0)
+
+    def test_authoritative_progress_overrides_frozen_state_and_marks_completion(self):
+        old = self._metrics(masks=40, profiles=20)
+        current = self._metrics(processed=11, masks=40, profiles=20)
+        current["authoritative_progress"] = {
+            codec: {"receipt_backed_masks": 41, "canonical_profiles": 21}
+            for codec in ("MQ", "lossless")
+        }
+        decision = decide(current, decide(old, self._governor_control(old)), old)
+        self.assertFalse(decision["paused"])
+        complete = self._metrics(masks=40, profiles=20)
+        complete["authoritative_progress"] = {
+            codec: {"receipt_backed_masks": 100, "canonical_profiles": 100}
+            for codec in ("MQ", "lossless")
+        }
+        for service in complete["feature_services"]:
+            service.update(active="inactive", pid=0, process_affinities={})
+        self.assertFalse(decide(complete, self._governor_control(complete))["paused"])
 
     def test_active_segmentation_without_mainpid_or_cgroup_fails_closed(self):
         metrics = self._metrics()
@@ -510,12 +648,15 @@ class FullJumpCompressionTests(unittest.TestCase):
         paths = GovernorPaths(
             "candidate",
             "a" * 64,
+            self.root / "candidate",
             self.root / "mq",
             self.root / "lossless",
-            self.root / "compression",
-            self.root / "control",
-            self.root / "snapshots",
+            self.root / "mq-masks",
+            self.root / "lossless-masks",
+            self.root / "mq-profiles",
+            self.root / "lossless-profiles",
             self.root,
+            True,
         )
         with mock.patch(
             "jump_full_compression.governor.collect_metrics",
@@ -523,9 +664,143 @@ class FullJumpCompressionTests(unittest.TestCase):
         ):
             self.assertTrue(run_governor(paths, True)["dry_run"])
         self.assertFalse(paths.control.exists())
+        paths.state_root.mkdir()
+        paths.control.write_text(
+            json.dumps({"acknowledged_error_count": 999, "candidate_id": "foreign"})
+        )
         applied = run_governor(paths, False)
         self.assertTrue(applied["decision"]["paused"])
+        self.assertEqual(applied["decision"]["acknowledged_error_count"], 0)
         self.assertTrue(paths.control.exists())
+
+    def test_collect_metrics_scans_authoritative_progress_roots(self):
+        state_root = self.root / "candidate"
+        state_root.mkdir()
+        canonical = self.root / "canonical"
+        control = self.root / "feature-control"
+        control.mkdir()
+        now_unix = time.time()
+        for codec, masks, profiles in (("MQ", 2, 1), ("lossless", 3, 2)):
+            (canonical / f"masks/{codec}/receipts").mkdir(parents=True)
+            (canonical / f"profiles/{codec}").mkdir(parents=True)
+            for index in range(masks):
+                (canonical / f"masks/{codec}/receipts/{index}.json").write_text("{}")
+            for index in range(profiles):
+                (canonical / f"profiles/{codec}/{index}.parquet").write_bytes(b"x")
+            (control / f"{codec}_state.json").write_text(
+                json.dumps(
+                    {
+                        "heartbeat_unix": now_unix,
+                        "expected_sites": 3,
+                        "receipt_backed_masks": 0,
+                        "canonical_profiles": 0,
+                        "completed_this_process": profiles,
+                        "worker_pids": [os.getpid()],
+                    }
+                )
+            )
+        (state_root / "compression.json").write_text(
+            json.dumps(
+                {
+                    "format_version": "full-jump-compression-state-v2",
+                    "candidate_id": "candidate",
+                    "config_sha256": "a" * 64,
+                    "heartbeat_unix": now_unix,
+                    "cumulative_errors": 0,
+                    "processed": 0,
+                    "state": "paused",
+                }
+            )
+        )
+        paths = GovernorPaths(
+            "candidate",
+            "a" * 64,
+            state_root,
+            control / "MQ_state.json",
+            control / "lossless_state.json",
+            canonical / "masks/MQ/receipts",
+            canonical / "masks/lossless/receipts",
+            canonical / "profiles/MQ",
+            canonical / "profiles/lossless",
+            self.root,
+            True,
+        )
+        service = {
+            "name": "segment",
+            "active": "active",
+            "pid": 1,
+            "process_affinities": {"1": [1]},
+        }
+        with (
+            mock.patch("jump_full_compression.governor._affinity", return_value=[288]),
+            mock.patch("jump_full_compression.governor._service", return_value=service),
+            mock.patch(
+                "jump_full_compression.governor._memory_available",
+                return_value=256 * 1024**3,
+            ),
+            mock.patch("jump_full_compression.governor._io_pressure", return_value=0),
+        ):
+            metrics = collect_metrics(paths, now_unix)
+        self.assertEqual(
+            metrics["authoritative_progress"]["MQ"]["receipt_backed_masks"], 2
+        )
+        self.assertEqual(
+            metrics["authoritative_progress"]["lossless"]["canonical_profiles"], 2
+        )
+        self.assertEqual(metrics["feature_states"]["MQ"]["receipt_backed_masks"], 0)
+
+    def test_governor_state_boundary_and_snapshot_symlinks_rejected(self):
+        canonical = self.root / "canonical"
+        paths = GovernorPaths(
+            "candidate",
+            "a" * 64,
+            self.root / "candidate",
+            self.root / "mq",
+            self.root / "lossless",
+            canonical / "masks/MQ/receipts",
+            canonical / "masks/lossless/receipts",
+            canonical / "profiles/MQ",
+            canonical / "profiles/lossless",
+            self.root,
+            True,
+        )
+        outside = self.root / "outside-governor"
+        outside.mkdir()
+        paths.state_root.mkdir()
+        paths.snapshots.symlink_to(outside, target_is_directory=True)
+        with self.assertRaises(ValueError):
+            run_governor(paths, True)
+        paths.snapshots.unlink()
+        redirected_parent = self.root / "redirected-parent"
+        redirected_parent.symlink_to(outside, target_is_directory=True)
+        redirected = GovernorPaths(
+            "candidate",
+            "a" * 64,
+            redirected_parent / "candidate",
+            self.root / "mq",
+            self.root / "lossless",
+            canonical / "masks/MQ/receipts",
+            canonical / "masks/lossless/receipts",
+            canonical / "profiles/MQ",
+            canonical / "profiles/lossless",
+            self.root,
+            True,
+        )
+        with self.assertRaises(ValueError):
+            redirected.validate()
+        live_wrong = GovernorPaths(
+            "candidate",
+            "a" * 64,
+            self.root / "candidate",
+            self.root / "mq",
+            self.root / "lossless",
+            canonical / "masks/MQ/receipts",
+            canonical / "masks/lossless/receipts",
+            canonical / "profiles/MQ",
+            canonical / "profiles/lossless",
+        )
+        with self.assertRaises(ValueError):
+            live_wrong.validate()
 
     def test_systemd_argument_timer_and_path_contract(self):
         base = Path("ops/systemd")
@@ -541,6 +816,7 @@ class FullJumpCompressionTests(unittest.TestCase):
             "${DEPLOY_ROOT}",
         ):
             self.assertIn(field, compressor)
+        self.assertIn("${CANONICAL_ROOT}", governor)
         self.assertIn(
             "/work/users/amunoz/projects/JUMP_lite/.venv/bin/python",
             compressor + governor,
@@ -557,6 +833,7 @@ class FullJumpCompressionTests(unittest.TestCase):
         for field in (
             "CONFIG_SHA256",
             "FEATURE_ROOT",
+            "CANONICAL_ROOT",
             "INVENTORY_DIGEST",
             "MANIFEST_SHA256",
         ):

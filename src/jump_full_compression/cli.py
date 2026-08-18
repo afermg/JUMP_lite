@@ -18,6 +18,7 @@ from .pipeline import (
 DEFAULT_FEATURE = Path(
     "/work/scratch/amunoz/jump-lite-cp-measure-provisional-20260813/canonical-control"
 )
+DEFAULT_CANONICAL = Path("/work/datasets/jump_lite/rebuttal/cp_measure_codec_v1/full")
 
 
 def _config(args) -> CandidateConfig:
@@ -70,7 +71,9 @@ def parser():
     gov.add_argument("--config-sha256", required=True)
     gov.add_argument("--feature-root", type=Path, default=DEFAULT_FEATURE)
     gov.add_argument("--state-root", type=Path, required=True)
+    gov.add_argument("--canonical-root", type=Path, default=DEFAULT_CANONICAL)
     gov.add_argument("--output-filesystem", type=Path, default=Path("/work/datasets"))
+    gov.add_argument("--test-mode", action="store_true", help=argparse.SUPPRESS)
     adopt = commands.add_parser("validate-adoption")
     _add_config_arguments(adopt)
     for name in ("frozen-manifest", "frozen-audit"):
@@ -109,12 +112,15 @@ def main(argv=None):
         paths = GovernorPaths(
             args.candidate_id,
             args.config_sha256,
+            args.state_root,
             args.feature_root / "MQ_state.json",
             args.feature_root / "lossless_state.json",
-            args.state_root / "compression.json",
-            args.state_root / "control.json",
-            args.state_root / "governor_snapshots",
+            args.canonical_root / "masks/MQ/receipts",
+            args.canonical_root / "masks/lossless/receipts",
+            args.canonical_root / "profiles/MQ",
+            args.canonical_root / "profiles/lossless",
             args.output_filesystem,
+            args.test_mode,
         )
         print(json.dumps(run_governor(paths, dry_run=not args.apply), indent=2))
         return 0

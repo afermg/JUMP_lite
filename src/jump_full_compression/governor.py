@@ -12,19 +12,78 @@ import subprocess
 import time
 from typing import Any
 
-from .model import COMPRESSION_CPUS, INITIAL_WORKERS, MAX_WORKERS, atomic_json
+from .model import (
+    COMPRESSION_CPUS,
+    INITIAL_WORKERS,
+    LIVE_STATE_PARENT,
+    MAX_CUMULATIVE_ERRORS,
+    MAX_WORKERS,
+    assert_no_symlinks,
+    atomic_json,
+)
 
 
 @dataclass(frozen=True)
 class GovernorPaths:
     candidate_id: str
     config_sha256: str
+    state_root: Path
     mq_state: Path
     lossless_state: Path
-    compression_state: Path
-    control: Path
-    snapshots: Path
+    mq_mask_receipts: Path
+    lossless_mask_receipts: Path
+    mq_profiles: Path
+    lossless_profiles: Path
     output_filesystem: Path = Path("/work/datasets")
+    test_mode: bool = False
+
+    @property
+    def compression_state(self) -> Path:
+        return self.state_root / "compression.json"
+
+    @property
+    def control(self) -> Path:
+        return self.state_root / "control.json"
+
+    @property
+    def snapshots(self) -> Path:
+        return self.state_root / "governor_snapshots"
+
+    def validate(self) -> None:
+        if not self.candidate_id or any(
+            char not in "abcdefghijklmnopqrstuvwxyz0123456789-_"
+            for char in self.candidate_id
+        ):
+            raise ValueError("invalid governor candidate id")
+        if len(self.config_sha256) != 64 or any(
+            char not in "0123456789abcdef" for char in self.config_sha256
+        ):
+            raise ValueError("invalid governor config digest")
+        if self.test_mode:
+            boundary = self.state_root.parent
+            if self.state_root.name != self.candidate_id:
+                raise ValueError("test governor state root must end in candidate id")
+        else:
+            boundary = LIVE_STATE_PARENT
+            expected = LIVE_STATE_PARENT / self.candidate_id
+            if self.state_root.absolute() != expected.absolute():
+                raise ValueError("live governor state root literal path drift")
+        if boundary.is_symlink() or (
+            boundary.exists() and boundary.resolve() != boundary.absolute()
+        ):
+            raise ValueError("governor state parent redirect rejected")
+        assert_no_symlinks(self.state_root, boundary)
+        if self.state_root.exists() and not self.state_root.is_dir():
+            raise ValueError("governor state root is not a directory")
+        for path in (
+            self.compression_state,
+            self.control,
+            self.snapshots,
+            self.snapshots / "latest.json",
+        ):
+            assert_no_symlinks(path, self.state_root)
+            if path.is_symlink():
+                raise ValueError(f"governor writable symlink rejected: {path}")
 
 
 def _affinity(pid: int) -> list[int]:
@@ -82,9 +141,43 @@ def _io_pressure() -> float:
     raise RuntimeError("I/O pressure missing")
 
 
+def _bounded_artifact_count(root: Path, suffix: str, expected: int) -> int:
+    """Count current artifacts read-only, without following links or unbounded trees."""
+    if expected < 0 or expected > 2_000_000:
+        raise RuntimeError("authoritative expected-site bound invalid")
+    if root.is_symlink() or not root.is_dir():
+        raise RuntimeError(f"authoritative progress root unavailable: {root}")
+    pending = [root]
+    directories = 0
+    count = 0
+    while pending:
+        current = pending.pop()
+        directories += 1
+        if directories > 100_000:
+            raise RuntimeError("authoritative progress directory bound exceeded")
+        with os.scandir(current) as entries:
+            for entry in entries:
+                if entry.is_symlink():
+                    raise RuntimeError(
+                        f"symlink in authoritative progress root: {entry.path}"
+                    )
+                if entry.is_dir(follow_symlinks=False):
+                    pending.append(Path(entry.path))
+                elif entry.is_file(follow_symlinks=False) and entry.name.endswith(
+                    suffix
+                ):
+                    count += 1
+                    if count > expected:
+                        raise RuntimeError(
+                            "authoritative progress exceeds expected sites"
+                        )
+    return count
+
+
 def collect_metrics(
     paths: GovernorPaths, now_unix: float | None = None
 ) -> dict[str, Any]:
+    paths.validate()
     timestamp = time.time() if now_unix is None else now_unix
     states = {}
     worker_affinities = {}
@@ -97,7 +190,24 @@ def collect_metrics(
         if not isinstance(pids, list) or not pids:
             raise RuntimeError(f"profile worker PID telemetry missing: {name}")
         worker_affinities[name] = {str(pid): _affinity(int(pid)) for pid in pids}
-    if not paths.compression_state.is_file():
+    authoritative = {}
+    progress_paths = {
+        "MQ": (paths.mq_mask_receipts, paths.mq_profiles),
+        "lossless": (paths.lossless_mask_receipts, paths.lossless_profiles),
+    }
+    for codec, (mask_root, profile_root) in progress_paths.items():
+        expected = int(states[codec]["expected_sites"])
+        authoritative[codec] = {
+            "receipt_backed_masks": _bounded_artifact_count(
+                mask_root, ".json", expected
+            ),
+            "canonical_profiles": _bounded_artifact_count(
+                profile_root, ".parquet", expected
+            ),
+            "mask_receipt_root": str(mask_root.absolute()),
+            "profile_root": str(profile_root.absolute()),
+        }
+    if not paths.compression_state.is_file() or paths.compression_state.is_symlink():
         raise RuntimeError("compression telemetry missing")
     compression = json.loads(paths.compression_state.read_text())
     return {
@@ -106,6 +216,7 @@ def collect_metrics(
         "config_sha256": paths.config_sha256,
         "feature_states": states,
         "profile_worker_affinities": worker_affinities,
+        "authoritative_progress": authoritative,
         "feature_services": [
             _service("jump-lite-cp-segment-MQ-direct-v2.service"),
             _service("jump-lite-cp-segment-lossless-direct-v2.service"),
@@ -123,6 +234,51 @@ def _overlap(affinities: dict[str, list[int]]) -> bool:
     return any(set(value) & set(COMPRESSION_CPUS) for value in affinities.values())
 
 
+def _validated_previous(
+    previous: dict[str, Any] | None,
+    metrics: dict[str, Any],
+    errors: int,
+) -> tuple[dict[str, Any], str | None]:
+    if previous is None:
+        return {}, "prior control missing"
+    try:
+        acknowledgement = int(previous["acknowledged_error_count"])
+        valid = (
+            previous.get("format_version") == "full-jump-compression-control-v2"
+            and previous.get("candidate_id") == metrics.get("candidate_id")
+            and previous.get("config_sha256") == metrics.get("config_sha256")
+            and previous.get("compression_cpus") == list(COMPRESSION_CPUS)
+            and previous.get("max_workers") == MAX_WORKERS
+            and previous.get("feature_processes_mutated") is False
+            and isinstance(previous.get("paused"), bool)
+            and type(previous.get("desired_workers")) is int
+            and 1 <= previous["desired_workers"] <= MAX_WORKERS
+            and type(previous.get("consecutive_healthy_windows")) is int
+            and 0 <= previous["consecutive_healthy_windows"] < 2
+            and type(previous.get("acknowledged_error_count")) is int
+            and 0 <= acknowledgement <= min(errors, MAX_CUMULATIVE_ERRORS)
+            and (
+                (
+                    acknowledgement == 0
+                    and previous.get("acknowledgement_source") == "zero"
+                )
+                or (
+                    acknowledgement > 0
+                    and previous.get("acknowledgement_source") == "explicit-cli"
+                )
+            )
+            and 0
+            <= float(metrics.get("observed_at_unix", 0))
+            - float(previous.get("observed_at_unix", 0))
+            <= 4 * 3600
+        )
+    except Exception:
+        valid = False
+    if not valid:
+        return {}, "prior control identity/shape/age/acknowledgement invalid"
+    return previous, None
+
+
 def decide(
     metrics: dict[str, Any],
     previous: dict[str, Any] | None = None,
@@ -130,15 +286,19 @@ def decide(
 ) -> dict[str, Any]:
     failures = []
     now_ts = float(metrics.get("observed_at_unix", 0))
-    if previous is not None and (
-        previous.get("format_version") != "full-jump-compression-control-v2"
-        or previous.get("candidate_id") != metrics.get("candidate_id")
-        or previous.get("config_sha256") != metrics.get("config_sha256")
-        or previous.get("compression_cpus") != list(COMPRESSION_CPUS)
-        or previous.get("max_workers") != MAX_WORKERS
-        or not 0 <= now_ts - float(previous.get("observed_at_unix", 0)) <= 4 * 3600
-    ):
-        failures.append("prior control identity/age invalid")
+    compression = metrics.get("compression", {})
+    try:
+        observed_errors = int(compression["cumulative_errors"])
+        if not 0 <= observed_errors <= MAX_CUMULATIVE_ERRORS:
+            raise ValueError("error count outside bound")
+    except Exception:
+        observed_errors = 0
+        failures.append("compression cumulative errors invalid")
+    effective_previous, prior_failure = _validated_previous(
+        previous, metrics, observed_errors
+    )
+    if prior_failure:
+        failures.append(prior_failure)
     states = metrics.get("feature_states", {})
     if set(states) != {"MQ", "lossless"}:
         failures.append("missing feature state")
@@ -148,11 +308,16 @@ def decide(
             if not 0 <= now_ts - float(state["heartbeat_unix"]) <= 300:
                 failures.append(f"{codec} heartbeat stale")
             expected = int(state["expected_sites"])
-            masks = int(state["receipt_backed_masks"])
-            profiles = int(state["canonical_profiles"])
+            current = metrics.get("authoritative_progress", {}).get(codec, {})
+            masks = int(current["receipt_backed_masks"])
+            profiles = int(current["canonical_profiles"])
             if not 0 <= masks <= expected or not 0 <= profiles <= expected:
                 failures.append(f"{codec} counters invalid")
-            old = (previous_metrics or {}).get("feature_states", {}).get(codec, {})
+            old = (
+                (previous_metrics or {})
+                .get("authoritative_progress", {})
+                .get(codec, {})
+            )
             if previous_metrics is not None:
                 if masks < expected and masks <= int(
                     old.get("receipt_backed_masks", -1)
@@ -186,11 +351,15 @@ def decide(
                 )
             codec = "MQ" if "MQ" in str(service.get("name")) else "lossless"
             state = states.get(codec, {})
-            if service.get("active") != "active" and state.get(
-                "receipt_backed_masks"
-            ) != state.get("expected_sites"):
+            current_masks = (
+                metrics.get("authoritative_progress", {})
+                .get(codec, {})
+                .get("receipt_backed_masks")
+            )
+            if service.get("active") != "active" and current_masks != state.get(
+                "expected_sites"
+            ):
                 failures.append(f"segmentation inactive before completion: {codec}")
-    compression = metrics.get("compression", {})
     try:
         if compression.get("format_version") != "full-jump-compression-state-v2":
             failures.append("compression format invalid")
@@ -201,7 +370,7 @@ def decide(
         if not 0 <= now_ts - float(compression["heartbeat_unix"]) <= 300:
             failures.append("compression heartbeat stale")
         errors = int(compression["cumulative_errors"])
-        acknowledged = int((previous or {}).get("acknowledged_error_count", 0))
+        acknowledged = int(effective_previous.get("acknowledged_error_count", 0))
         if errors != acknowledged:
             failures.append("compression error acknowledgement mismatch")
         if previous_metrics is not None and compression.get("state") not in {
@@ -221,9 +390,9 @@ def decide(
         failures.append("storage guard")
     if float(metrics.get("io_pressure_avg10", 9999)) > 20:
         failures.append("I/O pressure guard")
-    old_workers = int((previous or {}).get("desired_workers", INITIAL_WORKERS))
-    windows = int((previous or {}).get("consecutive_healthy_windows", 0))
-    acknowledged = int((previous or {}).get("acknowledged_error_count", 0))
+    old_workers = int(effective_previous.get("desired_workers", INITIAL_WORKERS))
+    windows = int(effective_previous.get("consecutive_healthy_windows", 0))
+    acknowledged = int(effective_previous.get("acknowledged_error_count", 0))
     if failures:
         paused = True
         workers = INITIAL_WORKERS
@@ -245,6 +414,7 @@ def decide(
         "consecutive_healthy_windows": windows,
         "compression_cpus": list(COMPRESSION_CPUS),
         "acknowledged_error_count": acknowledged,
+        "acknowledgement_source": ("explicit-cli" if acknowledged > 0 else "zero"),
         "reasons": failures or ["healthy; feature extraction retains priority"],
         "observed_at_unix": now_ts,
         "feature_processes_mutated": False,
@@ -252,6 +422,7 @@ def decide(
 
 
 def run_governor(paths: GovernorPaths, dry_run: bool = True) -> dict[str, Any]:
+    paths.validate()
     latest = paths.snapshots / "latest.json"
     error = None
     previous = None
@@ -275,9 +446,8 @@ def run_governor(paths: GovernorPaths, dry_run: bool = True) -> dict[str, Any]:
             "max_workers": MAX_WORKERS,
             "consecutive_healthy_windows": 0,
             "compression_cpus": list(COMPRESSION_CPUS),
-            "acknowledged_error_count": int(
-                (previous or {}).get("acknowledged_error_count", 0)
-            ),
+            "acknowledged_error_count": 0,
+            "acknowledgement_source": "zero",
             "reasons": [f"telemetry failure: {error}"],
             "observed_at_unix": metrics["observed_at_unix"],
             "feature_processes_mutated": False,
@@ -290,9 +460,15 @@ def run_governor(paths: GovernorPaths, dry_run: bool = True) -> dict[str, Any]:
     }
     if not dry_run:
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        paths.validate()
         paths.snapshots.mkdir(parents=True, exist_ok=True)
+        paths.validate()
+        stamped = paths.snapshots / f"{stamp}.json"
+        assert_no_symlinks(stamped, paths.state_root)
+        if stamped.is_symlink():
+            raise ValueError("governor snapshot symlink rejected")
         atomic_json(
-            paths.snapshots / f"{stamp}.json",
+            stamped,
             {"metrics": metrics, "decision": decision},
         )
         atomic_json(latest, {"metrics": metrics, "decision": decision})

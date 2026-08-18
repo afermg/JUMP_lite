@@ -205,7 +205,7 @@ def software_identity(*, require_clean: bool) -> dict[str, Any]:
     ).strip()
     dirty = bool(
         subprocess.check_output(
-            ["git", "-C", str(repo), "status", "--porcelain", "--untracked-files=no"],
+            ["git", "-C", str(repo), "status", "--porcelain", "--untracked-files=all"],
             text=True,
         ).strip()
     )
@@ -519,6 +519,10 @@ def _control(
             or payload.get("feature_processes_mutated") is not False
             or payload.get("governor_evaluation_required", False) is not False
             or not 0 <= acknowledged <= MAX_CUMULATIVE_ERRORS
+            or (
+                acknowledged > 0
+                and payload.get("acknowledgement_source") != "explicit-cli"
+            )
             or not 1 <= int(payload.get("desired_workers", 0)) <= config.max_workers
             or now_ts - float(payload.get("observed_at_unix", 0)) > 4 * 3600
             or now_ts < float(payload.get("observed_at_unix", 0))
@@ -665,6 +669,7 @@ def _paused_control(
         "consecutive_healthy_windows": 0,
         "compression_cpus": list(COMPRESSION_CPUS),
         "acknowledged_error_count": acknowledged,
+        "acknowledgement_source": "explicit-cli" if acknowledged else "zero",
         "reasons": [reason],
         "observed_at_unix": time.time(),
         "feature_processes_mutated": False,
