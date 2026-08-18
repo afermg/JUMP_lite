@@ -1,0 +1,40 @@
+{
+  "artifacts": [
+    {
+      "path": "REPORT.md",
+      "sha256": "515c00f898901241a6e498e61df55827e6633e61ec202dc93fe2cae846e62244",
+      "size_bytes": 1851
+    },
+    {
+      "path": "fixed_recipe_bootstrap.pdf",
+      "sha256": "7f3ea5faf76eb9d34e4b23d0f30d4582afa774cee2c2f8d560415983610d0248",
+      "size_bytes": 15822
+    },
+    {
+      "path": "fixed_recipe_bootstrap.png",
+      "sha256": "510922584339c7c8455f7bbb7e6aa61d525fd719a06cdb7a1fca00105c971ef4",
+      "size_bytes": 78983
+    },
+    {
+      "path": "manifests/selected_recipes.csv",
+      "sha256": "fa6672ac76c557f306911294cb63a7a59ecd76c7985c02dd8df20d7f0d56cbaa",
+      "size_bytes": 28468
+    },
+    {
+      "path": "provenance.json",
+      "sha256": "f1556d831ae3794188f6c5793ef9dc88a401e09b3c3abbe1287c67dd099ee279",
+      "size_bytes": 39981
+    },
+    {
+      "path": "results/mq_vs_d2e8.csv",
+      "sha256": "cada838ac0ec741979773aea67b28f989dd5824fbae03a136cd43f0400c1440e",
+      "size_bytes": 2593
+    },
+    {
+      "path": "results/score_intervals.csv",
+      "sha256": "b6911f7d1827033aac2a6bbf8ed807dddb46aaffa8a0daa571f72247df575b87",
+      "size_bytes": 3413
+    }
+  ],
+  "root": "."
+}
