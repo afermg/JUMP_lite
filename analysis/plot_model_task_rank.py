@@ -500,41 +500,19 @@ def _plot_rank(scores: dict[tuple[str, str], float | None], *,
         ax.plot([x, x], [y_bot, y_top], color="white", linewidth=3,
                 solid_capstyle="butt", zorder=3)
 
-    # Black horizontal separators isolate the full CellProfiler feature row
-    # in every panel. CellProfiler and the CellCount baseline both inherit
-    # archived six-to-nine-site well aggregation, whereas the image-model
-    # representations use four sites. A thick white line underneath each
-    # black line creates visible whitespace around the full-feature reference.
-    if "CellProfiler" in model_order:
-        cp_idx = model_order.index("CellProfiler")
-        task_left = task_x_edges[0]
-        task_right = task_x_edges[-1]
-        mean_left = mean_x_edges[0]
-        mean_right = mean_x_edges[-1]
-        for y in (cp_idx - 0.5, cp_idx + 0.5):
-            ax.plot([task_left, task_right], [y, y], color="white",
-                    linewidth=14.0, solid_capstyle="butt", zorder=4)
-            ax.plot([mean_left, mean_right], [y, y], color="white",
-                    linewidth=14.0, solid_capstyle="butt", zorder=4)
-            ax.plot([task_left, task_right], [y, y], color="black",
-                    linewidth=2.0, solid_capstyle="butt", zorder=5)
-            ax.plot([mean_left, mean_right], [y, y], color="black",
-                    linewidth=2.0, solid_capstyle="butt", zorder=5)
-
-    # Identify the strongest non-CellProfiler representation independently
-    # for every task and for the normalized Mean, as requested for the
-    # emphasized values. CellCount remains eligible but is explicitly labelled
-    # as a baseline derived from the same six-to-nine-site CellProfiler wells.
-    eligible_models = [m for m in model_order if m != "CellProfiler"]
+    # Identify the strongest representation independently for every task and
+    # for the normalized Mean. Site-count differences are disclosed only with
+    # symbols on the row labels and explained in the manuscript caption; the
+    # heatmap does not visually separate the tabular rows.
     winner_by_col = {
-        task: score_df.loc[eligible_models, task].idxmax()
+        task: score_df[task].idxmax()
         for task in TASK_ORDER
     }
-    winner_by_col["Mean"] = row_score.loc[eligible_models].idxmax()
+    winner_by_col["Mean"] = row_score.idxmax()
 
     # Annotate raw values for tasks; for the Mean column, annotate the
     # normalised value directly (it's the row mean of [0,1]-scaled scores).
-    # Only the non-CellProfiler winner is bold within each column.
+    # The strongest displayed value is bold within each column.
     for yi, fam in enumerate(model_order):
         for xi, col in enumerate(display_cols):
             x_pos = col_x[xi]
@@ -594,15 +572,18 @@ def _plot_rank(scores: dict[tuple[str, str], float | None], *,
     ax.set_ylim(n_models - 0.5, -2.0)
 
     ax.set_yticks(np.arange(n_models))
-    # Mark the inherited site aggregation for both tabular representations;
-    # for lossy codecs, also state that CellProfiler remains Raw-only.
+    # Mark, without separating, the representations with additional site
+    # access. The caption defines * (direct six-to-nine-site aggregation) and
+    # † (Cell Count derived from those archived well profiles). Lossy panels
+    # also retain the Raw-only disclosure for both tabular representations.
     ytick_labels = []
     for model in model_order:
         if model == "CellProfiler":
-            suffix = "raw; 6–9 sites" if codec_key in {"hq", "mq", "d20"} else "6–9 sites"
-            ytick_labels.append(f"{model}\n({suffix})")
+            label = f"{model}*"
+            ytick_labels.append(f"{label} (Raw)" if codec_key in {"hq", "mq", "d20"} else label)
         elif model == "CellCount":
-            ytick_labels.append(f"{model}\n(CP-derived; 6–9 sites)")
+            label = f"{model}†"
+            ytick_labels.append(f"{label} (Raw)" if codec_key in {"hq", "mq", "d20"} else label)
         else:
             ytick_labels.append(model)
     ax.set_yticklabels(ytick_labels, fontsize=fs_tick)
