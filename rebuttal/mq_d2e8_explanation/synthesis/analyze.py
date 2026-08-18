@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the fail-closed synthesis of five archived MQ/D2-E8 analyses."""
+"""Build the fail-closed two-panel explanation of Figure 3c."""
 from __future__ import annotations
 
 import argparse
@@ -15,7 +15,6 @@ from typing import Any
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from matplotlib.colors import TwoSlopeNorm
 import numpy as np
 import pandas as pd
 
@@ -93,57 +92,51 @@ def forest(ax:Any, frame:pd.DataFrame, point:str, low:str, high:str, support:str
     ax.set_xlabel(xlabel,fontsize=7); ax.set_title(title,fontsize=8,fontweight="bold"); ax.tick_params(axis="x",labelsize=7); ax.grid(axis="x",alpha=.2)
 
 def make_figure(d:dict[str,pd.DataFrame], png:Path, pdf:Path)->None:
-    fig=plt.figure(figsize=(7.15,10.0))
-    fig.subplots_adjust(left=.12,right=.96,top=.905,bottom=.075,hspace=.62,wspace=.48)
-    gs=fig.add_gridspec(3,2,height_ratios=[1.0,1.13,1.0])
-    # A
-    ax=fig.add_subplot(gs[0,0]); p=d["paired"].copy(); order=[FAMILY_LABEL[f] for f in FAMILY_ORDER]
-    p["display"]=p.family.map({v:k for k,v in FAMILY_LABEL.items()}).fillna(p.family)
-    # incoming family labels already display names; normalize
+    fig,axes=plt.subplots(1,2,figsize=(7.15,3.65),gridspec_kw={"width_ratios":[1.08,1.0]})
+    fig.subplots_adjust(left=.09,right=.98,top=.76,bottom=.22,wspace=.40)
+
+    # A: direct descriptive explanation of the pooled Figure 3c ordering.
+    ax=axes[0]; p=d["paired"].copy(); order=[FAMILY_LABEL[f] for f in FAMILY_ORDER]
     canon={"cp_measure":"cp_measure","DINOv2":"DINOv2","MorphEM":"MorphEM","OpenPhenom":"OpenPhenom","SubCell":"SubCell"}
     p["display"]=p.family.map(canon)
     rng=np.random.default_rng(20260818)
-    for i,f in enumerate(order):
-        vals=p.loc[p.display==f,"delta_nap_product"].to_numpy(); jitter=rng.uniform(-.16,.16,len(vals))
-        ax.scatter(i+jitter,vals,s=7,alpha=.38,color="#4C78A8",edgecolors="none")
-        ax.plot([i-.22,i+.22],[np.median(vals)]*2,color="#D55E00",lw=2)
-        ax.scatter(i,np.mean(vals),marker="D",s=17,color="black",zorder=3)
-    ax.axhline(0,color="black",lw=.8); ax.set_xticks(range(5),order,rotation=25,ha="right",fontsize=7); ax.tick_params(axis="y",labelsize=7)
-    ax.set_ylabel("MQ − D2-E8 NAP product",fontsize=7); ax.set_title("Exact family × recipe pairing",fontsize=8,fontweight="bold")
-    ax.text(.02,.98,"240 deterministic cells; median=orange; mean=diamond\nPooled medians invert: MQ 0.02406 > D2-E8 0.02250",transform=ax.transAxes,va="top",fontsize=6.4)
+    for i,family in enumerate(order):
+        vals=p.loc[p.display==family,"delta_nap_product"].to_numpy(); jitter=rng.uniform(-.16,.16,len(vals))
+        ax.scatter(i+jitter,vals,s=9,alpha=.40,color="#4C78A8",edgecolors="none")
+        ax.plot([i-.22,i+.22],[np.median(vals)]*2,color="#D55E00",lw=2.2)
+        ax.scatter(i,np.mean(vals),marker="D",s=20,color="black",zorder=3)
+    pooled=d["pooled"].iloc[0]
+    ax.axhline(0,color="black",lw=.8)
+    ax.set_ylim(-.0215,.0092)
+    ax.set_xticks(range(5),order,rotation=25,ha="right",fontsize=7.5)
+    ax.tick_params(axis="y",labelsize=7.5)
+    ax.set_ylabel("Matched NAP-product difference\n(MQ − D2-E8)",fontsize=8)
+    ax.set_title("Matched MQ − D2-E8 contrasts",fontsize=9,fontweight="bold")
+    ax.text(
+        .02,.98,
+        "Figure 3c pooled medians:\n"
+        f"MQ {pooled.mq_marginal_product_median:.5f} > D2-E8 {pooled.d2e8_marginal_product_median:.5f}\n"
+        f"Matched median {pooled.paired_product_median_delta:+.5f}; MQ higher in {pooled.paired_product_mq_greater_fraction*100:.0f}%",
+        transform=ax.transAxes,va="top",fontsize=6.8,
+        bbox={"facecolor":"white","edgecolor":"none","alpha":.82,"pad":1.5},
+    )
+    ax.text(.99,.02,"orange: median   ◆: mean",transform=ax.transAxes,ha="right",va="bottom",fontsize=6.4)
     panel_label(ax,"A")
-    # B
-    ax=fig.add_subplot(gs[0,1]); forest(ax,d["fixed"],"product_delta_mq_minus_d2e8","product_delta_ci_low","product_delta_ci_high","product_supported_direction","MQ − D2-E8 product","Fixed-Zstd-recipe paired bootstrap\n50k draws; 95% CI; * Holm-supported")
+
+    # B: inferential fixed-recipe sensitivity requested by reviewers.
+    ax=axes[1]
+    forest(
+        ax,d["fixed"],"product_delta_mq_minus_d2e8","product_delta_ci_low",
+        "product_delta_ci_high","product_supported_direction",
+        "NAP-product difference (MQ − D2-E8)",
+        "Fixed-recipe bootstrap contrasts\n50,000 draws; * = Holm-supported",
+    )
+    ax.text(.01,-.24,"D2-E8 higher  ←",transform=ax.transAxes,ha="left",fontsize=6.5)
+    ax.text(.99,-.24,"→  MQ higher",transform=ax.transAxes,ha="right",fontsize=6.5)
     panel_label(ax,"B")
-    # C
-    ax=fig.add_subplot(gs[1,:]); interaction=d["interaction"].copy(); interaction["family_key"]=interaction.family.map({v:k for k,v in FAMILY_LABEL.items()})
-    h=interaction.pivot(index="family_key",columns="recipe_order",values="delta_mq_minus_d2e8").loc[FAMILY_ORDER]
-    vmax=float(np.nanmax(np.abs(h.to_numpy()))); im=ax.imshow(h,aspect="auto",cmap="RdBu_r",norm=TwoSlopeNorm(vmin=-vmax,vcenter=0,vmax=vmax))
-    ax.set_yticks(range(5),[FAMILY_LABEL[f] for f in FAMILY_ORDER],fontsize=7)
-    sig=d["signs"].sort_values("recipe_order"); ticks=np.arange(0,48,4); ax.set_xticks(ticks,[sig.iloc[i].recipe_signature for i in ticks],rotation=55,ha="right",fontsize=5.4)
-    ax.set_xlabel("Aligned deterministic recipe structure (48 total)",fontsize=7); ax.set_title("Normalization-recipe interaction",fontsize=8,fontweight="bold",pad=13)
-    cb=fig.colorbar(im,ax=ax,shrink=.72,pad=.018); cb.set_label("MQ − D2-E8 NAP product",fontsize=6.5); cb.ax.tick_params(labelsize=6)
-    ax.text(.995,1.012,"Same sign: 1/48  |  variation: family 50.8%, recipe 10.4%, interaction 38.9%",transform=ax.transAxes,ha="right",fontsize=6.5)
-    panel_label(ax,"C")
-    # D
-    ax=fig.add_subplot(gs[2,0]); loo=d["loo"].copy(); labels=["Full"]+sorted(x for x in loo.omitted_label.dropna().unique() if x!="Full")
-    mat=loo.pivot(index="family",columns="omitted_label",values="product_delta_mq_minus_d2").loc[FAMILY_ORDER,labels]
-    vmax=max(.009,float(np.nanmax(np.abs(mat.to_numpy())))); im=ax.imshow(mat,aspect="auto",cmap="RdBu_r",norm=TwoSlopeNorm(vmin=-vmax,vcenter=0,vmax=vmax))
-    ax.set_yticks(range(5),[FAMILY_LABEL[f] for f in FAMILY_ORDER],fontsize=7); short=["Full"]+[x.split(" / ")[0].replace("source_","S") for x in labels[1:]]
-    ax.set_xticks(range(5),short,fontsize=7)
-    for i in range(5):
-        for j in range(5): ax.text(j,i,f"{mat.iloc[i,j]:+.3f}",ha="center",va="center",fontsize=5.5,color="white" if abs(mat.iloc[i,j])>.0048 else "black")
-    shares=d["influence"].set_index("family").loc[FAMILY_ORDER].top_10_absolute_share
-    ax.text(.01,-.26,"Top-10 unit absolute shares: "+", ".join(f"{FAMILY_LABEL[f]} {shares[f]*100:.0f}%" for f in FAMILY_ORDER),transform=ax.transAxes,fontsize=5.5,wrap=True)
-    ax.set_title("Plate/laboratory and unit influence",fontsize=8,fontweight="bold"); ax.set_xlabel("Omitted plate (= laboratory; confounded)",fontsize=7)
-    panel_label(ax,"D")
-    # E
-    ax=fig.add_subplot(gs[2,1]); forest(ax,d["effort"],"product_delta_e3_minus_hq","product_delta_ci_low","product_delta_ci_high","supported_direction","E3 − HQ product","Approximate effort sensitivity (D1)\ndefault effort unpinned; grid not factorial")
-    q=d["quality"].set_index("codec"); f=d["features"].iloc[0]
-    ax.set_xlim(-.008,.034)
-    ax.text(.63,.70,f"HQ/E3 median SSIM:\n{q.loc['jpegxl_lossy_hq','ssim_median']:.6f} / {q.loc['jpegxl_lossy_effort_3','ssim_median']:.6f}\nE3>HQ for {f.fraction_e3_gt_hq*100:.1f}%\nof 790 features\nCannot explain\nMQ vs D2-E8",transform=ax.transAxes,fontsize=5.7,va="top",bbox={"facecolor":"white","edgecolor":"0.8","alpha":.92,"pad":2})
-    panel_label(ax,"E")
-    fig.suptitle("Why the pooled Target-2 MQ median exceeds D2-E8 in Figure 3c",fontsize=11,fontweight="bold")
+
+    fig.suptitle("Explaining Figure 3c",fontsize=12,fontweight="bold",y=.96)
+    fig.text(.5,.875,"The pooled MQ median does not imply a consistent codec advantage",ha="center",fontsize=9)
     frozen_time=dt.datetime(2026,8,18,tzinfo=dt.timezone.utc)
     metadata={"Creator":"JUMP-lite mq_d2e8 synthesis","CreationDate":frozen_time,"ModDate":frozen_time}
     fig.savefig(pdf,metadata=metadata,bbox_inches="tight")
@@ -152,24 +145,25 @@ def make_figure(d:dict[str,pd.DataFrame], png:Path, pdf:Path)->None:
 
 def build_figure_data(d:dict[str,pd.DataFrame])->pd.DataFrame:
     rows=[]
-    for _,r in d["fixed"].iterrows(): rows.append({"panel":"B","family":r.family,"unit":"fixed_recipe_bootstrap","point":r.product_delta_mq_minus_d2e8,"low":r.product_delta_ci_low,"high":r.product_delta_ci_high,"detail":r.product_supported_direction})
-    for _,r in d["effort"].iterrows(): rows.append({"panel":"E","family":r.family,"unit":"effort_sensitivity","point":r.product_delta_e3_minus_hq,"low":r.product_delta_ci_low,"high":r.product_delta_ci_high,"detail":r.supported_direction})
-    for _,r in d["influence"].iterrows(): rows.append({"panel":"D","family":r.family,"unit":"top_10_absolute_share","point":r.top_10_absolute_share,"low":np.nan,"high":np.nan,"detail":"descriptive"})
+    for _,r in d["paired"].iterrows():
+        rows.append({"panel":"A","family":r.family,"unit":"matched_family_recipe","point":r.delta_nap_product,"low":np.nan,"high":np.nan,"detail":r.config})
+    for _,r in d["fixed"].iterrows():
+        rows.append({"panel":"B","family":r.family,"unit":"fixed_recipe_bootstrap","point":r.product_delta_mq_minus_d2e8,"low":r.product_delta_ci_low,"high":r.product_delta_ci_high,"detail":r.product_supported_direction})
     return pd.DataFrame(rows)
 
 def caption_text()->str:
     return """# Supplementary Figure caption
 
-**Dissecting the apparent MQ-over-D2-E8 inversion in the pooled Target-2 result.** **(A)** Figure 3c pools five representation families and 48 deterministic normalization recipes per codec. Although the marginal median NAP product is higher for MQ than D2-E8 (0.02406 versus 0.02250), exact family-by-recipe pairing across all 240 cells gives a negative typical MQ-minus-D2-E8 contrast; recipe cells are sensitivity settings, not biological replicates. **(B)** One recipe per family was selected using Zstd PA×PC/100 only and fixed across D2-E8 and MQ. Pointwise 95% intervals come from 50,000 shared-weight paired cluster-bootstrap draws over 306 PA compound clusters and 201 PC target clusters; product tests were Holm-adjusted across the five predeclared family contrasts. The cp_measure PA query population was restricted to its exact codec-common `Metadata_id` intersection before aggregation; the learned-family populations were already identical. Only MorphEM supports D2-E8 over MQ after adjustment. **(C)** The complete family-by-recipe grid shows deterministic family and recipe sensitivity: only 1/48 aligned recipe structures has the same sign in all five families, while a descriptive two-way decomposition assigns 50.8%, 10.4%, and 38.9% of variation to family, recipe structure, and their residual interaction. These recipes are structured deterministic settings rather than independent replicates, so no recipe-level inferential test is implied. **(D)** Fixed-recipe rescoring after omitting each plate shows that plate/laboratory composition can change the contrast; plate and laboratory are perfectly confounded. The listed top-10 shares are descriptive symmetric PA/PC unit-influence diagnostics on codec-common populations, not causal effects. **(E)** HQ and E3 provide only an approximate fixed-distance sensitivity: both used JPEG XL distance 1, but HQ omitted the effort argument and the historical numeric default and encoder build are unpinned, whereas E3 specified effort 3. The available HQ/E3/D2-E8/MQ grid is not a distance-by-effort factorial and therefore cannot explain the MQ-versus-D2-E8 contrast. In (B,E), PA and PC margins were independently resampled under a working product-of-margins approximation; unknown PA–PC covariance is omitted, so intervals may be too narrow or too wide. Across panels, non-support is not equivalence, and no result demonstrates compression-induced denoising or improved biological signal.
+**Explaining Figure 3c.** **(A)** MQ-minus-D2-E8 NAP-product differences for 240 exactly matched family–recipe cells (five families by 48 deterministic recipes). Orange bars show family medians and black diamonds show means; the pooled medians in Figure 3c are 0.02406 for MQ and 0.02250 for D2-E8. Recipe cells are sensitivity settings, not biological replicates. **(B)** MQ-minus-D2-E8 contrasts after selecting one recipe per family using Zstd alone and fixing it across codecs. Points and bars show estimates and pointwise 95% intervals from 50,000 shared-weight paired cluster-bootstrap draws over 306 PA compounds and 201 PC targets; the asterisk denotes support after Holm adjustment across five families. Only MorphEM supports D2-E8 over MQ. PA and PC margins were resampled independently, omitting their unknown covariance; the intervals are conditional, and non-support is not equivalence.
 """
 
 def report_text(d:dict[str,pd.DataFrame])->str:
     p=d["pooled"].iloc[0]; fixed=d["fixed"].set_index("family")
-    return f"""# MQ/D2-E8 synthesis
+    return f"""# Explaining Figure 3c
 
 The apparent pooled inversion in Figure 3c is an aggregation result, not a general paired codec advantage. The pooled MQ and D2-E8 medians are {p.mq_marginal_product_median:.8f} and {p.d2e8_marginal_product_median:.8f}, while the median exact paired delta across 240 family/recipe cells is {p.paired_product_median_delta:+.8f}. Only MorphEM has a Holm-supported fixed-recipe product contrast, favoring D2-E8 ({fixed.loc['morphem','product_delta_mq_minus_d2e8']:+.5f}, pointwise 95% interval [{fixed.loc['morphem','product_delta_ci_low']:+.5f}, {fixed.loc['morphem','product_delta_ci_high']:+.5f}]).
 
-Normalization effects are family-dependent (only 1/48 aligned recipe structures has a unanimous sign), plate/laboratory omission changes several signs, and the HQ/E3 comparison cannot identify effort because the historical default is unpinned and the codec grid is not factorial. The figure therefore supports small-cohort aggregation and analysis-pipeline sensitivity, not denoising or biological improvement.
+The active figure presents the two analyses that most directly explain Figure 3c: exact matched recipe cells and fixed-recipe uncertainty. Supporting archived analyses remain part of this verified synthesis: normalization effects are family-dependent (only 1/48 aligned recipe structures has a unanimous sign), plate/laboratory omission changes several signs, and the HQ/E3 comparison cannot identify effort because the historical default is unpinned and the codec grid is not factorial. Together these results support small-cohort aggregation and analysis-pipeline sensitivity, not denoising or biological improvement.
 """
 
 def write_json(path:Path,obj:Any)->None: path.write_text(json.dumps(obj,indent=2,sort_keys=True)+"\n")
@@ -197,7 +191,7 @@ def generate(input_root:Path,output:Path)->None:
         make_figure(d,stage/"mq_d2e8_synthesis.png",stage/"mq_d2e8_synthesis.pdf")
         build_figure_data(d).to_csv(stage/"figure_data.csv",index=False,float_format="%.12g",lineterminator="\n")
         (stage/"CAPTION.md").write_text(caption_text()); (stage/"REPORT.md").write_text(report_text(d))
-        write_json(stage/"provenance.json",{"analysis":"mq_d2e8_synthesis","protocol_version":1,"inputs":records,"canonical_datasets_read":False,"family_order":FAMILY_ORDER,"qualifications":["recipe cells are deterministic sensitivities, not biological replicates","plate and laboratory are confounded","PA and PC bootstrap margins use a working-independence approximation","historical default effort is unpinned and the codec grid is not factorial","no denoising or biological improvement is inferred"]})
+        write_json(stage/"provenance.json",{"analysis":"mq_d2e8_synthesis","protocol_version":2,"active_panels":["A_matched_family_recipe","B_fixed_recipe_bootstrap"],"inputs":records,"canonical_datasets_read":False,"family_order":FAMILY_ORDER,"qualifications":["recipe cells are deterministic sensitivities, not biological replicates","plate and laboratory are confounded","PA and PC bootstrap margins use a working-independence approximation","historical default effort is unpinned and the codec grid is not factorial","no denoising or biological improvement is inferred"]})
         write_checksums(stage); verify_release(stage)
         backup=output.with_name(output.name+".backup")
         if backup.exists(): shutil.rmtree(backup)

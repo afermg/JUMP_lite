@@ -21,6 +21,9 @@ class SynthesisTests(unittest.TestCase):
         self.assertEqual(len(d["paired"]),240)
         self.assertEqual(len(d["fixed"]),5)
         self.assertEqual(int(d["signs"].unanimous_sign.sum()),1)
+        figure_data=m.build_figure_data(d)
+        self.assertEqual(set(figure_data.panel),{"A","B"})
+        self.assertEqual(len(figure_data),245)
 
     def test_input_drift_fails_closed(self):
         with tempfile.TemporaryDirectory() as td:

@@ -1,4 +1,8 @@
 {
+  "active_panels": [
+    "A_matched_family_recipe",
+    "B_fixed_recipe_bootstrap"
+  ],
   "analysis": "mq_d2e8_synthesis",
   "canonical_datasets_read": false,
   "family_order": [
@@ -106,7 +110,7 @@
       "size_bytes": 22838
     }
   ],
-  "protocol_version": 1,
+  "protocol_version": 2,
   "qualifications": [
     "recipe cells are deterministic sensitivities, not biological replicates",
     "plate and laboratory are confounded",
