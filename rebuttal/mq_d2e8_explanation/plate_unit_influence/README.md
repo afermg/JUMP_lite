@@ -4,8 +4,8 @@ This analysis explains the Target-2 Figure 3c MQ/D2-E8 contrast using only archi
 
 1. It selects one recipe per Figure 3c family using Zstd `PA*PC/100` only, with lexical tie-breaking.
 2. It verifies the archived PA/PC unit tables and re-scores every selected MQ/D2-E8 `output.parquet`, requiring exact agreement with archived NAP points before sensitivity results are written.
-3. It aligns 306 PA compound clusters and 201 PC target clusters and computes an exact symmetric contribution decomposition of the MQ-minus-D2-E8 NAP-product difference.
-4. It explicitly intersects codec profile identities within each family and re-scores the common population after omitting each of the four plate/laboratory pairs.
+3. It explicitly intersects codec profile identities within each family, re-scores the exact common population, and derives the 306 PA compound and 201 PC target units used for the symmetric contribution decomposition.
+4. It uses that same common population for the full contrast and after omitting each of the four plate/laboratory pairs.
 
 The common-population step is material only for `cp_measure`: its selected D2-E8 and MQ outputs contain 1,519 and 1,520 rows, with 1,519 common. The four learned-family pairs each contain the same 1,536 identities. Intersections are recorded in `coverage_manifest.csv`; they are never silent.
 
@@ -18,7 +18,7 @@ PYTHONPATH=src /work/users/amunoz/projects/JUMP_lite/.venv/bin/python \
   rebuttal/mq_d2e8_explanation/plate_unit_influence/test_analyze.py
 ```
 
-The deterministic release is under `outputs/release_v1/`. `--verify-only` validates its inventory.
+The deterministic release is under `outputs/release_v1/`. `--verify-only` validates the exact output inventory plus the frozen sweep, selected metrics/config/profile/per-unit inputs, and scoring source hashes.
 
 ## Interpretation limits
 

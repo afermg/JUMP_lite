@@ -48,6 +48,7 @@ EXPECTED_FULL_ROWS = 1536
 MIN_PROFILE_ROWS = 1500
 EXPECTED_PLATES = 4
 CODECS = {"D2-E8": "jpegxl_lossy_d2_e8", "MQ": "jpegxl_lossy_mq"}
+SCORING_SOURCES = (HERE / "analyze.py", SRC / "norm_3/io.py", SRC / "norm_3/metrics.py")
 FAMILIES = {
     "cp_measure": {"display": "cp_measure", "sweep_model": "zstd_raw", "prefix": "cp_measure"},
     "dinov2": {"display": "DINOv2", "sweep_model": "dinov2_zstd_raw", "prefix": "dinov2"},
@@ -139,7 +140,10 @@ def load_variant(family: str, codec: str, config: str) -> tuple[dict[str, Any], 
         raise AnalysisError(f"{family}/{codec}: archived per-unit/metrics mismatch")
     return metrics, pa, pc, profile, identities
 
-def score_profile(profile: pl.DataFrame, require_expected_units: bool = True) -> dict[str, Any]:
+def score_profile_with_units(
+    profile: pl.DataFrame, require_expected_units: bool = True
+) -> tuple[dict[str, Any], pd.DataFrame, pd.DataFrame]:
+    """Score one explicit profile population and return its exact PA/PC units."""
     feature_cols, _ = infer_columns(profile)
     features = get_numeric_features(profile, feature_cols)
     if not features or not np.isfinite(profile.select(features).to_numpy()).all():
@@ -152,16 +156,30 @@ def score_profile(profile: pl.DataFrame, require_expected_units: bool = True) ->
         profile, features, compound_col="Metadata_broad_sample", target_col="Metadata_target_list",
         negcon_col="Metadata_negcon", seed=0,
     )
-    n_pa, n_pc = len(pa["activity_map"]), len(pc["target_consistency"])
+    pa_units = pa["activity_map"][["Metadata_broad_sample", "mean_normalized_average_precision"]].copy()
+    pc_units = pc["target_consistency"][["Metadata_target", "mean_normalized_average_precision"]].copy()
+    n_pa, n_pc = len(pa_units), len(pc_units)
+    if pa_units.Metadata_broad_sample.duplicated().any() or pc_units.Metadata_target.duplicated().any():
+        raise AnalysisError("rescoring produced duplicate PA/PC unit keys")
     if require_expected_units and (n_pa != EXPECTED_PA or n_pc != EXPECTED_PC):
         raise AnalysisError("full rescoring changed PA/PC unit counts")
     if n_pa <= 0 or n_pc <= 0:
         raise AnalysisError("rescoring produced empty PA/PC units")
-    pa_point = float(pa["mean_normalized_average_precision"])
-    pc_point = float(pc["mean_normalized_average_precision"])
+    pa_point = float(pa_units.mean_normalized_average_precision.mean())
+    pc_point = float(pc_units.mean_normalized_average_precision.mean())
+    if (
+        abs(pa_point - float(pa["mean_normalized_average_precision"])) > POINT_TOL
+        or abs(pc_point - float(pc["mean_normalized_average_precision"])) > POINT_TOL
+    ):
+        raise AnalysisError("rescored unit tables do not reproduce aggregate")
     if not math.isfinite(pa_point) or not math.isfinite(pc_point):
         raise AnalysisError("non-finite rescored point")
-    return {"pa": pa_point, "pc": pc_point, "product": pa_point * pc_point, "n_pa": n_pa, "n_pc": n_pc}
+    summary = {"pa": pa_point, "pc": pc_point, "product": pa_point * pc_point, "n_pa": n_pa, "n_pc": n_pc}
+    return summary, pa_units.sort_values("Metadata_broad_sample"), pc_units.sort_values("Metadata_target")
+
+
+def score_profile(profile: pl.DataFrame, require_expected_units: bool = True) -> dict[str, Any]:
+    return score_profile_with_units(profile, require_expected_units)[0]
 
 def aligned_units(family: str, tables: dict[str, tuple[pd.DataFrame, pd.DataFrame]]) -> tuple[pd.DataFrame, pd.DataFrame]:
     pa_d2, pc_d2 = tables["D2-E8"]
@@ -257,30 +275,27 @@ def run(output: Path) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
     staged = Path(tempfile.mkdtemp(prefix="plate-unit-influence-", dir=output.parent))
     try:
-        inputs = [sweep_identity]
+        code_inputs = [record(path) | {"role": "scoring_source"} for path in SCORING_SOURCES]
+        inputs = [sweep_identity | {"role": "sweep"}, *code_inputs]
         point_rows, loo_rows, coverage_rows, contribution_frames, influence_rows = [], [], [], [], []
         selected_by_family = selected.set_index("family")
         for family in FAMILIES:
             config = str(selected_by_family.loc[family, "config"])
-            tables, profiles, archived = {}, {}, {}
+            profiles, archived, archived_scores = {}, {}, {}
             expected_plate_map = None
             for codec in CODECS:
-                metrics, pa, pc, profile, identities = load_variant(family, codec, config)
-                inputs.extend(identities); tables[codec] = (pa, pc); profiles[codec] = profile; archived[codec] = metrics
+                metrics, _pa, _pc, profile, identities = load_variant(family, codec, config)
+                inputs.extend(identities); profiles[codec] = profile; archived[codec] = metrics
                 mapping = profile.select(["Metadata_Plate", "Metadata_Source"]).unique().sort("Metadata_Plate")
                 if len(mapping) != EXPECTED_PLATES or mapping["Metadata_Plate"].n_unique() != EXPECTED_PLATES or mapping["Metadata_Source"].n_unique() != EXPECTED_PLATES:
                     raise AnalysisError(f"{family}/{codec}: plate/source is not one-to-one")
                 current = mapping.to_dicts()
                 if expected_plate_map is None: expected_plate_map = current
                 elif current != expected_plate_map: raise AnalysisError(f"{family}: codec plate/source mapping drift")
-                full = score_profile(profile)
-                if abs(full["pa"] - float(metrics["PA_mean_nap"])) > POINT_TOL or abs(full["pc"] - float(metrics["PC_mean_nap"])) > POINT_TOL:
+                archived_scores[codec] = score_profile(profile)
+                if abs(archived_scores[codec]["pa"] - float(metrics["PA_mean_nap"])) > POINT_TOL or abs(archived_scores[codec]["pc"] - float(metrics["PC_mean_nap"])) > POINT_TOL:
                     raise AnalysisError(f"{family}/{codec}: full rescoring did not reproduce archive")
-                point_rows.append({"family": family, "display_family": FAMILIES[family]["display"], "codec": codec, "config": config, **full,
-                                   "archived_pa": float(metrics["PA_mean_nap"]), "archived_pc": float(metrics["PC_mean_nap"])})
-            # Pair LOO scores on an explicit common Metadata_id population. The
-            # cp_measure normalized outputs legitimately retain 1519/1520 rows,
-            # so silently comparing their unequal populations would be invalid.
+            # Every reported contrast uses this exact common Metadata_id population.
             id_sets = {codec: set(profile["Metadata_id"].to_list()) for codec, profile in profiles.items()}
             common_ids = set.intersection(*id_sets.values())
             if len(common_ids) < MIN_PROFILE_ROWS:
@@ -289,13 +304,30 @@ def run(output: Path) -> None:
                 codec: profile.filter(pl.col("Metadata_id").is_in(sorted(common_ids))).sort("Metadata_id")
                 for codec, profile in profiles.items()
             }
-            for codec, profile in profiles.items():
-                coverage_rows.append({"family": family, "codec": codec, "original_rows": len(profile), "common_rows": len(common_ids),
-                                      "dropped_for_common": len(profile) - len(common_ids)})
-            pa, pc = aligned_units(family, tables)
+            common_scores: dict[str, dict[str, Any]] = {}
+            common_tables: dict[str, tuple[pd.DataFrame, pd.DataFrame]] = {}
+            for codec, profile in common_profiles.items():
+                summary, pa_units, pc_units = score_profile_with_units(profile)
+                common_scores[codec] = summary
+                common_tables[codec] = (pa_units, pc_units)
+                original = profiles[codec]
+                coverage_rows.append({"family": family, "codec": codec, "original_rows": len(original), "common_rows": len(common_ids),
+                                      "dropped_for_common": len(original) - len(common_ids)})
+                point_rows.append({
+                    "family": family, "display_family": FAMILIES[family]["display"], "codec": codec,
+                    "config": config, "population": "common_Metadata_id", "common_profile_rows": len(common_ids),
+                    **summary,
+                    "archived_unequal_population_pa": float(archived[codec]["PA_mean_nap"]),
+                    "archived_unequal_population_pc": float(archived[codec]["PC_mean_nap"]),
+                    "archived_unequal_population_product": float(archived[codec]["PA_mean_nap"]) * float(archived[codec]["PC_mean_nap"]),
+                })
+            pa, pc = aligned_units(family, common_tables)
             contrib, influence = unit_contributions(family, pa, pc)
+            expected_delta = common_scores["MQ"]["product"] - common_scores["D2-E8"]["product"]
+            if abs(float(influence["product_delta_mq_minus_d2"]) - expected_delta) > 1e-14:
+                raise AnalysisError(f"{family}: influence/common-population contrast mismatch")
             contribution_frames.append(contrib); influence_rows.append(influence)
-            common_full = {codec: score_profile(profile) for codec, profile in common_profiles.items()}
+            common_full = common_scores
             loo_rows.append({"family": family, "display_family": FAMILIES[family]["display"], "omitted_plate": "", "omitted_source": "",
                              "omitted_label": "Full", "d2_product": common_full["D2-E8"]["product"], "mq_product": common_full["MQ"]["product"],
                              "product_delta_mq_minus_d2": common_full["MQ"]["product"] - common_full["D2-E8"]["product"],
@@ -334,18 +366,32 @@ def run(output: Path) -> None:
         for family in FAMILIES:
             display = FAMILIES[family]["display"]; sub = loo[loo.family == family]; inf = influence[influence.family == family].iloc[0]
             report_lines.append(f"| {display} | {sub[sub.omitted_label == 'Full'].product_delta_mq_minus_d2.iloc[0]:+.6f} | {sub[sub.omitted_label != 'Full'].product_delta_mq_minus_d2.min():+.6f} | {sub[sub.omitted_label != 'Full'].product_delta_mq_minus_d2.max():+.6f} | {100*inf.top_10_absolute_share:.1f}% | {100*inf.pa_absolute_share:.1f}% |")
-        report_lines += ["", "The cp_measure common-population full contrast (+0.001367) differs slightly from its archived unequal-population contrast (+0.001251); the four learned-family populations are already identical across codecs. Plate and laboratory are perfectly confounded in this four-plate pilot. Unit contributions are descriptive influence diagnostics, not independent causal effects. PA and PC are retrieval-derived and the product decomposition does not supply end-to-end uncertainty.", ""]
+        cp_common = loo[(loo.family == "cp_measure") & (loo.omitted_label == "Full")].iloc[0]
+        cp_points = points[points.family == "cp_measure"].set_index("codec")
+        cp_archived_delta = (
+            cp_points.loc["MQ", "archived_unequal_population_product"]
+            - cp_points.loc["D2-E8", "archived_unequal_population_product"]
+        )
+        report_lines += [
+            "",
+            f"The cp_measure common-population full contrast ({cp_common.product_delta_mq_minus_d2:+.6f}) differs slightly from its archived unequal-population contrast ({cp_archived_delta:+.6f}); the four learned-family populations are already identical across codecs. All unit contributions, the Full column, and every leave-one-plate-out score use the same family-specific common Metadata_id population. Plate and laboratory are perfectly confounded in this four-plate pilot. Unit contributions are descriptive influence diagnostics, not independent causal effects. PA and PC are retrieval-derived and the product decomposition does not supply end-to-end uncertainty.",
+            "",
+        ]
         atomic_text(staged / "REPORT.md", "\n".join(report_lines))
-        provenance = {"analysis": "plate_unit_influence", "protocol_version": 1, "canonical_inputs_read_only": True,
+        input_rows = sorted(inputs, key=lambda x: (x.get("family", ""), x.get("codec", ""), x.get("role", ""), x["path"]))
+        if len({row["path"] for row in input_rows}) != len(input_rows):
+            raise AnalysisError("duplicate input identity in provenance")
+        provenance = {"analysis": "plate_unit_influence", "protocol_version": 2, "canonical_inputs_read_only": True,
                       "selection": "lexical tie-break after maximizing PA*PC/100 on Zstd only", "families": list(FAMILIES), "codecs": list(CODECS),
+                      "population_contract": "Every reported MQ-D2-E8 contrast uses the exact family-specific intersection of Metadata_id across codecs.",
                       "expected_counts": {"configs_per_zstd_family": EXPECTED_CONFIGS, "maximum_profiles_per_variant": EXPECTED_FULL_ROWS, "minimum_profiles_per_variant": MIN_PROFILE_ROWS, "pa_units": EXPECTED_PA, "pc_units": EXPECTED_PC, "plates": EXPECTED_PLATES},
-                      "inputs": sorted(inputs, key=lambda x: (x.get("family", ""), x.get("codec", ""), x.get("role", ""), x["path"])),
+                      "inputs": input_rows,
                       "qualification": "Plate and laboratory are confounded; influence is descriptive; no denoising or biological improvement is inferred."}
         write_json(staged / "provenance.json", provenance)
         artifacts = []
-        for path in sorted(staged.iterdir()):
+        for path in sorted(staged.rglob("*")):
             if path.name == "artifact_checksums.json" or not path.is_file(): continue
-            artifacts.append({"path": path.name, "size_bytes": path.stat().st_size, "sha256": sha256_file(path)})
+            artifacts.append({"path": path.relative_to(staged).as_posix(), "size_bytes": path.stat().st_size, "sha256": sha256_file(path)})
         write_json(staged / "artifact_checksums.json", {"artifacts": artifacts})
         if output.exists(): shutil.rmtree(output)
         output.parent.mkdir(parents=True, exist_ok=True)
@@ -353,13 +399,56 @@ def run(output: Path) -> None:
     finally:
         if staged.exists(): shutil.rmtree(staged)
 
+def verify_records(rows: list[dict[str, Any]], label: str) -> None:
+    if not rows or len({row.get("path") for row in rows}) != len(rows):
+        raise AnalysisError(f"invalid {label} inventory")
+    for row in rows:
+        path = Path(row["path"])
+        if not path.is_file() or path.stat().st_size != int(row["size_bytes"]) or sha256_file(path) != row["sha256"]:
+            raise AnalysisError(f"{label} drift: {path}")
+
+
 def verify(output: Path) -> None:
-    payload = json.loads((output / "artifact_checksums.json").read_text())
-    for row in payload["artifacts"]:
-        path = output / row["path"]
-        if path.stat().st_size != row["size_bytes"] or sha256_file(path) != row["sha256"]:
-            raise AnalysisError(f"artifact drift: {path}")
-    print(f"verified {len(payload['artifacts'])} artifacts")
+    checksum_path = output / "artifact_checksums.json"
+    provenance_path = output / "provenance.json"
+    if not checksum_path.is_file() or not provenance_path.is_file():
+        raise AnalysisError("release metadata missing")
+    payload = json.loads(checksum_path.read_text())
+    artifacts = payload.get("artifacts")
+    expected_paths = {row["path"] for row in artifacts}
+    actual_paths = {
+        path.relative_to(output).as_posix()
+        for path in output.rglob("*")
+        if path.is_file() and path.name != "artifact_checksums.json"
+    }
+    if actual_paths != expected_paths:
+        raise AnalysisError(f"output inventory drift: missing={sorted(expected_paths-actual_paths)}, extra={sorted(actual_paths-expected_paths)}")
+    output_rows = [dict(row, path=str(output / row["path"])) for row in artifacts]
+    verify_records(output_rows, "artifact")
+    provenance = json.loads(provenance_path.read_text())
+    if provenance.get("analysis") != "plate_unit_influence" or provenance.get("protocol_version") != 2:
+        raise AnalysisError("provenance protocol drift")
+    verify_records(provenance.get("inputs", []), "input")
+
+    points = pd.read_csv(output / "fixed_recipe_points.csv")
+    loo = pd.read_csv(output / "leave_one_plate_out.csv", keep_default_na=False)
+    influence = pd.read_csv(output / "influence_summary.csv")
+    coverage = pd.read_csv(output / "coverage_manifest.csv")
+    if len(points) != len(FAMILIES) * len(CODECS) or set(points.population) != {"common_Metadata_id"}:
+        raise AnalysisError("fixed-recipe common-population contract drift")
+    if len(loo) != len(FAMILIES) * (EXPECTED_PLATES + 1) or len(influence) != len(FAMILIES):
+        raise AnalysisError("release result row-count drift")
+    for family in FAMILIES:
+        common_rows = coverage[coverage.family == family].common_rows.unique()
+        if len(common_rows) != 1:
+            raise AnalysisError(f"{family}: common coverage drift")
+        point = points[points.family == family].set_index("codec")
+        full = loo[(loo.family == family) & (loo.omitted_label == "Full")].iloc[0]
+        point_delta = point.loc["MQ", "product"] - point.loc["D2-E8", "product"]
+        influence_delta = influence[influence.family == family].product_delta_mq_minus_d2.iloc[0]
+        if abs(point_delta - full.product_delta_mq_minus_d2) > 1e-14 or abs(point_delta - influence_delta) > 1e-14:
+            raise AnalysisError(f"{family}: cross-artifact common-population mismatch")
+    print(f"verified {len(artifacts)} artifacts and {len(provenance['inputs'])} frozen inputs")
 
 def main() -> int:
     parser = argparse.ArgumentParser()

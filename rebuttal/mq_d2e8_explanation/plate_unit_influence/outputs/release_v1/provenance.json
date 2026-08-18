@@ -22,7 +22,26 @@
   ],
   "inputs": [
     {
+      "path": "/tmp/pi-worktree-8744d19d-0/rebuttal/mq_d2e8_explanation/plate_unit_influence/analyze.py",
+      "role": "scoring_source",
+      "sha256": "1068ccde681e16724439b4771480798d2c96daf23352afe4fa792284f5c8fb7f",
+      "size_bytes": 29517
+    },
+    {
+      "path": "/tmp/pi-worktree-8744d19d-0/src/norm_3/io.py",
+      "role": "scoring_source",
+      "sha256": "8596149862af855a880eb8bb70d736135d126e9a230e50c1cd4df0426c1507e1",
+      "size_bytes": 7166
+    },
+    {
+      "path": "/tmp/pi-worktree-8744d19d-0/src/norm_3/metrics.py",
+      "role": "scoring_source",
+      "sha256": "af91b2cf87eed387d2b23b9613d2e196ccd16ec50bd3684151017e3d21c5d1ea",
+      "size_bytes": 46866
+    },
+    {
       "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/sweep_results.csv",
+      "role": "sweep",
       "sha256": "08923c7bd27bca54c0a3f484429ced31d1b48ad097c974773591a89ac63eb53a",
       "size_bytes": 1096114
     },
@@ -427,7 +446,8 @@
       "size_bytes": 24407
     }
   ],
-  "protocol_version": 1,
+  "population_contract": "Every reported MQ-D2-E8 contrast uses the exact family-specific intersection of Metadata_id across codecs.",
+  "protocol_version": 2,
   "qualification": "Plate and laboratory are confounded; influence is descriptive; no denoising or biological improvement is inferred.",
   "selection": "lexical tie-break after maximizing PA*PC/100 on Zstd only"
 }

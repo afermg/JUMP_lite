@@ -2,8 +2,8 @@
   "artifacts": [
     {
       "path": "REPORT.md",
-      "sha256": "eea5ace8ebba0e5f5bffdbfc95346ff44f8ae559d719ef872ce278d6695b1ca5",
-      "size_bytes": 1372
+      "sha256": "536bcf5dcd19bad7cdd16cab3a40c0374d85ea15e2f4051bc3521119f2b0a8a3",
+      "size_bytes": 1509
     },
     {
       "path": "coverage_manifest.csv",
@@ -12,13 +12,13 @@
     },
     {
       "path": "fixed_recipe_points.csv",
-      "sha256": "9d2b6f9cf664e2205a1e2fbd3e67a1984ebbcdba65b1d0afae7a159e7c330bdc",
-      "size_bytes": 1808
+      "sha256": "620c1ef9305f262f457d0601b29d5dd53d4d9a7282b8ddb858fb2d90d193d7a1",
+      "size_bytes": 2359
     },
     {
       "path": "influence_summary.csv",
-      "sha256": "acaca564aaf340edf393475950837c57d291749934c1fd7261d19c688f52d930",
-      "size_bytes": 963
+      "sha256": "09eacf714e929fb2319e3d596c10d56dd3e7405f7053e578269e053ee95120b1",
+      "size_bytes": 958
     },
     {
       "path": "leave_one_plate_out.csv",
@@ -27,18 +27,18 @@
     },
     {
       "path": "plate_unit_influence.pdf",
-      "sha256": "9b626025af3ca0c35d42ff2da4fc04c4d69f62f92bc9d537a2d86ae86c773903",
+      "sha256": "49eb8505c61bdbde376e168bc846f18f734833ddbc6aeee58b9d58455026aa7d",
       "size_bytes": 35409
     },
     {
       "path": "plate_unit_influence.png",
-      "sha256": "25a7c2b125f5cb9daee4f7cc4ca51e15a09069d43d0a2caca2f87299f5681984",
-      "size_bytes": 232899
+      "sha256": "0958c289d99000de46088e42517a1faba1f650954e76eb920f6f68331305cd42",
+      "size_bytes": 232901
     },
     {
       "path": "provenance.json",
-      "sha256": "d134a98f88c26a0b7ce44bd5fc83db998fbcf9397eb750dc9c21fbe2c853bdb8",
-      "size_bytes": 22082
+      "sha256": "aa432c4c81046849a6673968ab7c5a5476f17d891613c6ab9c6b2eb6011a42f2",
+      "size_bytes": 22939
     },
     {
       "path": "selected_recipes.csv",
@@ -47,13 +47,13 @@
     },
     {
       "path": "top_influential_units.csv",
-      "sha256": "1fa43bbf8185b9fc5d3e98a2826fca45d943437ece94e02c58084281a1dd22a9",
-      "size_bytes": 16726
+      "sha256": "32abc608cf19264e1201c168bae9ce63ddda097f20fe1f435b60c0ea627800f5",
+      "size_bytes": 16970
     },
     {
       "path": "unit_contributions.csv",
-      "sha256": "729e5739949c358c601a42a9a2ea44e50ec9b8856e2d0014a2b8f3dcb8d97842",
-      "size_bytes": 413378
+      "sha256": "52f25089e4f9bd5c87844d5e443bd4ffbfdd09bc27c99aba839f15cda569a8aa",
+      "size_bytes": 418799
     }
   ]
 }

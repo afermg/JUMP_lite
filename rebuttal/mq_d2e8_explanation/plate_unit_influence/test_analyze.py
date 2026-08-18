@@ -59,14 +59,59 @@ class PlateUnitInfluenceTests(unittest.TestCase):
         self.assertGreaterEqual(summary["top_10_absolute_share"], summary["top_5_absolute_share"])
         self.assertGreaterEqual(summary["top_20_absolute_share"], summary["top_10_absolute_share"])
 
-    def test_verify_detects_artifact_drift(self):
+    def make_release(self, root: Path) -> Path:
+        source = root / "input.txt"
+        source.write_text("frozen")
+        points, loo, influence, coverage = [], [], [], []
+        for i, family in enumerate(a.FAMILIES):
+            d2, mq = 0.01 + i / 100, 0.011 + i / 100
+            for codec, product in (("D2-E8", d2), ("MQ", mq)):
+                points.append({"family": family, "codec": codec, "population": "common_Metadata_id", "product": product})
+                coverage.append({"family": family, "codec": codec, "common_rows": 1519})
+            delta = mq - d2
+            influence.append({"family": family, "product_delta_mq_minus_d2": delta})
+            for j in range(a.EXPECTED_PLATES + 1):
+                loo.append({"family": family, "omitted_label": "Full" if j == 0 else f"P{j}", "product_delta_mq_minus_d2": delta})
+        pd.DataFrame(points).to_csv(root / "fixed_recipe_points.csv", index=False)
+        pd.DataFrame(loo).to_csv(root / "leave_one_plate_out.csv", index=False)
+        pd.DataFrame(influence).to_csv(root / "influence_summary.csv", index=False)
+        pd.DataFrame(coverage).to_csv(root / "coverage_manifest.csv", index=False)
+        a.write_json(root / "provenance.json", {
+            "analysis": "plate_unit_influence", "protocol_version": 2,
+            "inputs": [{"path": str(source), "size_bytes": source.stat().st_size, "sha256": a.sha256_file(source)}],
+        })
+        artifacts = []
+        for path in sorted(root.iterdir()):
+            if path.name in {"artifact_checksums.json", "input.txt"}: continue
+            artifacts.append({"path": path.name, "size_bytes": path.stat().st_size, "sha256": a.sha256_file(path)})
+        a.write_json(root / "artifact_checksums.json", {"artifacts": artifacts})
+        return source
+
+    def move_release(self, root: Path) -> Path:
+        release = root / "release"
+        release.mkdir()
+        for name in ("fixed_recipe_points.csv", "leave_one_plate_out.csv", "influence_summary.csv", "coverage_manifest.csv", "provenance.json", "artifact_checksums.json"):
+            (root / name).replace(release / name)
+        return release
+
+    def test_verify_detects_artifact_and_input_drift(self):
         with tempfile.TemporaryDirectory() as td:
-            root = Path(td); (root / "x.txt").write_text("ok")
-            a.write_json(root / "artifact_checksums.json", {"artifacts": [{"path": "x.txt", "size_bytes": 2, "sha256": a.sha256_file(root / "x.txt")}]})
-            a.verify(root)
-            (root / "x.txt").write_text("bad")
-            with self.assertRaises(a.AnalysisError):
-                a.verify(root)
+            root = Path(td)
+            source = self.make_release(root)
+            release = self.move_release(root)
+            a.verify(release)
+            source.write_text("drift")
+            with self.assertRaisesRegex(a.AnalysisError, "input drift"):
+                a.verify(release)
+
+    def test_verify_rejects_extra_output(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            self.make_release(root)
+            release = self.move_release(root)
+            (release / "unexpected.txt").write_text("bad")
+            with self.assertRaisesRegex(a.AnalysisError, "output inventory drift"):
+                a.verify(release)
 
 
 if __name__ == "__main__":
