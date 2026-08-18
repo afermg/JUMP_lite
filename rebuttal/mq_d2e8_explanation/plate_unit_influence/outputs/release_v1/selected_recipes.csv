@@ -1,0 +1,6 @@
+family,display_family,config,selection_metric,selection_value,zstd_pa_pct,zstd_pc_pct,n_tied
+cp_measure,cp_measure,std_ctrl__outlier100__INT__prune0.9__tvn_efaar_e0.05,PA*PC/100 on Zstd only,14.748154651578707,63.0718954248366,23.383084577114428,1
+dinov2,DINOv2,robustmad_ctrl__prune0.9__tvn_efaar_e0.05,PA*PC/100 on Zstd only,13.003609403960589,60.78431372549019,21.393034825870647,2
+morphem,MorphEM,robustmad_all__prune0.9__tvn_efaar_e0.05,PA*PC/100 on Zstd only,18.494130653919946,57.18954248366013,32.33830845771145,2
+openphenom,OpenPhenom,std_all__prune0.9__tvn_efaar_e0.05,PA*PC/100 on Zstd only,9.13081650570676,47.05882352941176,19.402985074626866,2
+subcell,SubCell,robustmad_ctrl__prune0.9__tvn_efaar_e0.05,PA*PC/100 on Zstd only,14.213247488049944,60.78431372549019,23.383084577114428,2
