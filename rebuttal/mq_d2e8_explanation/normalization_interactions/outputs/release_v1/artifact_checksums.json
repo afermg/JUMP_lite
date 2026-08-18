@@ -1,0 +1,54 @@
+{
+  "artifacts": [
+    {
+      "bytes": 1942,
+      "path": "REPORT.md",
+      "sha256": "e057e7d26d767abac7392b990130947c892ea2a1f00e20cce9bfaef814206a32"
+    },
+    {
+      "bytes": 1576,
+      "path": "factor_summary.csv",
+      "sha256": "490a0a701517b2f307fed0217d0e8b603e8149ddf3f9cd038ba0c02541b3fb31"
+    },
+    {
+      "bytes": 4970,
+      "path": "family_factor_summary.csv",
+      "sha256": "2c3aeab6d9208e00e2787698a6ddb61c3f1992932f411dcc41cf482f4370ead4"
+    },
+    {
+      "bytes": 360,
+      "path": "family_summary.csv",
+      "sha256": "13a7282e55796ed18815d678fb0f3243f577d73a061f4277f1ac183582f7c058"
+    },
+    {
+      "bytes": 33969,
+      "path": "normalization_interactions.pdf",
+      "sha256": "3132cdb32d3ca036dabfad72647878ac40ceef8d663d4fa6c5a20f2bd3ca119d"
+    },
+    {
+      "bytes": 104046,
+      "path": "normalization_interactions.png",
+      "sha256": "946e9a71e2191577a02c63620b8d77c9ecb9a3ede3a6f0b53c93ababa6522350"
+    },
+    {
+      "bytes": 48944,
+      "path": "paired_recipe_deltas.csv",
+      "sha256": "f6c710ea8c5449c37a8cb43a7d9ade2719e810012a1ec83f65e750db70ef4172"
+    },
+    {
+      "bytes": 754,
+      "path": "provenance.json",
+      "sha256": "1375914b228cb6e910ea2bf6eb3010f0f535c8b79bd06f9745f5238b85d5f298"
+    },
+    {
+      "bytes": 5009,
+      "path": "recipe_sign_consistency.csv",
+      "sha256": "b39e32580a0a6c9aa13ae80caf738d390f26a7f45fa736cdeb02d248645f2a61"
+    },
+    {
+      "bytes": 225,
+      "path": "variation_decomposition.csv",
+      "sha256": "53c9b4e1c22d90fe1755dea3faf1dfa5eeaa3f749a59fbb8de9f0d8349828ea1"
+    }
+  ]
+}
