@@ -500,10 +500,12 @@ def _plot_rank(scores: dict[tuple[str, str], float | None], *,
         ax.plot([x, x], [y_bot, y_top], color="white", linewidth=3,
                 solid_capstyle="butt", zorder=3)
 
-    # Black horizontal separator around the CellProfiler row, only for the
-    # lossy codecs (hq / mq / d20). A thick white line underneath the black
-    # one creates visible whitespace between CellProfiler and its neighbours.
-    if codec_key in {"hq", "mq", "d20"} and "CellProfiler" in model_order:
+    # Black horizontal separators isolate the full CellProfiler feature row
+    # in every panel. CellProfiler and the CellCount baseline both inherit
+    # archived six-to-nine-site well aggregation, whereas the image-model
+    # representations use four sites. A thick white line underneath each
+    # black line creates visible whitespace around the full-feature reference.
+    if "CellProfiler" in model_order:
         cp_idx = model_order.index("CellProfiler")
         task_left = task_x_edges[0]
         task_right = task_x_edges[-1]
@@ -519,8 +521,20 @@ def _plot_rank(scores: dict[tuple[str, str], float | None], *,
             ax.plot([mean_left, mean_right], [y, y], color="black",
                     linewidth=2.0, solid_capstyle="butt", zorder=5)
 
+    # Identify the strongest non-CellProfiler representation independently
+    # for every task and for the normalized Mean, as requested for the
+    # emphasized values. CellCount remains eligible but is explicitly labelled
+    # as a baseline derived from the same six-to-nine-site CellProfiler wells.
+    eligible_models = [m for m in model_order if m != "CellProfiler"]
+    winner_by_col = {
+        task: score_df.loc[eligible_models, task].idxmax()
+        for task in TASK_ORDER
+    }
+    winner_by_col["Mean"] = row_score.loc[eligible_models].idxmax()
+
     # Annotate raw values for tasks; for the Mean column, annotate the
     # normalised value directly (it's the row mean of [0,1]-scaled scores).
+    # Only the non-CellProfiler winner is bold within each column.
     for yi, fam in enumerate(model_order):
         for xi, col in enumerate(display_cols):
             x_pos = col_x[xi]
@@ -539,7 +553,8 @@ def _plot_rank(scores: dict[tuple[str, str], float | None], *,
             txt_color = "white" if norm > 0.88 else "black"
             ax.text(x_pos, yi, anno, fontsize=fs_anno,
                     ha="center", va="center", color=txt_color,
-                    fontweight="bold", zorder=4)
+                    fontweight="bold" if fam == winner_by_col[col] else "normal",
+                    zorder=4)
     # Group dividers are handled by the white gap from pcolormesh edges + the
     # wider mean_gap offset — no explicit separator line needed.
 
@@ -579,14 +594,17 @@ def _plot_rank(scores: dict[tuple[str, str], float | None], *,
     ax.set_ylim(n_models - 0.5, -2.0)
 
     ax.set_yticks(np.arange(n_models))
-    # For lossy codec figures, mark CellProfiler as still being computed on
-    # the raw (uncompressed) features since it has no codec sweep.
-    if codec_key in {"hq", "mq", "d20"}:
-        ytick_labels = [
-            f"{m}\n(raw)" if m == "CellProfiler" else m for m in model_order
-        ]
-    else:
-        ytick_labels = list(model_order)
+    # Mark the inherited site aggregation for both tabular representations;
+    # for lossy codecs, also state that CellProfiler remains Raw-only.
+    ytick_labels = []
+    for model in model_order:
+        if model == "CellProfiler":
+            suffix = "raw; 6–9 sites" if codec_key in {"hq", "mq", "d20"} else "6–9 sites"
+            ytick_labels.append(f"{model}\n({suffix})")
+        elif model == "CellCount":
+            ytick_labels.append(f"{model}\n(CP-derived; 6–9 sites)")
+        else:
+            ytick_labels.append(model)
     ax.set_yticklabels(ytick_labels, fontsize=fs_tick)
     for tick_label in ax.get_yticklabels():
         tick_label.set_fontweight("bold")
