@@ -12,7 +12,7 @@ Figure 3c pools five representation families and 48 normalization recipes per co
 .venv/bin/python rebuttal/mq_d2e8_explanation/paired_recipes/analyze.py --verify-only
 ```
 
-The canonical input is read-only and pinned by exact byte size and SHA-256. Outputs are written beneath `outputs/release_v1/` and inventoried by relocatable checksums.
+The canonical input is read-only and pinned by exact byte size and SHA-256. Generation builds and verifies a clean sibling staging directory before a same-filesystem release swap, so stale files cannot enter the inventory. `--verify-only` revalidates the frozen input, runner identity, exact eight-artifact content inventory, relocatable checksums, and the 240-row non-null unique paired-table contract.
 
 ## Interpretation
 

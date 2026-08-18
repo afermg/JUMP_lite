@@ -9,6 +9,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import numpy as np
 import pandas as pd
@@ -19,6 +20,13 @@ assert spec and spec.loader
 analysis = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = analysis
 spec.loader.exec_module(analysis)
+
+
+def minimal_release(root: Path) -> None:
+    for rel in analysis.EXPECTED_RELEASE_CONTENT:
+        path = root / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"fixture:{rel}\n")
 
 
 def synthetic_grid() -> pd.DataFrame:
@@ -51,6 +59,19 @@ class GridValidationTests(unittest.TestCase):
         self.assertEqual(pairs.groupby("family")["config"].nunique().to_dict(), {
             family: 48 for family in analysis.FAMILY_MODELS
         })
+        self.assertFalse(isinstance(pairs.columns, pd.MultiIndex))
+        self.assertFalse(pairs.isna().any(axis=None))
+
+    def test_paired_csv_has_one_header_and_exact_rows(self) -> None:
+        selected = analysis.select_and_validate_grid(synthetic_grid())
+        pairs = analysis.build_pairs(selected)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "pairs.csv"
+            pairs.to_csv(path, index=False)
+            restored = pd.read_csv(path)
+        self.assertEqual(len(restored), 240)
+        self.assertFalse(restored.isna().any(axis=None))
+        self.assertFalse(restored.duplicated(["family", "config"]).any())
 
     def test_duplicate_model_config_fails_closed(self) -> None:
         source = synthetic_grid()
@@ -100,26 +121,80 @@ class SummaryTests(unittest.TestCase):
         self.assertTrue(bool(row["pooled_median_inversion"]))
         self.assertEqual(family.loc[family.family == "MorphEM", "paired_nap_product_mq_greater_fraction"].item(), 0)
 
+    def test_published_release_table_contract(self) -> None:
+        analysis.verify_release(analysis.DEFAULT_INPUT, analysis.DEFAULT_OUTPUT)
+        pairs = pd.read_csv(analysis.DEFAULT_OUTPUT / "results" / "paired_config_deltas.csv")
+        self.assertEqual(len(pairs), 240)
+        self.assertFalse(pairs.isna().any(axis=None))
+        self.assertFalse(pairs.duplicated(["family", "config"]).any())
+
 
 class ChecksumTests(unittest.TestCase):
     def test_checksum_inventory_rejects_drift_and_extra(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            (root / "a.txt").write_text("stable")
+            minimal_release(root)
             analysis.write_checksums(root)
             analysis.verify_checksums(root)
-            (root / "a.txt").write_text("drift")
+            (root / "REPORT.md").write_text("drift")
             with self.assertRaises(analysis.AnalysisError):
                 analysis.verify_checksums(root)
 
     def test_checksum_inventory_rejects_unsafe_path(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
+            minimal_release(root)
             (root / "artifact_checksums.json").write_text(
                 json.dumps({"artifacts": [{"path": "../escape", "size_bytes": 0, "sha256": "x"}]})
             )
             with self.assertRaises(analysis.AnalysisError):
                 analysis.verify_checksums(root)
+
+    def test_exact_inventory_rejects_extra_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            minimal_release(root)
+            analysis.write_checksums(root)
+            (root / "stale.txt").write_text("stale")
+            with self.assertRaises(analysis.AnalysisError):
+                analysis.verify_checksums(root)
+
+    def test_clean_staging_replaces_stale_release(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "release"
+            output.mkdir()
+            (output / "stale.txt").write_text("must disappear")
+            analysis.run(analysis.DEFAULT_INPUT, output)
+            self.assertNotIn("stale.txt", analysis.release_files(output))
+            analysis.verify_release(analysis.DEFAULT_INPUT, output)
+
+    def test_failed_staging_validation_preserves_existing_release(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "release"
+            output.mkdir()
+            marker = output / "existing.txt"
+            marker.write_text("preserve")
+            with mock.patch.object(
+                analysis, "verify_release", side_effect=analysis.AnalysisError("forced")
+            ):
+                with self.assertRaises(analysis.AnalysisError):
+                    analysis.run(analysis.DEFAULT_INPUT, output)
+            self.assertEqual(marker.read_text(), "preserve")
+
+    def test_failed_post_swap_validation_restores_existing_release(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "release"
+            output.mkdir()
+            marker = output / "existing.txt"
+            marker.write_text("restore")
+            with mock.patch.object(
+                analysis,
+                "verify_release",
+                side_effect=[None, analysis.AnalysisError("forced after swap")],
+            ):
+                with self.assertRaises(analysis.AnalysisError):
+                    analysis.run(analysis.DEFAULT_INPUT, output)
+            self.assertEqual(marker.read_text(), "restore")
 
 
 if __name__ == "__main__":

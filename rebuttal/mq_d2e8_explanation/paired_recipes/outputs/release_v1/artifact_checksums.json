@@ -18,7 +18,7 @@
     {
       "path": "provenance.json",
       "size_bytes": 758,
-      "sha256": "d918b92d310f124e3c625a8716dd8316128e908e6a88e9ade883dc0292a1cd3e"
+      "sha256": "0b25f73d25d1419169d98e6197ebd2ca1a180b84f4aa4aa4d7bb5b3969cdd08f"
     },
     {
       "path": "results/family_summary.csv",
@@ -27,8 +27,8 @@
     },
     {
       "path": "results/paired_config_deltas.csv",
-      "size_bytes": 55499,
-      "sha256": "b611840c31d70ed976eb686ef89f0c3c73c6ce8f84c142ee89986543da8249f7"
+      "size_bytes": 55488,
+      "sha256": "6490dfa4a2641a6b8e1a21230dc92df22282ab7209582b7b7caf40de0ef737be"
     },
     {
       "path": "results/pooled_summary.csv",

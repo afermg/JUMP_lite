@@ -11,7 +11,9 @@ import argparse
 import hashlib
 import json
 import platform
+import shutil
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -60,6 +62,17 @@ REQUIRED_COLUMNS = {
     "PA_mean_nap",
     "PC_mean_nap",
 }
+EXPECTED_RELEASE_CONTENT = {
+    "REPORT.md",
+    "paired_recipes.pdf",
+    "paired_recipes.png",
+    "provenance.json",
+    "results/family_summary.csv",
+    "results/paired_config_deltas.csv",
+    "results/pooled_summary.csv",
+    "results/selected_grid.csv",
+}
+EXPECTED_RELEASE_INVENTORY = EXPECTED_RELEASE_CONTENT | {"artifact_checksums.json"}
 
 
 class AnalysisError(RuntimeError):
@@ -172,6 +185,12 @@ def build_pairs(grid: pd.DataFrame) -> pd.DataFrame:
         pairs[f"delta_{metric}"] = pairs[f"mq_{metric}"] - pairs[f"d2e8_{metric}"]
     if len(pairs) != expected_rows and set(pairs["family"]) == set(FAMILY_MODELS):
         raise AnalysisError(f"expected {expected_rows} production pairs, found {len(pairs)}")
+    # ``pivot`` leaves a two-level columns index, including an empty codec level
+    # on family/config. Flatten it before CSV publication; otherwise pandas writes
+    # a second all-empty header row that downstream readers interpret as data.
+    pairs.columns = [column[0] if isinstance(column, tuple) else column for column in pairs.columns]
+    if pairs.columns.duplicated().any():
+        raise AnalysisError(f"duplicate flattened paired columns: {pairs.columns[pairs.columns.duplicated()].tolist()}")
     return pairs.sort_values(["family", "config"], kind="stable").reset_index(drop=True)
 
 
@@ -350,57 +369,99 @@ def write_report(output: Path, family: pd.DataFrame, pooled: pd.DataFrame) -> No
     (output / "REPORT.md").write_text("\n".join(lines))
 
 
+def release_files(output: Path) -> set[str]:
+    return {
+        path.relative_to(output).as_posix()
+        for path in output.rglob("*")
+        if path.is_file()
+    }
+
+
 def write_checksums(output: Path) -> None:
-    records = []
-    for path in sorted(p for p in output.rglob("*") if p.is_file() and p.name != "artifact_checksums.json"):
-        records.append(
-            {
-                "path": path.relative_to(output).as_posix(),
-                "size_bytes": path.stat().st_size,
-                "sha256": sha256_file(path),
-            }
+    observed = release_files(output)
+    if observed != EXPECTED_RELEASE_CONTENT:
+        raise AnalysisError(
+            "release content mismatch before checksums; "
+            f"missing={sorted(EXPECTED_RELEASE_CONTENT-observed)}, "
+            f"extra={sorted(observed-EXPECTED_RELEASE_CONTENT)}"
         )
-    (output / "artifact_checksums.json").write_text(json.dumps({"artifacts": records}, indent=2) + "\n")
+    records = []
+    for rel in sorted(EXPECTED_RELEASE_CONTENT):
+        path = output / rel
+        records.append(
+            {"path": rel, "size_bytes": path.stat().st_size, "sha256": sha256_file(path)}
+        )
+    (output / "artifact_checksums.json").write_text(
+        json.dumps({"artifacts": records}, indent=2) + "\n"
+    )
 
 
 def verify_checksums(output: Path) -> None:
+    observed_all = release_files(output)
+    if observed_all != EXPECTED_RELEASE_INVENTORY:
+        raise AnalysisError(
+            "exact release inventory mismatch; "
+            f"missing={sorted(EXPECTED_RELEASE_INVENTORY-observed_all)}, "
+            f"extra={sorted(observed_all-EXPECTED_RELEASE_INVENTORY)}"
+        )
     inventory = output / "artifact_checksums.json"
-    if not inventory.is_file():
-        raise AnalysisError(f"missing checksum inventory: {inventory}")
     payload = json.loads(inventory.read_text())
-    expected_paths = set()
-    for record in payload.get("artifacts", []):
+    records = payload.get("artifacts", [])
+    expected_paths: set[str] = set()
+    for record in records:
         rel = record["path"]
         if Path(rel).is_absolute() or ".." in Path(rel).parts:
             raise AnalysisError(f"unsafe artifact path: {rel}")
+        if rel in expected_paths:
+            raise AnalysisError(f"duplicate artifact record: {rel}")
         path = output / rel
         expected_paths.add(rel)
         if not path.is_file():
             raise AnalysisError(f"missing artifact: {rel}")
         if path.stat().st_size != record["size_bytes"] or sha256_file(path) != record["sha256"]:
             raise AnalysisError(f"artifact drift: {rel}")
-    observed = {
-        p.relative_to(output).as_posix()
-        for p in output.rglob("*")
-        if p.is_file() and p.name != "artifact_checksums.json"
-    }
-    if observed != expected_paths:
+    if expected_paths != EXPECTED_RELEASE_CONTENT:
         raise AnalysisError(
-            f"artifact inventory mismatch; missing={sorted(expected_paths-observed)}, "
-            f"extra={sorted(observed-expected_paths)}"
+            "checksum record inventory mismatch; "
+            f"missing={sorted(EXPECTED_RELEASE_CONTENT-expected_paths)}, "
+            f"extra={sorted(expected_paths-EXPECTED_RELEASE_CONTENT)}"
         )
 
 
-def run(input_path: Path, output: Path) -> None:
+def verify_release(input_path: Path, output: Path) -> None:
+    identity = validate_production_input(input_path)
+    verify_checksums(output)
+    provenance_path = output / "provenance.json"
+    provenance = json.loads(provenance_path.read_text())
+    if provenance.get("input") != identity:
+        raise AnalysisError("provenance input identity drift")
+    if provenance.get("families") != list(FAMILY_MODELS):
+        raise AnalysisError("provenance family order drift")
+    if provenance.get("expected_recipes_per_family_codec") != EXPECTED_RECIPES:
+        raise AnalysisError("provenance recipe count drift")
+    if provenance.get("runner", {}).get("sha256") != sha256_file(Path(__file__).resolve()):
+        raise AnalysisError("provenance runner drift")
+    pairs = pd.read_csv(output / "results" / "paired_config_deltas.csv")
+    if (
+        len(pairs) != len(FAMILY_MODELS) * EXPECTED_RECIPES
+        or pairs.isna().any(axis=None)
+        or pairs.duplicated(["family", "config"]).any()
+        or set(pairs["family"]) != set(FAMILY_MODELS)
+    ):
+        raise AnalysisError("published paired recipe table contract failed")
+
+
+def generate_release(input_path: Path, output: Path) -> None:
+    if output.exists():
+        raise AnalysisError(f"staging output already exists: {output}")
     identity = validate_production_input(input_path)
     source = pd.read_csv(input_path)
     grid = select_and_validate_grid(source)
     pairs = build_pairs(grid)
     family, pooled = summarize(grid, pairs)
 
-    output.mkdir(parents=True, exist_ok=True)
     results = output / "results"
-    results.mkdir(exist_ok=True)
+    results.mkdir(parents=True)
     grid.to_csv(results / "selected_grid.csv", index=False)
     pairs.to_csv(results / "paired_config_deltas.csv", index=False)
     family.to_csv(results / "family_summary.csv", index=False)
@@ -425,7 +486,33 @@ def run(input_path: Path, output: Path) -> None:
     (output / "provenance.json").write_text(json.dumps(provenance, indent=2) + "\n")
     write_report(output, family, pooled)
     write_checksums(output)
-    verify_checksums(output)
+    verify_release(input_path, output)
+
+
+def run(input_path: Path, output: Path) -> None:
+    output.parent.mkdir(parents=True, exist_ok=True)
+    temporary_root = Path(
+        tempfile.mkdtemp(prefix=f".{output.name}.staging-", dir=output.parent)
+    )
+    staged = temporary_root / "release"
+    previous = temporary_root / "previous"
+    try:
+        generate_release(input_path, staged)
+        if output.exists():
+            output.rename(previous)
+        try:
+            staged.rename(output)
+            verify_release(input_path, output)
+        except BaseException:
+            if output.exists():
+                shutil.rmtree(output)
+            if previous.exists():
+                previous.rename(output)
+            raise
+        if previous.exists():
+            shutil.rmtree(previous)
+    finally:
+        shutil.rmtree(temporary_root, ignore_errors=True)
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -439,9 +526,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     try:
-        validate_production_input(args.input)
         if args.verify_only:
-            verify_checksums(args.output)
+            verify_release(args.input, args.output)
         else:
             run(args.input, args.output)
     except (AnalysisError, OSError, ValueError, KeyError, json.JSONDecodeError) as exc:
