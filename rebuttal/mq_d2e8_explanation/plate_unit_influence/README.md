@@ -18,7 +18,7 @@ PYTHONPATH=src /work/users/amunoz/projects/JUMP_lite/.venv/bin/python \
   rebuttal/mq_d2e8_explanation/plate_unit_influence/test_analyze.py
 ```
 
-The deterministic release is under `outputs/release_v1/`. `--verify-only` validates the exact output inventory plus the frozen sweep, selected metrics/config/profile/per-unit inputs, and scoring source hashes.
+The deterministic release is under `outputs/release_v1/`. `--verify-only` validates the exact output inventory plus the frozen sweep, selected metrics/config/profile/per-unit inputs, and scoring source hashes. Repository-owned scoring sources are recorded with normalized repository-relative paths so verification remains valid after checkout relocation; canonical external data inputs retain canonical absolute paths. Unsafe or traversing relative paths fail closed.
 
 ## Interpretation limits
 

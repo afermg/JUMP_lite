@@ -5,6 +5,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import numpy as np
 import pandas as pd
@@ -77,8 +78,8 @@ class PlateUnitInfluenceTests(unittest.TestCase):
         pd.DataFrame(influence).to_csv(root / "influence_summary.csv", index=False)
         pd.DataFrame(coverage).to_csv(root / "coverage_manifest.csv", index=False)
         a.write_json(root / "provenance.json", {
-            "analysis": "plate_unit_influence", "protocol_version": 2,
-            "inputs": [{"path": str(source), "size_bytes": source.stat().st_size, "sha256": a.sha256_file(source)}],
+            "analysis": "plate_unit_influence", "protocol_version": 3,
+            "inputs": [a.record(source) | {"role": "sweep"}],
         })
         artifacts = []
         for path in sorted(root.iterdir()):
@@ -103,6 +104,48 @@ class PlateUnitInfluenceTests(unittest.TestCase):
             source.write_text("drift")
             with self.assertRaisesRegex(a.AnalysisError, "input drift"):
                 a.verify(release)
+
+    def test_repo_source_identity_survives_relocation(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            first = root / "checkout-a"
+            second = root / "checkout-b"
+            relative = Path("src/norm_3/metrics.py")
+            for checkout in (first, second):
+                source = checkout / relative
+                source.parent.mkdir(parents=True)
+                source.write_text("same scoring source\n")
+            with mock.patch.object(a, "REPO", first):
+                row = a.record_repo_source(first / relative) | {"role": "scoring_source"}
+            self.assertEqual(row["path"], relative.as_posix())
+            self.assertEqual(row["path_scope"], "repo_relative")
+            self.assertNotIn(str(first), row["path"])
+            with mock.patch.object(a, "REPO", second):
+                a.verify_input_records([row])
+
+    def test_repo_relative_paths_fail_closed_on_unsafe_spellings_and_escape(self):
+        base = {"path_scope": "repo_relative", "role": "scoring_source", "size_bytes": 1, "sha256": "0" * 64}
+        for path in ("../outside.py", "src/../outside.py", "/absolute.py", "src//metrics.py", "./src/metrics.py", "src\\metrics.py"):
+            with self.subTest(path=path), self.assertRaisesRegex(a.AnalysisError, "unsafe repo-relative"):
+                a.resolve_input_path(base | {"path": path})
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            repo = root / "repo"; repo.mkdir()
+            outside = root / "outside.py"; outside.write_text("x")
+            (repo / "link.py").symlink_to(outside)
+            with mock.patch.object(a, "REPO", repo), self.assertRaisesRegex(a.AnalysisError, "escapes repository"):
+                a.resolve_input_path(base | {"path": "link.py"})
+
+    def test_input_scope_contract_rejects_misclassified_paths(self):
+        with tempfile.TemporaryDirectory() as td:
+            external = Path(td) / "external.txt"
+            external.write_text("x")
+            absolute = a.record(external)
+            with self.assertRaisesRegex(a.AnalysisError, "scoring source must be repo-relative"):
+                a.resolve_input_path(absolute | {"role": "scoring_source"})
+            with mock.patch.object(a, "REPO", Path(td)):
+                with self.assertRaisesRegex(a.AnalysisError, "repository input must be repo-relative"):
+                    a.resolve_input_path(absolute | {"role": "sweep"})
 
     def test_verify_rejects_extra_output(self):
         with tempfile.TemporaryDirectory() as td:

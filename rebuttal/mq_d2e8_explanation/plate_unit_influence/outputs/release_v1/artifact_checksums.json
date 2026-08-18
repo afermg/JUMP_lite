@@ -37,8 +37,8 @@
     },
     {
       "path": "provenance.json",
-      "sha256": "aa432c4c81046849a6673968ab7c5a5476f17d891613c6ab9c6b2eb6011a42f2",
-      "size_bytes": 22939
+      "sha256": "20b7331f7fe5c9459dc328b6a578e4d1a48ad8d27416e0e3c99544bf430ba015",
+      "size_bytes": 24598
     },
     {
       "path": "selected_recipes.csv",

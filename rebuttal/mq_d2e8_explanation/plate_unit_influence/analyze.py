@@ -15,7 +15,7 @@ import os
 import shutil
 import sys
 import tempfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import matplotlib
@@ -67,10 +67,31 @@ def sha256_file(path: Path) -> str:
             h.update(chunk)
     return h.hexdigest()
 
-def record(path: Path) -> dict[str, Any]:
+def _identity(path: Path, recorded_path: str, path_scope: str) -> dict[str, Any]:
     if not path.is_file() or path.stat().st_size <= 0:
         raise AnalysisError(f"missing or empty input: {path}")
-    return {"path": str(path.resolve()), "size_bytes": path.stat().st_size, "sha256": sha256_file(path)}
+    return {
+        "path": recorded_path,
+        "path_scope": path_scope,
+        "size_bytes": path.stat().st_size,
+        "sha256": sha256_file(path),
+    }
+
+
+def record(path: Path) -> dict[str, Any]:
+    """Record a canonical external input by absolute path."""
+    resolved = path.resolve()
+    return _identity(resolved, str(resolved), "absolute")
+
+
+def record_repo_source(path: Path) -> dict[str, Any]:
+    """Record a repository-owned source using a relocatable POSIX path."""
+    resolved = path.resolve()
+    try:
+        relative = resolved.relative_to(REPO.resolve()).as_posix()
+    except ValueError as exc:
+        raise AnalysisError(f"repository source is outside repository: {path}") from exc
+    return _identity(resolved, relative, "repo_relative")
 
 def atomic_text(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -275,7 +296,7 @@ def run(output: Path) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
     staged = Path(tempfile.mkdtemp(prefix="plate-unit-influence-", dir=output.parent))
     try:
-        code_inputs = [record(path) | {"role": "scoring_source"} for path in SCORING_SOURCES]
+        code_inputs = [record_repo_source(path) | {"role": "scoring_source"} for path in SCORING_SOURCES]
         inputs = [sweep_identity | {"role": "sweep"}, *code_inputs]
         point_rows, loo_rows, coverage_rows, contribution_frames, influence_rows = [], [], [], [], []
         selected_by_family = selected.set_index("family")
@@ -378,10 +399,10 @@ def run(output: Path) -> None:
             "",
         ]
         atomic_text(staged / "REPORT.md", "\n".join(report_lines))
-        input_rows = sorted(inputs, key=lambda x: (x.get("family", ""), x.get("codec", ""), x.get("role", ""), x["path"]))
-        if len({row["path"] for row in input_rows}) != len(input_rows):
+        input_rows = sorted(inputs, key=lambda x: (x.get("family", ""), x.get("codec", ""), x.get("role", ""), x["path_scope"], x["path"]))
+        if len({(row["path_scope"], row["path"]) for row in input_rows}) != len(input_rows):
             raise AnalysisError("duplicate input identity in provenance")
-        provenance = {"analysis": "plate_unit_influence", "protocol_version": 2, "canonical_inputs_read_only": True,
+        provenance = {"analysis": "plate_unit_influence", "protocol_version": 3, "canonical_inputs_read_only": True,
                       "selection": "lexical tie-break after maximizing PA*PC/100 on Zstd only", "families": list(FAMILIES), "codecs": list(CODECS),
                       "population_contract": "Every reported MQ-D2-E8 contrast uses the exact family-specific intersection of Metadata_id across codecs.",
                       "expected_counts": {"configs_per_zstd_family": EXPECTED_CONFIGS, "maximum_profiles_per_variant": EXPECTED_FULL_ROWS, "minimum_profiles_per_variant": MIN_PROFILE_ROWS, "pa_units": EXPECTED_PA, "pc_units": EXPECTED_PC, "plates": EXPECTED_PLATES},
@@ -408,6 +429,53 @@ def verify_records(rows: list[dict[str, Any]], label: str) -> None:
             raise AnalysisError(f"{label} drift: {path}")
 
 
+def resolve_input_path(row: dict[str, Any]) -> Path:
+    raw = row.get("path")
+    scope = row.get("path_scope")
+    if not isinstance(raw, str) or not raw:
+        raise AnalysisError("invalid input path")
+    repo_root = REPO.resolve()
+    if scope == "repo_relative":
+        # Require one normalized POSIX spelling and reject traversal explicitly.
+        if "\\" in raw or any(part in {"", ".", ".."} for part in raw.split("/")):
+            raise AnalysisError(f"unsafe repo-relative input path: {raw}")
+        relative = PurePosixPath(raw)
+        if relative.is_absolute() or relative.as_posix() != raw:
+            raise AnalysisError(f"unsafe repo-relative input path: {raw}")
+        resolved = (repo_root / Path(*relative.parts)).resolve()
+        try:
+            resolved.relative_to(repo_root)
+        except ValueError as exc:
+            raise AnalysisError(f"repo-relative input escapes repository: {raw}") from exc
+        if row.get("role") != "scoring_source":
+            raise AnalysisError(f"repo-relative input is not a scoring source: {raw}")
+        return resolved
+    if scope == "absolute":
+        path = Path(raw)
+        if not path.is_absolute() or str(path.resolve()) != raw:
+            raise AnalysisError(f"non-canonical absolute input path: {raw}")
+        try:
+            path.relative_to(repo_root)
+        except ValueError:
+            pass
+        else:
+            raise AnalysisError(f"repository input must be repo-relative: {raw}")
+        if row.get("role") == "scoring_source":
+            raise AnalysisError(f"scoring source must be repo-relative: {raw}")
+        return path
+    raise AnalysisError(f"invalid input path scope: {scope}")
+
+
+def verify_input_records(rows: list[dict[str, Any]]) -> None:
+    identities = {(row.get("path_scope"), row.get("path")) for row in rows}
+    if not rows or len(identities) != len(rows):
+        raise AnalysisError("invalid input inventory")
+    for row in rows:
+        path = resolve_input_path(row)
+        if not path.is_file() or path.stat().st_size != int(row["size_bytes"]) or sha256_file(path) != row["sha256"]:
+            raise AnalysisError(f"input drift: {path}")
+
+
 def verify(output: Path) -> None:
     checksum_path = output / "artifact_checksums.json"
     provenance_path = output / "provenance.json"
@@ -426,9 +494,9 @@ def verify(output: Path) -> None:
     output_rows = [dict(row, path=str(output / row["path"])) for row in artifacts]
     verify_records(output_rows, "artifact")
     provenance = json.loads(provenance_path.read_text())
-    if provenance.get("analysis") != "plate_unit_influence" or provenance.get("protocol_version") != 2:
+    if provenance.get("analysis") != "plate_unit_influence" or provenance.get("protocol_version") != 3:
         raise AnalysisError("provenance protocol drift")
-    verify_records(provenance.get("inputs", []), "input")
+    verify_input_records(provenance.get("inputs", []))
 
     points = pd.read_csv(output / "fixed_recipe_points.csv")
     loo = pd.read_csv(output / "leave_one_plate_out.csv", keep_default_na=False)
