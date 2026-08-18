@@ -1,0 +1,54 @@
+{
+  "artifacts": [
+    {
+      "path": "REPORT.md",
+      "sha256": "a690bc9bb1b9856f29f67d42f4007d974912587ef6e194f8bd42f86de876ed82",
+      "size_bytes": 1549
+    },
+    {
+      "path": "e3_vs_hq_bootstrap.csv",
+      "sha256": "35ccf05afd62c10cfc4ffa9ebb3a18045da859c38d2517da7ff58028a949cb05",
+      "size_bytes": 2210
+    },
+    {
+      "path": "effort_sensitivity.pdf",
+      "sha256": "28ce5ca469224d1994e3922eb7e60a4ad7373f230447926e7120fdcf1b309d65",
+      "size_bytes": 31259
+    },
+    {
+      "path": "effort_sensitivity.png",
+      "sha256": "a214acde766faf600bce82b0b601d3a17d9667e06c2ac24dc2ec61f1aeca84d7",
+      "size_bytes": 103863
+    },
+    {
+      "path": "feature_correlation_summary.csv",
+      "sha256": "a81b414db59ff99e30a3afa7877236454d3a3fe5a1b1a205ca2fdc3efee4d0b4",
+      "size_bytes": 215
+    },
+    {
+      "path": "image_quality_summary.csv",
+      "sha256": "c02c6d8670f40d708dfd4169b97fe69ccb55b8c5a0ba15be00ee9483363910ea",
+      "size_bytes": 281
+    },
+    {
+      "path": "provenance.json",
+      "sha256": "33fce25a5e6fa0a08dbe20a06c9de7af2b003ab7adf70f6368f7c0599478e4ba",
+      "size_bytes": 28891
+    },
+    {
+      "path": "score_intervals.csv",
+      "sha256": "93cb3e3c6d32981a18189fbe881ebee22c403d88cb38218378720431f0da14f4",
+      "size_bytes": 3253
+    },
+    {
+      "path": "segmentation_common_site_summary.csv",
+      "sha256": "d011ff3fa962d9f131a1b4b62af83250fb578dc411a1e59bf70e058803724f93",
+      "size_bytes": 547
+    },
+    {
+      "path": "selected_recipes.csv",
+      "sha256": "b4a27d9d69e4af7ec65d5fc3326dbed7b8827045d1a06c86a9bac667a082e4db",
+      "size_bytes": 22838
+    }
+  ]
+}
