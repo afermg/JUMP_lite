@@ -112,7 +112,12 @@ class ProductionRunnerTests(unittest.TestCase):
             self._identity_patch(),
             mock.patch(
                 "jump_full_compression.production.software_identity",
-                return_value={"git_commit": "1" * 40, "tracked_tree_clean": True},
+                return_value={
+                    "git_commit": "1" * 40,
+                    "tracked_tree_clean": True,
+                    "python_executable": "/frozen/python",
+                    "python_executable_sha256": "2" * 64,
+                },
             ),
         ):
             bootstrap_production(config, True)
@@ -409,14 +414,21 @@ class ProductionRunnerTests(unittest.TestCase):
             inventory_digest=config.inventory_digest,
             test_mode=False,
         )
-        with (
-            mock.patch(
-                "jump_full_compression.production.software_identity",
-                return_value={"git_commit": "changed"},
-            ),
-            self.assertRaisesRegex(RuntimeError, "checkout/interpreter/dependency"),
+        for field, changed_value in (
+            ("python_executable", "/different/python"),
+            ("python_executable_sha256", "3" * 64),
         ):
-            _load_producer(live_config)
+            changed = dict(stored["software"])
+            changed[field] = changed_value
+            with (
+                self.subTest(field=field),
+                mock.patch(
+                    "jump_full_compression.production.software_identity",
+                    return_value=changed,
+                ),
+                self.assertRaisesRegex(RuntimeError, "checkout/interpreter/dependency"),
+            ):
+                _load_producer(live_config)
         with mock.patch(
             "jump_full_compression.production.software_identity",
             return_value=stored["software"],

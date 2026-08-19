@@ -218,6 +218,15 @@ def _source_tree_identity(repo: Path) -> str:
 
 
 def software_identity(*, require_clean: bool) -> dict[str, Any]:
+    try:
+        interpreter = Path(sys.executable).resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise RuntimeError("Python interpreter executable is invalid") from exc
+    if not interpreter.is_absolute() or not interpreter.is_file():
+        raise RuntimeError("Python interpreter executable must be a regular file")
+    if not os.access(interpreter, os.X_OK):
+        raise RuntimeError("Python interpreter executable is not executable")
+
     repo = Path(__file__).resolve().parents[2]
     configured_git = os.environ.get("GIT_EXECUTABLE")
     git_path = Path(configured_git) if configured_git else None
@@ -272,6 +281,8 @@ def software_identity(*, require_clean: bool) -> dict[str, Any]:
         "package_source_sha256": _source_tree_identity(repo),
         "uv_lock_sha256": sha256_file(repo / "uv.lock"),
         "python": sys.version,
+        "python_executable": str(interpreter),
+        "python_executable_sha256": sha256_file(interpreter),
         "numpy": np.__version__,
         "pillow": PILLOW_VERSION,
         "numcodecs": numcodecs.__version__,

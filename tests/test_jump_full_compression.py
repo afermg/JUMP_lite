@@ -856,6 +856,21 @@ print(json.dumps({'tasks': runtime_task_count(), 'status': result['status'],
             with self.assertRaisesRegex(RuntimeError, "observed=25"):
                 run_candidate(live, False)
 
+    def test_software_identity_binds_resolved_interpreter_executable(self):
+        identity = software_identity(require_clean=False)
+        interpreter = Path(sys.executable).resolve(strict=True)
+        self.assertEqual(identity["python_executable"], str(interpreter))
+        self.assertEqual(identity["python_executable_sha256"], sha256_file(interpreter))
+
+    def test_software_identity_rejects_non_file_interpreter(self):
+        with (
+            mock.patch(
+                "jump_full_compression.pipeline.sys.executable", str(Path.cwd())
+            ),
+            self.assertRaisesRegex(RuntimeError, "regular file"),
+        ):
+            software_identity(require_clean=False)
+
     def test_live_clean_producer_rejects_untracked_importable_source(self):
         shadow = Path("src/boto3.py")
         self.assertFalse(shadow.exists())
