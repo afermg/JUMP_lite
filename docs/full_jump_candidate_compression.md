@@ -91,13 +91,12 @@ python -m jump_full_compression audit --kind frozen \
 The QC ledger is generated offline by
 `prep/generate_full_jump_qc_ledger.py` from `jump-cellpainting/datasets` commit
 `016e865` and binds the exact 169 red and six gray source/batch/plate identities.
-It records classification only, not the release action. The checked-in policy
-intentionally leaves red/gray handling unresolved, so it must fail frozen
-auditing until that field is explicitly resolved and reviewed. A resolved
-`exclude_red_include_gray` policy rejects red rows; `exclude_red_and_gray`
-rejects both classifications.
-Production remains blocked on that red/gray decision, a commit-pinned complete
-inventory, and the final CPG namespace.
+It records classification only, not the release action. The reviewed release
+policy is `exclude_red_include_gray`: all 169 technically problematic red plates
+are excluded, while the six technically valid negative-control-only gray plates
+are included. Frozen auditing rejects every red row and permits gray rows.
+Production remains blocked on a commit-pinned complete ordered inventory and the
+final CPG namespace.
 
 ## Reviewed launch sequence
 

@@ -16,14 +16,14 @@
     "status": "resolved"
   },
   "red_gray_release_policy": {
-    "action": null,
+    "action": "exclude_red_include_gray",
     "classification_ledger": {
       "bytes": 18229,
       "path": "metadata/full_jump_compression/qc_plate_classification_v1.json",
       "sha256": "57552bafb6a0065f2de45facc09c7cddc06074924da80b00943c4b8edc804b8f"
     },
-    "release_identity_blocked": true,
-    "status": "unresolved"
+    "release_identity_blocked": false,
+    "status": "resolved"
   },
   "source_15": {
     "action": "exclude_all_rows",

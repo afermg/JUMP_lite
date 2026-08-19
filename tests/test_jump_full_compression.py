@@ -97,12 +97,11 @@ class FullJumpCompressionTests(unittest.TestCase):
         policy = json.loads(
             (metadata / "production_exclusion_policy_v1.json").read_text()
         )
-        if resolved:
-            policy["red_gray_release_policy"].update(
-                action=action,
-                status="resolved",
-                release_identity_blocked=False,
-            )
+        policy["red_gray_release_policy"].update(
+            action=action if resolved else None,
+            status="resolved" if resolved else "unresolved",
+            release_identity_blocked=not resolved,
+        )
         policy_path = self.root / (
             "resolved-policy.json" if resolved else "policy.json"
         )
