@@ -574,7 +574,7 @@ def _plot_rank(scores: dict[tuple[str, str], float | None], *,
     ax.set_yticks(np.arange(n_models))
     # Mark, without separating, the representations with additional site
     # access. The caption defines * (direct six-to-nine-site aggregation) and
-    # # (Cell Count derived from those archived well profiles). Lossy panels
+    # ^ (Cell Count derived from those archived well profiles). Lossy panels
     # also retain the Raw-only disclosure for both tabular representations.
     ytick_labels = []
     for model in model_order:
@@ -582,7 +582,7 @@ def _plot_rank(scores: dict[tuple[str, str], float | None], *,
             label = f"{model}*"
             ytick_labels.append(f"{label} (Raw)" if codec_key in {"hq", "mq", "d20"} else label)
         elif model == "CellCount":
-            label = f"{model}#"
+            label = f"{model}^"
             ytick_labels.append(f"{label} (Raw)" if codec_key in {"hq", "mq", "d20"} else label)
         else:
             ytick_labels.append(model)
