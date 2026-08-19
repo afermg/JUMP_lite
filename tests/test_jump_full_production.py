@@ -283,6 +283,91 @@ class ProductionRunnerTests(unittest.TestCase):
         with self._identity_patch():
             self.assertEqual(run_production(config, 1, True)["status"], "complete")
 
+    def test_one_pool_reuses_persistent_native_threads_across_subbatches(self):
+        config = self._config(13)
+        self._bootstrap(config)
+        control_path = config.state_root / "control.json"
+
+        class PersistentNativePool:
+            instances = 0
+            exits = 0
+            native_threads = 14
+            batch_sizes = []
+
+            def __init__(self, max_workers):
+                self.max_workers = max_workers
+                self.started = False
+                type(self).instances += 1
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                type(self).exits += 1
+                return False
+
+            def map(self, function, rows):
+                rows = list(rows)
+                if not self.started:
+                    type(self).native_threads += self.max_workers
+                    self.started = True
+                type(self).batch_sizes.append(len(rows))
+                results = [function(row) for row in rows]
+                if len(type(self).batch_sizes) == 1:
+                    control = json.loads(control_path.read_text())
+                    control["desired_workers"] = 8
+                    control_path.write_text(json.dumps(control))
+                return results
+
+        checks = []
+
+        def check(_config, additional):
+            checks.append(additional)
+            if PersistentNativePool.native_threads + additional > 24:
+                raise RuntimeError("runtime task ceiling exceeded")
+
+        with (
+            self._identity_patch(),
+            mock.patch(
+                "jump_full_compression.production.ThreadPoolExecutor",
+                PersistentNativePool,
+            ),
+            mock.patch(
+                "jump_full_compression.production._production_task_check",
+                side_effect=check,
+            ),
+        ):
+            result = run_production(config, 1, True)
+        self.assertEqual(result["status"], "complete")
+        self.assertEqual(PersistentNativePool.instances, 1)
+        self.assertEqual(PersistentNativePool.exits, 1)
+        self.assertEqual(PersistentNativePool.batch_sizes, [4, 4, 4, 1])
+        self.assertEqual(checks, [4, 0, 0, 0, 0])
+        self.assertEqual(PersistentNativePool.native_threads, 18)
+
+    def test_task_ceiling_failure_prevents_pool_and_tranche(self):
+        config = self._config(1)
+        self._bootstrap(config)
+        with (
+            self._identity_patch(),
+            mock.patch(
+                "jump_full_compression.production._production_task_check",
+                side_effect=RuntimeError(
+                    "runtime task ceiling exceeded: observed=22 additional=4 ceiling=24"
+                ),
+            ),
+            mock.patch(
+                "jump_full_compression.production.ThreadPoolExecutor"
+            ) as executor,
+            self.assertRaisesRegex(RuntimeError, "observed=22 additional=4"),
+        ):
+            run_production(config, 1, True)
+        executor.assert_not_called()
+        checkpoint = json.loads((config.state_root / "checkpoint.json").read_text())
+        self.assertEqual(checkpoint["next_index"], 0)
+        self.assertEqual(checkpoint["cumulative_errors"], 1)
+        self.assertFalse((config.output_root / "tranches/00000000.json").exists())
+
     def test_after_record_crash_adoption_consumes_restart_tranche_allowance(self):
         config = self._config(513)
         self._bootstrap(config)

@@ -32,10 +32,16 @@ Bootstrap starts paused and requires a governor pass. The installed-template com
 hardcodes `--max-tranches 1`. Every `production-run` invocation requires exactly
 `--max-tranches 1`; larger, zero, or negative values fail until a future reviewed
 authorization marker is implemented. There is intentionally no continuous mode or
-authorization marker. Do not edit the unit to bypass this gate. After the first live
-tranche, stop and independently review resource telemetry, all 256 receipts/sites,
-the tranche chain, feature progress, and restart behavior. A future continuous mode
-requires a separate reviewed implementation.
+authorization marker. Do not edit the unit to bypass this gate. At the start of the
+tranche, the runner snapshots the governor's `desired_workers` allocation, checks the
+24-task runtime budget, and creates one persistent worker pool. It reuses that pool
+for every sub-batch and checks the observed task count after each batch. Pause and
+stop decisions are still checked between batches, but governor worker-allocation
+changes take effect only in the next tranche/invocation; a second pool is never
+budgeted in the same invocation. After the first live tranche, stop and independently
+review resource telemetry, all 256 receipts/sites, the tranche chain, feature
+progress, and restart behavior. A future continuous mode requires a separate reviewed
+implementation.
 
 The service is constrained to CPUs 64-80, `Nice=19`, CPU/IO weight 1, `TasksMax=256`,
 one codec thread, no GPU, and the literal production-id output/state writable roots.

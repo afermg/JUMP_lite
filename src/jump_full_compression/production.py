@@ -688,6 +688,11 @@ def _production_control(
     return value
 
 
+def _production_task_check(config: ProductionConfig, additional: int) -> None:
+    if not config.test_mode:
+        assert_runtime_task_ceiling(additional)
+
+
 def _validate_chain(config: ProductionConfig, checkpoint: dict[str, Any]) -> None:
     previous = ZERO_CHAIN
     next_index = 0
@@ -1064,29 +1069,38 @@ def _run_with_snapshot(
                 results = []
                 cursor = 0
                 try:
-                    while cursor < len(rows):
-                        if STOP.is_set():
-                            heartbeat.write(state="stopped-partial")
-                            return {
-                                "status": "stopped-partial",
-                                "next_index": checkpoint["next_index"],
-                                "committed_tranches": committed,
-                            }
-                        control = _production_control(
-                            config, checkpoint["cumulative_errors"]
-                        )
-                        if control.get("paused") is not False:
-                            heartbeat.write(state="paused-partial")
-                            return {
-                                "status": "paused-partial",
-                                "next_index": checkpoint["next_index"],
-                                "committed_tranches": committed,
-                            }
-                        workers = int(control["desired_workers"])
-                        if not config.test_mode:
-                            assert_runtime_task_ceiling(workers)
-                        batch = rows[cursor : cursor + workers]
-                        with ThreadPoolExecutor(max_workers=workers) as pool:
+                    allocation = _production_control(
+                        config, checkpoint["cumulative_errors"]
+                    )
+                    if allocation.get("paused") is not False:
+                        heartbeat.write(state="paused-partial")
+                        return {
+                            "status": "paused-partial",
+                            "next_index": checkpoint["next_index"],
+                            "committed_tranches": committed,
+                        }
+                    workers = int(allocation["desired_workers"])
+                    _production_task_check(config, workers)
+                    with ThreadPoolExecutor(max_workers=workers) as pool:
+                        while cursor < len(rows):
+                            if STOP.is_set():
+                                heartbeat.write(state="stopped-partial")
+                                return {
+                                    "status": "stopped-partial",
+                                    "next_index": checkpoint["next_index"],
+                                    "committed_tranches": committed,
+                                }
+                            control = _production_control(
+                                config, checkpoint["cumulative_errors"]
+                            )
+                            if control.get("paused") is not False:
+                                heartbeat.write(state="paused-partial")
+                                return {
+                                    "status": "paused-partial",
+                                    "next_index": checkpoint["next_index"],
+                                    "committed_tranches": committed,
+                                }
+                            batch = rows[cursor : cursor + workers]
                             results.extend(
                                 pool.map(
                                     lambda row: _build_site(
@@ -1095,7 +1109,8 @@ def _run_with_snapshot(
                                     batch,
                                 )
                             )
-                        cursor += len(batch)
+                            cursor += len(batch)
+                            _production_task_check(config, 0)
                     FAULT_HOOK("before_tranche_validation")
                     expected_hashes = [result["receipt_sha256"] for result in results]
                     receipt_hashes = []
