@@ -19,4 +19,4 @@ TasksMax=256
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
-ReadWritePaths=/work/datasets/jump_lite/images/compressed/.jump_full_production /work/datasets/jump_lite/full_jump_compression_state
+ReadWritePaths=/work/datasets/jump_lite/images/compressed/.jump_full_production/full-jump-hq-mq-v1 /work/datasets/jump_lite/full_jump_compression_state/v1.0/full-jump-hq-mq-v1

@@ -4,18 +4,26 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 import fcntl
+import hashlib
 from itertools import islice
 import json
 import os
 from pathlib import Path
 import re
 import shutil
+import stat
 import threading
 import time
 from typing import Any, Callable, Iterator
 from uuid import uuid4
 
-from .inventory import load_audit, normalized_rows
+import pyarrow.parquet as pq
+
+from .inventory import (
+    _canonical_row,
+    _physical_order_key,
+    inventory_digest_from_report,
+)
 from .model import (
     CODECS,
     COMPRESSION_CPUS,
@@ -56,39 +64,134 @@ def _no_fault(_point: str) -> None:
 FAULT_HOOK: Callable[[str], None] = _no_fault
 
 
+class ManifestSnapshot:
+    """One stable manifest inode used for authentication and every Parquet scan."""
+
+    def __init__(self, path: Path):
+        self.path = path
+        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+        self.fd = os.open(path, flags)
+        observed = os.fstat(self.fd)
+        if not stat.S_ISREG(observed.st_mode):
+            os.close(self.fd)
+            raise RuntimeError("production manifest snapshot is not a regular file")
+        self.stat = observed
+        self.sha256 = self._hash()
+        self.binding = {"bytes": observed.st_size, "sha256": self.sha256}
+        self.columns: tuple[str, ...] | None = None
+        self.row_groups: tuple[int, ...] | None = None
+        self.row_count: int | None = None
+
+    def _handle(self):
+        duplicate = os.dup(self.fd)
+        os.lseek(duplicate, 0, os.SEEK_SET)
+        return os.fdopen(duplicate, "rb", closefd=True)
+
+    def _hash(self) -> str:
+        digest = hashlib.sha256()
+        with self._handle() as handle:
+            for block in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(block)
+        return digest.hexdigest()
+
+    def load_metadata(self) -> None:
+        if self.row_count is not None:
+            return
+        with self._handle() as handle:
+            parquet = pq.ParquetFile(handle)
+            self.columns = tuple(parquet.schema_arrow.names)
+            self.row_groups = tuple(
+                parquet.metadata.row_group(index).num_rows
+                for index in range(parquet.metadata.num_row_groups)
+            )
+            self.row_count = int(parquet.metadata.num_rows)
+
+    def iter_rows(self, start: int = 0) -> Iterator[dict[str, Any]]:
+        if self.row_count is None or self.columns is None or self.row_groups is None:
+            raise RuntimeError("manifest snapshot metadata was not authenticated")
+        if not 0 <= start <= self.row_count:
+            raise ValueError("manifest snapshot start outside row count")
+        group = 0
+        preceding = 0
+        while (
+            group < len(self.row_groups) and preceding + self.row_groups[group] <= start
+        ):
+            preceding += self.row_groups[group]
+            group += 1
+        skip = start - preceding
+        with self._handle() as handle:
+            parquet = pq.ParquetFile(handle)
+            for group_index in range(group, len(self.row_groups)):
+                for batch in parquet.iter_batches(
+                    batch_size=1024,
+                    row_groups=[group_index],
+                    columns=list(self.columns),
+                    use_threads=False,
+                ):
+                    values = batch.to_pydict()
+                    for index in range(batch.num_rows):
+                        if skip:
+                            skip -= 1
+                            continue
+                        row = {column: values[column][index] for column in self.columns}
+                        _physical_order_key(row)
+                        yield _canonical_row(row, self.columns)
+
+    def close(self) -> None:
+        if self.fd >= 0:
+            os.close(self.fd)
+            self.fd = -1
+
+    def __enter__(self) -> "ManifestSnapshot":
+        return self
+
+    def __exit__(self, *_args) -> None:
+        self.close()
+
+
 def _binding(path: Path) -> dict[str, Any]:
     return {"bytes": path.stat().st_size, "sha256": sha256_file(path)}
 
 
-def _validate_identity(config: ProductionConfig) -> dict[str, Any]:
+def _validate_identity(
+    config: ProductionConfig, snapshot: ManifestSnapshot
+) -> dict[str, Any]:
     config.validate()
+    if snapshot.binding != {
+        "bytes": config.manifest_size,
+        "sha256": config.manifest_sha256,
+    }:
+        raise RuntimeError("stable production manifest binding drift")
+    snapshot.load_metadata()
+    if snapshot.row_count != config.site_count:
+        raise RuntimeError("stable production manifest row-count drift")
     expected = {
-        config.manifest: (config.manifest_size, config.manifest_sha256),
-        config.audit_report: (None, config.audit_sha256),
-        config.build_report: (None, config.build_report_sha256),
-        config.exclusion_policy: (None, config.exclusion_policy_sha256),
-        config.damaged_objects: (None, config.damaged_objects_sha256),
-        config.damaged_sites: (None, config.damaged_sites_sha256),
-        config.qc_plates: (None, config.qc_plates_sha256),
+        config.audit_report: config.audit_sha256,
+        config.build_report: config.build_report_sha256,
+        config.exclusion_policy: config.exclusion_policy_sha256,
+        config.damaged_objects: config.damaged_objects_sha256,
+        config.damaged_sites: config.damaged_sites_sha256,
+        config.qc_plates: config.qc_plates_sha256,
     }
-    for path, (size, digest) in expected.items():
-        observed = _binding(path)
-        if observed["sha256"] != digest or (
-            size is not None and observed["bytes"] != size
-        ):
+    for path, digest in expected.items():
+        if _binding(path)["sha256"] != digest:
             raise RuntimeError(f"production identity binding drift: {path}")
-    audit = load_audit(
-        config.audit_report,
-        config.manifest,
-        config.inventory_digest,
-        kind="frozen",
-    )
+    audit = json.loads(config.audit_report.read_text())
+    try:
+        recomputed = inventory_digest_from_report(audit)
+        local_digest = digest_json(audit["local_observation"])
+    except Exception as error:
+        raise RuntimeError("frozen production audit fields malformed") from error
     if (
-        audit.get("release_identity_frozen") is not True
+        audit.get("format_version") != "full-jump-inventory-audit-v2"
+        or audit.get("audit_kind") != "frozen"
+        or audit.get("release_identity_frozen") is not True
         or audit.get("audit_success") is not True
         or audit.get("site_count") != config.site_count
-        or audit.get("manifest")
-        != {"bytes": config.manifest_size, "sha256": config.manifest_sha256}
+        or audit.get("inventory_digest") != config.inventory_digest
+        or recomputed != config.inventory_digest
+        or audit.get("local_observation_digest") != local_digest
+        or audit.get("manifest") != snapshot.binding
     ):
         raise RuntimeError("frozen production audit identity drift")
     build = json.loads(config.build_report.read_text())
@@ -96,6 +199,7 @@ def _validate_identity(config: ProductionConfig) -> dict[str, Any]:
         build.get("format_version") != "full-jump-production-manifest-build-v1"
         or build.get("build_success") is not True
         or build.get("output", {}).get("rows") != config.site_count
+        or build.get("output", {}).get("bytes") != config.manifest_size
         or build.get("output", {}).get("sha256") != config.manifest_sha256
         or build.get("policy_action") != "exclude_red_include_gray"
     ):
@@ -199,7 +303,19 @@ def _load_producer(config: ProductionConfig) -> tuple[dict[str, Any], str]:
     path = _producer_path(config)
     if not path.is_file() or path.is_symlink():
         raise RuntimeError("production producer identity missing")
-    payload = json.loads(path.read_text())
+    descriptor = os.open(
+        path,
+        os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0),
+    )
+    try:
+        observed = os.fstat(descriptor)
+        if not stat.S_ISREG(observed.st_mode):
+            raise RuntimeError("production producer identity is not a regular file")
+        with os.fdopen(os.dup(descriptor), "rb", closefd=True) as handle:
+            producer_bytes = handle.read()
+    finally:
+        os.close(descriptor)
+    payload = json.loads(producer_bytes)
     required = {
         "format_version",
         "production_id",
@@ -215,7 +331,13 @@ def _load_producer(config: ProductionConfig) -> tuple[dict[str, Any], str]:
         or payload.get("inventory_digest") != config.inventory_digest
     ):
         raise RuntimeError("production producer identity drift")
-    return payload, sha256_file(path)
+    if not config.test_mode:
+        current = software_identity(require_clean=True)
+        if current != payload.get("software"):
+            raise RuntimeError(
+                "live production checkout/interpreter/dependency identity drift"
+            )
+    return payload, hashlib.sha256(producer_bytes).hexdigest()
 
 
 def _checkpoint_path(config: ProductionConfig) -> Path:
@@ -292,14 +414,14 @@ def _site_path(config: ProductionConfig, codec: str, site: str) -> Path:
     return config.output_root / "codecs" / f"{codec}.zarr" / site
 
 
-def _rows_from(config: ProductionConfig, start: int) -> Iterator[dict[str, Any]]:
-    return islice(normalized_rows(config.manifest), start, None)
+def _rows_from(snapshot: ManifestSnapshot, start: int) -> Iterator[dict[str, Any]]:
+    return snapshot.iter_rows(start)
 
 
 def _rows_slice(
-    config: ProductionConfig, start: int, count: int
+    snapshot: ManifestSnapshot, start: int, count: int
 ) -> list[dict[str, Any]]:
-    return list(islice(normalized_rows(config.manifest), start, start + count))
+    return list(islice(snapshot.iter_rows(start), count))
 
 
 def _source_observation_valid(value: dict[str, Any], uri: str, test_mode: bool) -> bool:
@@ -309,7 +431,7 @@ def _source_observation_valid(value: dict[str, Any], uri: str, test_mode: bool) 
     if test_mode:
         allowed = keys == legacy
     else:
-        allowed = legacy <= keys <= extended
+        allowed = keys == extended
     return bool(
         allowed
         and value.get("uri") == uri
@@ -317,6 +439,15 @@ def _source_observation_valid(value: dict[str, Any], uri: str, test_mode: bool) 
         and value["size"] > 0
         and isinstance(value.get("etag"), str)
         and value["etag"]
+        and (
+            test_mode
+            or (
+                isinstance(value.get("version_id"), str)
+                and bool(value["version_id"])
+                and isinstance(value.get("last_modified"), str)
+                and bool(value["last_modified"])
+            )
+        )
     )
 
 
@@ -462,6 +593,11 @@ def _build_site(
         stack, observations = decode_stack(
             row, config.test_mode, extended_observation=True
         )
+        if len(observations) != len(row["urls"]) or any(
+            not _source_observation_valid(observation, uri, config.test_mode)
+            for observation, uri in zip(observations, row["urls"])
+        ):
+            raise RuntimeError("source observations invalid before production write")
         outputs: dict[str, Any] = {}
         staged: dict[str, Path] = {}
         for codec in CODECS:
@@ -585,10 +721,13 @@ def _validate_chain(config: ProductionConfig, checkpoint: dict[str, Any]) -> Non
 
 
 def _verify_tranche(
-    config: ProductionConfig, tranche: int, producer_sha: str
+    config: ProductionConfig,
+    snapshot: ManifestSnapshot,
+    tranche: int,
+    producer_sha: str,
 ) -> dict[str, Any]:
     record = _load_record(config, tranche)
-    rows = _rows_slice(config, record["start_index"], record["site_count"])
+    rows = _rows_slice(snapshot, record["start_index"], record["site_count"])
     if len(rows) != record["site_count"]:
         raise RuntimeError("manifest tranche slice short")
     expected_names = {f"{row['Metadata_Site_Key']}.json" for row in rows}
@@ -622,13 +761,14 @@ def _verify_tranche(
 
 
 def verify_tranche(config: ProductionConfig, tranche: int) -> dict[str, Any]:
-    _validate_identity(config)
-    _, producer_sha = _load_producer(config)
-    checkpoint = _load_checkpoint(config)
-    _validate_chain(config, checkpoint)
-    if not 0 <= tranche < checkpoint["completed_tranches"]:
-        raise ValueError("selected tranche is not committed")
-    return _verify_tranche(config, tranche, producer_sha)
+    with ManifestSnapshot(config.manifest) as snapshot:
+        _validate_identity(config, snapshot)
+        _, producer_sha = _load_producer(config)
+        checkpoint = _load_checkpoint(config)
+        _validate_chain(config, checkpoint)
+        if not 0 <= tranche < checkpoint["completed_tranches"]:
+            raise ValueError("selected tranche is not committed")
+        return _verify_tranche(config, snapshot, tranche, producer_sha)
 
 
 class Heartbeat:
@@ -679,7 +819,14 @@ def _lock(config: ProductionConfig):
 
 
 def bootstrap_production(config: ProductionConfig, apply: bool) -> dict[str, Any]:
-    audit = _validate_identity(config)
+    with ManifestSnapshot(config.manifest) as snapshot:
+        return _bootstrap_with_snapshot(config, snapshot, apply)
+
+
+def _bootstrap_with_snapshot(
+    config: ProductionConfig, snapshot: ManifestSnapshot, apply: bool
+) -> dict[str, Any]:
+    audit = _validate_identity(config, snapshot)
     if config.state_root.exists() and any(config.state_root.iterdir()):
         raise RuntimeError("production state is already initialized")
     if config.output_root.exists() and any(config.output_root.iterdir()):
@@ -761,7 +908,17 @@ def bootstrap_production(config: ProductionConfig, apply: bool) -> dict[str, Any
 def acknowledge_production_errors(
     config: ProductionConfig, expected: int, apply: bool
 ) -> dict[str, Any]:
-    _validate_identity(config)
+    with ManifestSnapshot(config.manifest) as snapshot:
+        return _acknowledge_with_snapshot(config, snapshot, expected, apply)
+
+
+def _acknowledge_with_snapshot(
+    config: ProductionConfig,
+    snapshot: ManifestSnapshot,
+    expected: int,
+    apply: bool,
+) -> dict[str, Any]:
+    _validate_identity(config, snapshot)
     checkpoint = _load_checkpoint(config)
     if (
         expected != checkpoint["cumulative_errors"]
@@ -798,11 +955,21 @@ def acknowledge_production_errors(
 def run_production(
     config: ProductionConfig, max_tranches: int, apply: bool
 ) -> dict[str, Any]:
-    if max_tranches < 1:
+    if max_tranches != 1:
         raise ValueError(
-            "--max-tranches must be positive; continuous mode is forbidden"
+            "--max-tranches must equal 1 until a reviewed authorization marker exists"
         )
-    _validate_identity(config)
+    with ManifestSnapshot(config.manifest) as snapshot:
+        return _run_with_snapshot(config, snapshot, max_tranches, apply)
+
+
+def _run_with_snapshot(
+    config: ProductionConfig,
+    snapshot: ManifestSnapshot,
+    max_tranches: int,
+    apply: bool,
+) -> dict[str, Any]:
+    _validate_identity(config, snapshot)
     if not apply:
         return {
             "status": "would-run",
@@ -820,7 +987,12 @@ def run_production(
             raise RuntimeError("checkpoint producer binding drift")
         _validate_chain(config, checkpoint)
         if checkpoint["completed_tranches"]:
-            _verify_tranche(config, checkpoint["completed_tranches"] - 1, producer_sha)
+            _verify_tranche(
+                config,
+                snapshot,
+                checkpoint["completed_tranches"] - 1,
+                producer_sha,
+            )
         # A durable record written before a crash is adopted only after full validation.
         ahead = _record_path(config, checkpoint["completed_tranches"])
         if ahead.exists():
@@ -842,7 +1014,7 @@ def run_production(
                 or record["created"] + record["skipped"] != expected_count
             ):
                 raise RuntimeError("ahead tranche identity/chain drift")
-            _verify_tranche(config, tranche, producer_sha)
+            _verify_tranche(config, snapshot, tranche, producer_sha)
             checkpoint = {
                 **checkpoint,
                 "next_index": record["end_index"],
@@ -862,7 +1034,7 @@ def run_production(
                 "reason": control.get("reason", control.get("reasons")),
                 "next_index": checkpoint["next_index"],
             }
-        iterator = _rows_from(config, checkpoint["next_index"])
+        iterator = _rows_from(snapshot, checkpoint["next_index"])
         heartbeat_fields = {
             "state": "running",
             "next_index": checkpoint["next_index"],
@@ -921,7 +1093,30 @@ def run_production(
                                 )
                             )
                         cursor += len(batch)
-                    receipt_hashes = [result["receipt_sha256"] for result in results]
+                    FAULT_HOOK("before_tranche_validation")
+                    expected_hashes = [result["receipt_sha256"] for result in results]
+                    receipt_hashes = []
+                    for row, expected_hash in zip(rows, expected_hashes):
+                        receipt = _receipt_path(
+                            config, tranche, row["Metadata_Site_Key"]
+                        )
+                        observed_hash = sha256_file(receipt)
+                        if observed_hash != expected_hash:
+                            raise RuntimeError(
+                                "ordered production receipt hash changed before commit"
+                            )
+                        _validate_site_receipt(
+                            config,
+                            tranche,
+                            row,
+                            producer_sha,
+                            observed_hash,
+                        )
+                        receipt_hashes.append(observed_hash)
+                    if receipt_hashes != expected_hashes or len(receipt_hashes) != len(
+                        rows
+                    ):
+                        raise RuntimeError("ordered production receipt list drift")
                     record = {
                         "format_version": TRANCHE_FORMAT,
                         "production_id": config.production_id,
@@ -981,31 +1176,55 @@ def run_production(
 
 
 def finalize_validation(config: ProductionConfig) -> dict[str, Any]:
-    _validate_identity(config)
-    checkpoint = _load_checkpoint(config)
-    _validate_progress_structure(config, checkpoint)
-    if (
-        checkpoint.get("complete") is not True
-        or checkpoint.get("next_index") != config.site_count
-    ):
-        raise RuntimeError("production output is not complete")
-    _validate_chain(config, checkpoint)
-    _, producer_sha = _load_producer(config)
-    for tranche in range(checkpoint["completed_tranches"]):
-        _verify_tranche(config, tranche, producer_sha)
-    return {
-        "status": "exhaustively-valid",
-        "sites": config.site_count,
-        "tranches": checkpoint["completed_tranches"],
-        "chain_head": checkpoint["chain_head"],
-        "production_not_published": True,
-    }
+    with ManifestSnapshot(config.manifest) as snapshot:
+        _validate_identity(config, snapshot)
+        checkpoint = _load_checkpoint(config)
+        _validate_progress_structure(config, checkpoint)
+        if (
+            checkpoint.get("complete") is not True
+            or checkpoint.get("next_index") != config.site_count
+        ):
+            raise RuntimeError("production output is not complete")
+        _validate_chain(config, checkpoint)
+        _, producer_sha = _load_producer(config)
+        codec_counts = {}
+        for codec in CODECS:
+            root = config.output_root / "codecs" / f"{codec}.zarr"
+            count = 0
+            for entry in root.iterdir():
+                if (
+                    entry.name in {".zgroup", ".zattrs"}
+                    or entry.is_symlink()
+                    or not entry.is_dir()
+                ):
+                    raise RuntimeError("unsafe/unknown flat codec-root entry")
+                count += 1
+            if count != config.site_count:
+                raise RuntimeError(f"flat codec-root site count drift: {codec} {count}")
+            codec_counts[codec] = count
+        staging = config.output_root / ".staging"
+        if any(staging.iterdir()):
+            raise RuntimeError("final production staging root is not empty")
+        for tranche in range(checkpoint["completed_tranches"]):
+            _verify_tranche(config, snapshot, tranche, producer_sha)
+        return {
+            "status": "exhaustively-valid",
+            "sites": config.site_count,
+            "codec_site_counts": codec_counts,
+            "tranches": checkpoint["completed_tranches"],
+            "chain_head": checkpoint["chain_head"],
+            "production_not_published": True,
+        }
 
 
 def production_status(config: ProductionConfig) -> dict[str, Any]:
-    _validate_identity(config)
-    result = {"production_id": config.production_id, "config_sha256": config.digest}
-    for name in ("checkpoint.json", "compression.json", "control.json"):
-        path = config.state_root / name
-        result[name] = json.loads(path.read_text()) if path.is_file() else None
-    return result
+    with ManifestSnapshot(config.manifest) as snapshot:
+        _validate_identity(config, snapshot)
+        result = {
+            "production_id": config.production_id,
+            "config_sha256": config.digest,
+        }
+        for name in ("checkpoint.json", "compression.json", "control.json"):
+            path = config.state_root / name
+            result[name] = json.loads(path.read_text()) if path.is_file() else None
+        return result

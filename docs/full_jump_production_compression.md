@@ -29,15 +29,18 @@ and tranche, and is permitted only after the checkpoint is complete.
 ## One-tranche launch gate
 
 Bootstrap starts paused and requires a governor pass. The installed-template command
-hardcodes `--max-tranches 1`. Every `production-run` invocation requires a positive
-bounded `--max-tranches`; there is intentionally no continuous mode or authorization
-marker. Do not edit the unit to simulate continuous operation. After the first live
+hardcodes `--max-tranches 1`. Every `production-run` invocation requires exactly
+`--max-tranches 1`; larger, zero, or negative values fail until a future reviewed
+authorization marker is implemented. There is intentionally no continuous mode or
+authorization marker. Do not edit the unit to bypass this gate. After the first live
 tranche, stop and independently review resource telemetry, all 256 receipts/sites,
 the tranche chain, feature progress, and restart behavior. A future continuous mode
 requires a separate reviewed implementation.
 
 The service is constrained to CPUs 64-80, `Nice=19`, CPU/IO weight 1, `TasksMax=256`,
-one codec thread, no GPU, and exact production/state writable roots. The separate
+one codec thread, no GPU, and the literal production-id output/state writable roots.
+Those exact parent/root paths must be created by reviewed bootstrap before installing
+the templates because systemd never receives a broader writable parent. The separate
 three-hour governor reuses the candidate-compatible telemetry fields but mutates only
 compression control. It never changes feature extraction.
 
@@ -51,6 +54,12 @@ All commands require the complete explicit production identity argument set show
 3. Start `jump-full-production-compress.service`; it can commit at most one tranche.
 4. Run `production-verify-tranche --tranche 0` and independent review.
 5. Do not continue automatically. Continuous execution is impossible by design.
+
+Each live run and validation recomputes the clean checkout, interpreter, dependency,
+and executable identity and requires exact equality with `producer.json`. Manifest
+authentication and Parquet scans share one open inode snapshot; row-group metadata
+seeks directly near the checkpoint rather than rescanning the prefix. Before a tranche
+record is committed, all 256 receipts and both outputs are decoded and revalidated.
 
 Error acknowledgement is exact and leaves control paused with governor evaluation
 required. Unknown structural entries, identity drift, stale/malformed control,

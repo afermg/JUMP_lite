@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
+import shutil
 import tempfile
+import types
 import time
 import unittest
 from unittest import mock
@@ -18,6 +21,10 @@ from jump_full_compression.model import (
 )
 from jump_full_compression.pipeline import STOP
 from jump_full_compression.production import (
+    ManifestSnapshot,
+    _load_producer,
+    _rows_slice,
+    _source_observation_valid,
     _validate_identity,
     acknowledge_production_errors,
     bootstrap_production,
@@ -91,9 +98,13 @@ class ProductionRunnerTests(unittest.TestCase):
         )
 
     def _identity_patch(self):
+        def validate(_config, snapshot):
+            snapshot.load_metadata()
+            return {"inventory_digest": "a" * 64}
+
         return mock.patch(
             "jump_full_compression.production._validate_identity",
-            return_value={"inventory_digest": "a" * 64},
+            side_effect=validate,
         )
 
     def _bootstrap(self, config: ProductionConfig) -> None:
@@ -129,7 +140,11 @@ class ProductionRunnerTests(unittest.TestCase):
         config = self._config(513)
         self._bootstrap(config)
         with self._identity_patch():
-            result = run_production(config, 3, True)
+            first = run_production(config, 1, True)
+            second = run_production(config, 1, True)
+            result = run_production(config, 1, True)
+        self.assertEqual(first["next_index"], 256)
+        self.assertEqual(second["next_index"], 512)
         self.assertEqual(result["status"], "complete")
         checkpoint_path = config.state_root / "checkpoint.json"
         checkpoint = json.loads(checkpoint_path.read_text())
@@ -143,6 +158,12 @@ class ProductionRunnerTests(unittest.TestCase):
         with self._identity_patch():
             self.assertEqual(verify_tranche(config, 2)["sites"], 1)
             self.assertEqual(finalize_validation(config)["sites"], 513)
+        rogue = config.output_root / "codecs/jpegxl_lossy_mq.zarr/rogue-partial"
+        rogue.mkdir()
+        (rogue / ".zarray").write_text("{}")
+        with self._identity_patch(), self.assertRaises(RuntimeError):
+            finalize_validation(config)
+        shutil.rmtree(rogue)
 
         receipt = next((config.output_root / "receipts/00000000").glob("*.json"))
         original = receipt.read_bytes()
@@ -186,8 +207,11 @@ class ProductionRunnerTests(unittest.TestCase):
 
         manifest_original = config.manifest.read_bytes()
         config.manifest.write_bytes(manifest_original + b"tamper")
-        with self.assertRaises(RuntimeError):
-            _validate_identity(config)
+        with (
+            ManifestSnapshot(config.manifest) as snapshot,
+            self.assertRaises(RuntimeError),
+        ):
+            _validate_identity(config, snapshot)
         config.manifest.write_bytes(manifest_original)
 
     def test_orphan_site_and_site_receipt_crashes_are_recovered_uncommitted(self):
@@ -282,10 +306,118 @@ class ProductionRunnerTests(unittest.TestCase):
         self.assertEqual(result["status"], "complete")
         self.assertEqual(result["next_index"], 3)
 
-    def test_positive_max_tranches_and_no_continuous_mode(self):
+    def test_corrupt_after_write_blocks_tranche_commit(self):
+        config = self._config(4)
+        self._bootstrap(config)
+        fired = False
+
+        def corrupt(point):
+            nonlocal fired
+            if point == "before_tranche_validation" and not fired:
+                fired = True
+                chunk = next(
+                    (config.output_root / "codecs/jpegxl_lossy_hq.zarr").glob("*/0.0.0")
+                )
+                chunk.write_bytes(chunk.read_bytes() + b"corrupt")
+
+        with (
+            self._identity_patch(),
+            mock.patch("jump_full_compression.production.FAULT_HOOK", corrupt),
+            self.assertRaises(Exception),
+        ):
+            run_production(config, 1, True)
+        self.assertFalse((config.output_root / "tranches/00000000.json").exists())
+        checkpoint = json.loads((config.state_root / "checkpoint.json").read_text())
+        self.assertEqual(checkpoint["next_index"], 0)
+
+    def test_live_source_observation_requires_version_and_last_modified(self):
+        uri = "s3://cellpainting-gallery/object.tif"
+        legacy = {"uri": uri, "size": 1, "etag": "abc"}
+        self.assertTrue(_source_observation_valid(legacy, uri, True))
+        self.assertFalse(_source_observation_valid(legacy, uri, False))
+        self.assertFalse(
+            _source_observation_valid({**legacy, "version_id": "v1"}, uri, False)
+        )
+        self.assertTrue(
+            _source_observation_valid(
+                {**legacy, "version_id": "v1", "last_modified": "now"},
+                uri,
+                False,
+            )
+        )
+
+    def test_empty_source_observation_rejected_before_write(self):
         config = self._config(1)
-        with self._identity_patch(), self.assertRaises(ValueError):
-            run_production(config, 0, False)
+        self._bootstrap(config)
+        stack = np.zeros((5, 8, 9), dtype=np.uint16)
+        with (
+            self._identity_patch(),
+            mock.patch(
+                "jump_full_compression.production.decode_stack",
+                return_value=(stack, [{} for _ in range(5)]),
+            ),
+            self.assertRaises(RuntimeError),
+        ):
+            run_production(config, 1, True)
+        for codec in ("jpegxl_lossy_hq", "jpegxl_lossy_mq"):
+            self.assertEqual(
+                list((config.output_root / "codecs" / f"{codec}.zarr").iterdir()),
+                [],
+            )
+
+    def test_manifest_snapshot_survives_path_replacement_without_materializing(self):
+        config = self._config(513)
+        original_binding = {
+            "bytes": config.manifest_size,
+            "sha256": config.manifest_sha256,
+        }
+        with ManifestSnapshot(config.manifest) as snapshot:
+            self.assertEqual(snapshot.binding, original_binding)
+            self.assertNotIn("bytes", snapshot.__dict__)
+            snapshot.load_metadata()
+            replacement = self.root / "replacement.parquet"
+            row = (
+                pl.read_parquet(config.manifest)
+                .head(1)
+                .with_columns(pl.lit(9999).alias("Metadata_Site"))
+            )
+            row.write_parquet(replacement)
+            os.replace(replacement, config.manifest)
+            observed = _rows_slice(snapshot, 500, 1)
+            self.assertEqual(observed[0]["Metadata_Site_Key"].rsplit("__", 1)[1], "500")
+            self.assertGreaterEqual(len(snapshot.row_groups), 1)
+
+    def test_live_software_must_equal_stored_producer(self):
+        config = self._config(1)
+        self._bootstrap(config)
+        stored = json.loads((config.output_root / "producer.json").read_text())
+        live_config = types.SimpleNamespace(
+            output_root=config.output_root,
+            production_id=config.production_id,
+            digest=config.digest,
+            inventory_digest=config.inventory_digest,
+            test_mode=False,
+        )
+        with (
+            mock.patch(
+                "jump_full_compression.production.software_identity",
+                return_value={"git_commit": "changed"},
+            ),
+            self.assertRaisesRegex(RuntimeError, "checkout/interpreter/dependency"),
+        ):
+            _load_producer(live_config)
+        with mock.patch(
+            "jump_full_compression.production.software_identity",
+            return_value=stored["software"],
+        ):
+            _, digest = _load_producer(live_config)
+        self.assertEqual(digest, sha256_file(config.output_root / "producer.json"))
+
+    def test_one_tranche_gate_and_no_continuous_mode(self):
+        config = self._config(1)
+        for value in (0, -1, 2, 100):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                run_production(config, value, False)
         self.assertFalse(hasattr(config, "continuous"))
 
 
