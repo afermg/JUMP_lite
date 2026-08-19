@@ -32,10 +32,91 @@ Bootstrap starts paused and requires a governor pass. The original unit remains 
 unaltered one-tranche gate using exactly `--max-tranches 1`; all other finite values
 fail. After tranche 0, independently review all 256 receipts/sites, the chain, feature
 progress, restart behavior, and resource telemetry, then create a durable independent
-acceptance receipt. `production-authorize-continuous` requires that receipt and its
-SHA-256, the exact accepted tranche-0 digest, an error-free checkpoint at index 256,
-a full tranche verification, and the current producer identity. It atomically creates
-a non-overwritable authorization marker and republishes control paused.
+acceptance receipt. A successor deployment must first run the one-time
+`production-migrate-producer` dry/apply sequence below; authorization before that
+migration is rejected. `production-authorize-continuous` parses the receipt (not just
+its caller-supplied SHA-256), rechecks its artifacts and semantics, authenticates the
+applied transition and old tranche under its predecessor producer, then atomically
+creates a non-overwritable authorization marker and republishes control paused.
+
+### Exact acceptance schemas
+
+Every object below rejects extra or missing keys. All SHA values are lowercase
+64-character SHA-256 strings; all timestamps are timezone-aware ISO-8601 strings; all
+artifact paths are absolute regular non-symlink files whose bytes match `sha256`.
+`full-jump-one-tranche-acceptance-v1` has exactly:
+
+```json
+{
+  "format_version": "full-jump-one-tranche-acceptance-v1",
+  "decision": "GO",
+  "production_id": "...", "config_sha256": "...", "inventory_digest": "...",
+  "frozen_manifest": {"sha256": "...", "bytes": 0, "site_count": 7544417},
+  "checkpoint": {"sha256": "...", "next_index": 256, "completed_tranches": 1, "cumulative_errors": 0, "chain_head": "..."},
+  "tranche0": {"record_sha256": "...", "tranche_digest": "...", "site_count": 256},
+  "verification": {"artifact": {"path": "/...", "sha256": "..."}, "status": "valid", "tranche": 0, "sites": 256, "tranche_digest": "..."},
+  "governor": {
+    "before": {"path": "/...", "sha256": "..."},
+    "post": {"path": "/...", "sha256": "..."},
+    "feature_deltas": {
+      "MQ": {"receipt_backed_masks": 1, "canonical_profiles": 1},
+      "lossless": {"receipt_backed_masks": 1, "canonical_profiles": 1}
+    },
+    "io_pressure": {"before_some_avg10": 0, "after_some_avg10": 0, "max_some_avg10": 0}
+  },
+  "predecessor_producer": {"sha256": "...", "git_commit": "..."},
+  "reviews": {
+    "code": {"identifier": "...", "reviewed_at": "...+00:00"},
+    "science": {"identifier": "...", "reviewed_at": "...+00:00"},
+    "ops": {"identifier": "...", "reviewed_at": "...+00:00"}
+  },
+  "accepted_at": "...+00:00"
+}
+```
+
+All four feature deltas must be positive integers and must equal the post-minus-before
+values in the two bound governor artifacts. The three review identifiers must be
+nonempty and distinct. Verification artifact fields must themselves report valid
+tranche 0, 256 sites, and the accepted digest. Every I/O-pressure value must be zero.
+
+`producer-migration-acceptance-v1` has exactly:
+
+```json
+{
+  "format_version": "producer-migration-acceptance-v1", "decision": "GO",
+  "production_id": "...", "config_sha256": "...", "inventory_digest": "...",
+  "checkpoint_sha256": "...", "tranche0_record_sha256": "...", "tranche0_digest": "...",
+  "one_tranche_acceptance": {"path": "/...", "sha256": "..."},
+  "predecessor": {"producer_sha256": "...", "software": {}},
+  "successor": {"software": {}},
+  "review": {"identifier": "...", "reviewed_at": "...+00:00"},
+  "approved_at": "...+00:00"
+}
+```
+
+The `software` objects are exact complete values from predecessor `producer.json` and
+successor `software_identity(require_clean=True)`, not partial examples. `decision`
+other than literal `GO`, arbitrary text, malformed JSON, non-positive evidence,
+identity mismatch, or extra fields fail closed even when the caller supplies the
+matching file hash. Live migration additionally requires predecessor producer
+`eea9ed8964f7d2f3ce9a164becdfa0530818b07855cde1b578f22e8c686d469a` at commit
+`75b18904ea0fe18610feb840888794733fea2fd0`.
+
+### One-time producer migration
+
+Stop both bounded and continuous units. Point `DEPLOY_ROOT`/`PYTHONPATH` at the clean
+successor but retain the accepted 75b1890 policy-ledger paths and hashes in the config
+arguments; this preserves the accepted config digest. Run
+`production-migrate-producer` with both acceptance paths/hashes, first dry and then
+`--apply`. The nonblocking production lock proves no compressor owns the state.
+Migration fully verifies checkpoint/tranche 0 with the predecessor, verifies clean
+successor software, and creates immutable `producers/<sha>.json` histories and
+`transitions/00000001.json`. It then changes only current `producer.json`, the compact
+checkpoint producer binding, terminal telemetry, and paused control. It never rewrites
+an existing site receipt, chunk, or tranche record. Repeating apply after interruption
+at any migration durability boundary converges to the same transition. Any conflicting
+history/transition/current producer fails closed. Run the governor only after migration
+and continuous authorization.
 
 Only the separate `jump-full-production-continuous.service` uses `--continuous`.
 Continuous execution fails closed without the authenticated marker and proves the
@@ -96,10 +177,14 @@ All commands require the complete explicit production identity argument set show
 3. Start `jump-full-production-compress.service`; it can commit at most one tranche.
 4. Run `production-verify-tranche --tranche 0`, complete independent review, and write
    the independent one-tranche acceptance receipt.
-5. Run `production-authorize-continuous` with the receipt path and SHA-256, review the
-   dry result, then apply exactly once.
-6. Run the governor with apply from the newly paused control and confirm it unpauses.
-7. Start `jump-full-production-continuous.service`, and only then enable the separate
+5. Create and independently review `producer-migration-acceptance-v1`; with both
+   compressor units stopped, run `production-migrate-producer` dry and apply once from
+   the clean successor while retaining the old ledger paths/config digest.
+6. Run `production-verify-tranche --tranche 0` again under transition-aware validation.
+7. Run `production-authorize-continuous` with the tranche acceptance receipt path and
+   SHA-256, review the dry result, then apply exactly once.
+8. Run the governor with apply from the newly paused control and confirm it unpauses.
+9. Start `jump-full-production-continuous.service`, and only then enable the separate
    three-hour governor timer.
 
 Continuous output remains quarantined. Do not publish or upload CPG artifacts.

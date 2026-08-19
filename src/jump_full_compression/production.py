@@ -15,6 +15,7 @@ import shutil
 import stat
 import threading
 import time
+from datetime import datetime
 from typing import Any, Callable, Iterator
 from uuid import uuid4
 
@@ -57,9 +58,16 @@ PRODUCER_FORMAT = "full-jump-production-producer-v1"
 ZERO_CHAIN = "0" * 64
 HEARTBEAT_SECONDS = 30
 CONTINUOUS_AUTH_FORMAT = "full-jump-production-continuous-authorization-v1"
+ONE_TRANCHE_ACCEPTANCE_FORMAT = "full-jump-one-tranche-acceptance-v1"
+MIGRATION_ACCEPTANCE_FORMAT = "producer-migration-acceptance-v1"
+PRODUCER_TRANSITION_FORMAT = "full-jump-production-producer-transition-v1"
 AUTHORIZED_FIRST_TRANCHE_DIGEST = (
     "8431770a92782eaeab5e7e41f430aec53d67ab58909aa1bac8ec1d8889654a77"
 )
+AUTHORIZED_PREDECESSOR_PRODUCER_SHA256 = (
+    "eea9ed8964f7d2f3ce9a164becdfa0530818b07855cde1b578f22e8c686d469a"
+)
+AUTHORIZED_PREDECESSOR_COMMIT = "75b18904ea0fe18610feb840888794733fea2fd0"
 IDLE_TERMINAL_STATES = {"session-complete", "complete", "stopped", "paused"}
 
 
@@ -227,7 +235,16 @@ def _allowed_entries(root: Path, allowed: set[str]) -> None:
 def _validate_structure(config: ProductionConfig) -> None:
     _allowed_entries(
         config.output_root,
-        {"codecs", "receipts", "tranches", ".staging", "producer.json", ".lock"},
+        {
+            "codecs",
+            "receipts",
+            "tranches",
+            "producers",
+            "transitions",
+            ".staging",
+            "producer.json",
+            ".lock",
+        },
     )
     _allowed_entries(
         config.state_root,
@@ -306,10 +323,9 @@ def _producer_path(config: ProductionConfig) -> Path:
     return config.output_root / "producer.json"
 
 
-def _load_producer(config: ProductionConfig) -> tuple[dict[str, Any], str]:
-    path = _producer_path(config)
+def _read_regular_bytes(path: Path, label: str) -> bytes:
     if not path.is_file() or path.is_symlink():
-        raise RuntimeError("production producer identity missing")
+        raise RuntimeError(f"{label} missing or unsafe")
     descriptor = os.open(
         path,
         os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0),
@@ -317,12 +333,16 @@ def _load_producer(config: ProductionConfig) -> tuple[dict[str, Any], str]:
     try:
         observed = os.fstat(descriptor)
         if not stat.S_ISREG(observed.st_mode):
-            raise RuntimeError("production producer identity is not a regular file")
+            raise RuntimeError(f"{label} is not a regular file")
         with os.fdopen(os.dup(descriptor), "rb", closefd=True) as handle:
-            producer_bytes = handle.read()
+            return handle.read()
     finally:
         os.close(descriptor)
-    payload = json.loads(producer_bytes)
+
+
+def _validate_producer_payload(
+    config: ProductionConfig, payload: dict[str, Any]
+) -> None:
     required = {
         "format_version",
         "production_id",
@@ -331,20 +351,38 @@ def _load_producer(config: ProductionConfig) -> tuple[dict[str, Any], str]:
         "software",
     }
     if (
-        set(payload) != required
+        not isinstance(payload, dict)
+        or set(payload) != required
         or payload.get("format_version") != PRODUCER_FORMAT
         or payload.get("production_id") != config.production_id
         or payload.get("config_sha256") != config.digest
         or payload.get("inventory_digest") != config.inventory_digest
+        or not isinstance(payload.get("software"), dict)
     ):
         raise RuntimeError("production producer identity drift")
+
+
+def _load_producer_file(
+    config: ProductionConfig, path: Path
+) -> tuple[dict[str, Any], str, bytes]:
+    producer_bytes = _read_regular_bytes(path, "production producer identity")
+    try:
+        payload = json.loads(producer_bytes)
+    except Exception as error:
+        raise RuntimeError("production producer identity malformed") from error
+    _validate_producer_payload(config, payload)
+    return payload, hashlib.sha256(producer_bytes).hexdigest(), producer_bytes
+
+
+def _load_producer(config: ProductionConfig) -> tuple[dict[str, Any], str]:
+    payload, digest, _ = _load_producer_file(config, _producer_path(config))
     if not config.test_mode:
         current = software_identity(require_clean=True)
         if current != payload.get("software"):
             raise RuntimeError(
                 "live production checkout/interpreter/dependency identity drift"
             )
-    return payload, hashlib.sha256(producer_bytes).hexdigest()
+    return payload, digest
 
 
 def _checkpoint_path(config: ProductionConfig) -> Path:
@@ -700,13 +738,122 @@ def _production_task_check(config: ProductionConfig, additional: int) -> None:
         assert_runtime_task_ceiling(additional)
 
 
+def _transition_digest(value: dict[str, Any]) -> str:
+    return digest_json({k: value[k] for k in value if k != "transition_digest"})
+
+
+def _load_transition_plan(
+    config: ProductionConfig, current_producer_sha: str
+) -> list[dict[str, Any]]:
+    root = config.output_root / "transitions"
+    if not root.exists():
+        return []
+    if not root.is_dir() or root.is_symlink():
+        raise RuntimeError("producer transition root unsafe")
+    paths = sorted(root.iterdir())
+    if any(not re.fullmatch(r"\d{8}\.json", path.name) for path in paths):
+        raise RuntimeError("unknown producer transition entry")
+    required = {
+        "format_version",
+        "production_id",
+        "config_sha256",
+        "inventory_digest",
+        "boundary_tranche",
+        "from_producer_sha256",
+        "to_producer_sha256",
+        "checkpoint_next_index",
+        "checkpoint_completed_tranches",
+        "checkpoint_chain_head",
+        "pre_migration_checkpoint_sha256",
+        "one_tranche_acceptance_sha256",
+        "migration_acceptance_sha256",
+        "successor_software",
+        "transitioned_at",
+        "transition_digest",
+    }
+    transitions = []
+    preceding_to = None
+    preceding_boundary = 0
+    seen_producers: set[str] = set()
+    for path in paths:
+        value = json.loads(_read_regular_bytes(path, "producer transition record"))
+        boundary = value.get("boundary_tranche", -1)
+        if (
+            not isinstance(value, dict)
+            or set(value) != required
+            or value.get("format_version") != PRODUCER_TRANSITION_FORMAT
+            or value.get("production_id") != config.production_id
+            or value.get("config_sha256") != config.digest
+            or value.get("inventory_digest") != config.inventory_digest
+            or not isinstance(boundary, int)
+            or boundary <= preceding_boundary
+            or path.name != f"{boundary:08d}.json"
+            or value.get("checkpoint_completed_tranches") != boundary
+            or value.get("checkpoint_next_index")
+            != min(boundary * config.tranche_size, config.site_count)
+            or value.get("transition_digest") != _transition_digest(value)
+            or value.get("from_producer_sha256") == value.get("to_producer_sha256")
+            or value.get("to_producer_sha256") in seen_producers
+            or (
+                preceding_to is not None
+                and value.get("from_producer_sha256") != preceding_to
+            )
+        ):
+            raise RuntimeError("producer transition identity/chain drift")
+        before = _load_record(config, boundary - 1)
+        if before["tranche_digest"] != value.get("checkpoint_chain_head"):
+            raise RuntimeError("producer transition checkpoint chain drift")
+        producer_values = {}
+        for producer_sha in (
+            value["from_producer_sha256"],
+            value["to_producer_sha256"],
+        ):
+            history = config.output_root / "producers" / f"{producer_sha}.json"
+            producer_value, observed_sha, _ = _load_producer_file(config, history)
+            if observed_sha != producer_sha:
+                raise RuntimeError("producer history filename/hash drift")
+            producer_values[producer_sha] = producer_value
+        if (
+            producer_values[value["to_producer_sha256"]]["software"]
+            != value["successor_software"]
+        ):
+            raise RuntimeError("producer transition successor software drift")
+        seen_producers.add(value["from_producer_sha256"])
+        seen_producers.add(value["to_producer_sha256"])
+        preceding_to = value["to_producer_sha256"]
+        preceding_boundary = boundary
+        transitions.append(value)
+    if transitions and transitions[-1]["to_producer_sha256"] != current_producer_sha:
+        raise RuntimeError("current producer does not equal transition chain head")
+    return transitions
+
+
+def _expected_producer(
+    tranche: int, current_producer_sha: str, transitions: list[dict[str, Any]]
+) -> str:
+    if not transitions:
+        return current_producer_sha
+    expected = transitions[0]["from_producer_sha256"]
+    for transition in transitions:
+        if tranche >= transition["boundary_tranche"]:
+            expected = transition["to_producer_sha256"]
+        else:
+            break
+    return expected
+
+
 def _validate_chain(config: ProductionConfig, checkpoint: dict[str, Any]) -> None:
+    current_producer_sha = checkpoint["producer_sha256"]
+    transitions = _load_transition_plan(config, current_producer_sha)
     previous = ZERO_CHAIN
     next_index = 0
     last = None
     for tranche in range(checkpoint["completed_tranches"]):
         value = _load_record(config, tranche)
         count = min(config.tranche_size, config.site_count - next_index)
+        expected_producer = _expected_producer(
+            tranche, current_producer_sha, transitions
+        )
         if (
             value.get("format_version") != TRANCHE_FORMAT
             or value.get("production_id") != config.production_id
@@ -717,7 +864,7 @@ def _validate_chain(config: ProductionConfig, checkpoint: dict[str, Any]) -> Non
             or value.get("end_index") != next_index + count
             or value.get("site_count") != count
             or value.get("previous_tranche_digest") != previous
-            or value.get("producer_sha256") != checkpoint.get("producer_sha256")
+            or value.get("producer_sha256") != expected_producer
             or value.get("created", -1) + value.get("skipped", -1) != count
         ):
             raise RuntimeError(f"tranche chain/index drift: {tranche}")
@@ -780,7 +927,13 @@ def verify_tranche(config: ProductionConfig, tranche: int) -> dict[str, Any]:
         _validate_chain(config, checkpoint)
         if not 0 <= tranche < checkpoint["completed_tranches"]:
             raise ValueError("selected tranche is not committed")
-        return _verify_tranche(config, snapshot, tranche, producer_sha)
+        transitions = _load_transition_plan(config, producer_sha)
+        return _verify_tranche(
+            config,
+            snapshot,
+            tranche,
+            _expected_producer(tranche, producer_sha, transitions),
+        )
 
 
 def _resource_telemetry() -> dict[str, Any]:
@@ -996,7 +1149,305 @@ def _continuous_authorization_path(config: ProductionConfig) -> Path:
     return config.state_root / "continuous-authorization.json"
 
 
-def _atomic_json_create(path: Path, value: dict[str, Any]) -> None:
+def _strict_keys(value: Any, keys: set[str], label: str) -> dict[str, Any]:
+    if not isinstance(value, dict) or set(value) != keys:
+        raise RuntimeError(f"{label} schema drift")
+    return value
+
+
+def _valid_review(value: Any, label: str) -> dict[str, Any]:
+    review = _strict_keys(value, {"identifier", "reviewed_at"}, label)
+    if not isinstance(review["identifier"], str) or not review["identifier"].strip():
+        raise RuntimeError(f"{label} identifier invalid")
+    try:
+        parsed = datetime.fromisoformat(review["reviewed_at"].replace("Z", "+00:00"))
+    except Exception as error:
+        raise RuntimeError(f"{label} timestamp invalid") from error
+    if parsed.tzinfo is None:
+        raise RuntimeError(f"{label} timestamp must be timezone-aware")
+    return review
+
+
+def _artifact_binding(value: Any, label: str) -> tuple[Path, str, Any]:
+    binding = _strict_keys(value, {"path", "sha256"}, label)
+    path = Path(binding["path"])
+    digest = binding["sha256"]
+    if (
+        not isinstance(digest, str)
+        or len(digest) != 64
+        or path.is_symlink()
+        or not path.is_file()
+        or sha256_file(path) != digest
+    ):
+        raise RuntimeError(f"{label} binding drift")
+    try:
+        payload = json.loads(_read_regular_bytes(path, label))
+    except Exception as error:
+        raise RuntimeError(f"{label} malformed") from error
+    return path, digest, payload
+
+
+def _prevalidate_one_tranche_acceptance(path: Path, expected_sha256: str) -> None:
+    if path.is_symlink() or not path.is_file() or sha256_file(path) != expected_sha256:
+        raise RuntimeError("one-tranche acceptance receipt binding drift")
+    try:
+        value = json.loads(_read_regular_bytes(path, "one-tranche acceptance receipt"))
+    except Exception as error:
+        raise RuntimeError("one-tranche acceptance receipt malformed") from error
+    required = {
+        "format_version",
+        "decision",
+        "production_id",
+        "config_sha256",
+        "inventory_digest",
+        "frozen_manifest",
+        "checkpoint",
+        "tranche0",
+        "verification",
+        "governor",
+        "predecessor_producer",
+        "reviews",
+        "accepted_at",
+    }
+    _strict_keys(value, required, "one-tranche acceptance receipt")
+    if value["format_version"] != ONE_TRANCHE_ACCEPTANCE_FORMAT:
+        raise RuntimeError("one-tranche acceptance format invalid")
+    if value["decision"] != "GO":
+        raise RuntimeError("one-tranche acceptance decision is not GO")
+
+
+def _validate_one_tranche_acceptance(
+    config: ProductionConfig,
+    path: Path,
+    expected_sha256: str,
+    checkpoint: dict[str, Any],
+    predecessor_sha: str,
+    predecessor: dict[str, Any],
+    accepted_checkpoint_sha256: str,
+) -> dict[str, Any]:
+    _prevalidate_one_tranche_acceptance(path, expected_sha256)
+    try:
+        value = json.loads(_read_regular_bytes(path, "one-tranche acceptance receipt"))
+    except Exception as error:
+        raise RuntimeError("one-tranche acceptance receipt malformed") from error
+    required = {
+        "format_version",
+        "decision",
+        "production_id",
+        "config_sha256",
+        "inventory_digest",
+        "frozen_manifest",
+        "checkpoint",
+        "tranche0",
+        "verification",
+        "governor",
+        "predecessor_producer",
+        "reviews",
+        "accepted_at",
+    }
+    _strict_keys(value, required, "one-tranche acceptance receipt")
+    frozen = _strict_keys(
+        value["frozen_manifest"], {"sha256", "bytes", "site_count"}, "frozen manifest"
+    )
+    accepted_checkpoint = _strict_keys(
+        value["checkpoint"],
+        {
+            "sha256",
+            "next_index",
+            "completed_tranches",
+            "cumulative_errors",
+            "chain_head",
+        },
+        "accepted checkpoint",
+    )
+    tranche = _strict_keys(
+        value["tranche0"], {"record_sha256", "tranche_digest", "site_count"}, "tranche0"
+    )
+    predecessor_binding = _strict_keys(
+        value["predecessor_producer"], {"sha256", "git_commit"}, "predecessor producer"
+    )
+    reviews = _strict_keys(value["reviews"], {"code", "science", "ops"}, "reviews")
+    identifiers = {
+        _valid_review(reviews[name], f"{name} review")["identifier"]
+        for name in ("code", "science", "ops")
+    }
+    if len(identifiers) != 3:
+        raise RuntimeError("independent review identifiers must be distinct")
+    _valid_review(
+        {"identifier": "acceptance", "reviewed_at": value["accepted_at"]},
+        "acceptance",
+    )
+    if (
+        value["format_version"] != ONE_TRANCHE_ACCEPTANCE_FORMAT
+        or value["decision"] != "GO"
+        or value["production_id"] != config.production_id
+        or value["config_sha256"] != config.digest
+        or value["inventory_digest"] != config.inventory_digest
+        or frozen
+        != {
+            "sha256": config.manifest_sha256,
+            "bytes": config.manifest_size,
+            "site_count": config.site_count,
+        }
+        or accepted_checkpoint["sha256"] != accepted_checkpoint_sha256
+        or accepted_checkpoint["next_index"] != config.tranche_size
+        or accepted_checkpoint["completed_tranches"] != 1
+        or accepted_checkpoint["cumulative_errors"] != 0
+        or accepted_checkpoint["chain_head"] != AUTHORIZED_FIRST_TRANCHE_DIGEST
+        or tranche["record_sha256"] != sha256_file(_record_path(config, 0))
+        or tranche["tranche_digest"] != AUTHORIZED_FIRST_TRANCHE_DIGEST
+        or tranche["site_count"] != config.tranche_size
+        or predecessor_binding["sha256"] != predecessor_sha
+        or predecessor_binding["git_commit"]
+        != predecessor["software"].get("git_commit")
+    ):
+        raise RuntimeError("one-tranche acceptance semantic drift")
+    if not config.test_mode and (
+        predecessor_sha != AUTHORIZED_PREDECESSOR_PRODUCER_SHA256
+        or predecessor["software"].get("git_commit") != AUTHORIZED_PREDECESSOR_COMMIT
+    ):
+        raise RuntimeError("one-tranche predecessor is not accepted 75b1890 identity")
+    verification = _strict_keys(
+        value["verification"],
+        {"artifact", "status", "tranche", "sites", "tranche_digest"},
+        "verification",
+    )
+    _, _, verified_artifact = _artifact_binding(
+        verification["artifact"], "tranche verification artifact"
+    )
+    expected_verification = {
+        "status": "valid",
+        "tranche": 0,
+        "sites": config.tranche_size,
+        "tranche_digest": AUTHORIZED_FIRST_TRANCHE_DIGEST,
+    }
+    if {
+        key: verification[key] for key in expected_verification
+    } != expected_verification:
+        raise RuntimeError("tranche verification receipt semantic drift")
+    if not isinstance(verified_artifact, dict) or any(
+        verified_artifact.get(key) != expected
+        for key, expected in expected_verification.items()
+    ):
+        raise RuntimeError("tranche verification artifact semantic drift")
+    governor = _strict_keys(
+        value["governor"],
+        {"before", "post", "feature_deltas", "io_pressure"},
+        "governor evidence",
+    )
+    _, _, before = _artifact_binding(governor["before"], "governor before artifact")
+    _, _, post = _artifact_binding(governor["post"], "governor post artifact")
+    deltas = _strict_keys(
+        governor["feature_deltas"], {"MQ", "lossless"}, "feature deltas"
+    )
+    for codec in ("MQ", "lossless"):
+        delta = _strict_keys(
+            deltas[codec],
+            {"receipt_backed_masks", "canonical_profiles"},
+            f"{codec} feature delta",
+        )
+        try:
+            observed_before = before["metrics"]["authoritative_progress"][codec]
+            observed_post = post["metrics"]["authoritative_progress"][codec]
+        except Exception as error:
+            raise RuntimeError("governor progress evidence malformed") from error
+        computed = {
+            key: observed_post[key] - observed_before[key]
+            for key in ("receipt_backed_masks", "canonical_profiles")
+        }
+        if delta != computed or any(
+            not isinstance(v, int) or v <= 0 for v in delta.values()
+        ):
+            raise RuntimeError("feature progress delta is not explicit and positive")
+    pressure = _strict_keys(
+        governor["io_pressure"],
+        {"before_some_avg10", "after_some_avg10", "max_some_avg10"},
+        "I/O pressure evidence",
+    )
+    if any(
+        not isinstance(value, (int, float)) or value != 0 for value in pressure.values()
+    ):
+        raise RuntimeError("I/O pressure evidence is not zero")
+    return value
+
+
+def _validate_migration_acceptance(
+    config: ProductionConfig,
+    path: Path,
+    expected_sha256: str,
+    one_tranche_path: Path,
+    one_tranche_sha256: str,
+    checkpoint: dict[str, Any],
+    predecessor: dict[str, Any],
+    predecessor_sha: str,
+    successor_software: dict[str, Any],
+    accepted_checkpoint_sha256: str,
+) -> dict[str, Any]:
+    if path.is_symlink() or not path.is_file() or sha256_file(path) != expected_sha256:
+        raise RuntimeError("producer migration acceptance binding drift")
+    try:
+        value = json.loads(_read_regular_bytes(path, "migration acceptance receipt"))
+    except Exception as error:
+        raise RuntimeError("producer migration acceptance malformed") from error
+    _strict_keys(
+        value,
+        {
+            "format_version",
+            "decision",
+            "production_id",
+            "config_sha256",
+            "inventory_digest",
+            "checkpoint_sha256",
+            "tranche0_record_sha256",
+            "tranche0_digest",
+            "one_tranche_acceptance",
+            "predecessor",
+            "successor",
+            "review",
+            "approved_at",
+        },
+        "migration acceptance receipt",
+    )
+    one = _strict_keys(
+        value["one_tranche_acceptance"],
+        {"path", "sha256"},
+        "one-tranche migration binding",
+    )
+    pred = _strict_keys(
+        value["predecessor"], {"producer_sha256", "software"}, "predecessor"
+    )
+    succ = _strict_keys(value["successor"], {"software"}, "successor")
+    _valid_review(value["review"], "migration review")
+    _valid_review(
+        {"identifier": "approval", "reviewed_at": value["approved_at"]},
+        "migration approval",
+    )
+    if (
+        value["format_version"] != MIGRATION_ACCEPTANCE_FORMAT
+        or value["decision"] != "GO"
+        or value["production_id"] != config.production_id
+        or value["config_sha256"] != config.digest
+        or value["inventory_digest"] != config.inventory_digest
+        or value["checkpoint_sha256"] != accepted_checkpoint_sha256
+        or value["tranche0_record_sha256"] != sha256_file(_record_path(config, 0))
+        or value["tranche0_digest"] != AUTHORIZED_FIRST_TRANCHE_DIGEST
+        or one
+        != {"path": str(one_tranche_path.resolve()), "sha256": one_tranche_sha256}
+        or pred
+        != {"producer_sha256": predecessor_sha, "software": predecessor["software"]}
+        or succ != {"software": successor_software}
+        or checkpoint["next_index"] != config.tranche_size
+        or checkpoint["completed_tranches"] != 1
+        or checkpoint["chain_head"] != AUTHORIZED_FIRST_TRANCHE_DIGEST
+        or checkpoint["cumulative_errors"] != 0
+    ):
+        raise RuntimeError("producer migration acceptance semantic drift")
+    return value
+
+
+def _atomic_json_create(
+    path: Path, value: dict[str, Any], label: str = "continuous authorization"
+) -> None:
     temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
     try:
         with temporary.open("x") as handle:
@@ -1007,10 +1458,284 @@ def _atomic_json_create(path: Path, value: dict[str, Any]) -> None:
         try:
             os.link(temporary, path)
         except FileExistsError as error:
-            raise RuntimeError("continuous authorization already exists") from error
+            raise RuntimeError(f"{label} already exists") from error
         fsync_dir(path.parent)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def _write_immutable_bytes(path: Path, encoded: bytes, label: str) -> None:
+    if path.exists() or path.is_symlink():
+        if path.is_symlink() or _read_regular_bytes(path, label) != encoded:
+            raise RuntimeError(f"existing {label} drift")
+        return
+    temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+    try:
+        with temporary.open("xb") as handle:
+            handle.write(encoded)
+            handle.flush()
+            os.fsync(handle.fileno())
+        try:
+            os.link(temporary, path)
+        except FileExistsError as error:
+            raise RuntimeError(f"{label} already exists") from error
+        fsync_dir(path.parent)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _write_immutable_json(path: Path, value: dict[str, Any], label: str) -> None:
+    encoded = (json.dumps(value, sort_keys=True, indent=2) + "\n").encode()
+    _write_immutable_bytes(path, encoded, label)
+
+
+def _normalize_migration_telemetry(
+    config: ProductionConfig,
+    checkpoint: dict[str, Any],
+    *,
+    state: str = "session-complete",
+    reason: str = "producer migration requires governor evaluation",
+) -> None:
+    telemetry = _resource_telemetry()
+    atomic_json(
+        config.state_root / "compression.json",
+        {
+            "format_version": STATE_FORMAT,
+            "candidate_id": config.production_id,
+            "config_sha256": config.digest,
+            "state": state,
+            "next_index": checkpoint["next_index"],
+            "processed": checkpoint["next_index"],
+            "sites": config.site_count,
+            "cumulative_errors": checkpoint["cumulative_errors"],
+            "heartbeat_unix": time.time(),
+            **telemetry,
+            "peak_tasks": telemetry["current_tasks"],
+        },
+    )
+    atomic_json(
+        config.state_root / "control.json",
+        {
+            "format_version": "full-jump-compression-control-v2",
+            "candidate_id": config.production_id,
+            "config_sha256": config.digest,
+            "paused": True,
+            "desired_workers": INITIAL_WORKERS,
+            "max_workers": MAX_WORKERS,
+            "consecutive_healthy_windows": 0,
+            "compression_cpus": list(COMPRESSION_CPUS),
+            "acknowledged_error_count": 0,
+            "acknowledgement_source": "zero",
+            "reasons": [reason],
+            "observed_at_unix": time.time(),
+            "feature_processes_mutated": False,
+            "governor_evaluation_required": True,
+        },
+    )
+
+
+def migrate_producer(
+    config: ProductionConfig,
+    one_tranche_acceptance: Path,
+    one_tranche_acceptance_sha256: str,
+    migration_acceptance: Path,
+    migration_acceptance_sha256: str,
+    apply: bool,
+) -> dict[str, Any]:
+    successor_software = software_identity(require_clean=not config.test_mode)
+    with ManifestSnapshot(config.manifest) as snapshot:
+        _validate_identity(config, snapshot)
+        with _lock(config):
+            try:
+                return _migrate_producer_locked(
+                    config,
+                    snapshot,
+                    one_tranche_acceptance,
+                    one_tranche_acceptance_sha256,
+                    migration_acceptance,
+                    migration_acceptance_sha256,
+                    successor_software,
+                    apply,
+                )
+            except Exception:
+                # The lock proves no bounded or continuous compressor is active. Keep
+                # a safe paused control after any fail-closed migration preflight/fault.
+                if apply and _checkpoint_path(config).is_file():
+                    try:
+                        checkpoint = _load_checkpoint(config)
+                        _normalize_migration_telemetry(
+                            config,
+                            checkpoint,
+                            state="error",
+                            reason="producer migration failed; review and retry required",
+                        )
+                    except Exception:
+                        pass
+                raise
+
+
+def _migrate_producer_locked(
+    config: ProductionConfig,
+    snapshot: ManifestSnapshot,
+    one_tranche_acceptance: Path,
+    one_tranche_acceptance_sha256: str,
+    migration_acceptance: Path,
+    migration_acceptance_sha256: str,
+    successor_software: dict[str, Any],
+    apply: bool,
+) -> dict[str, Any]:
+    if _continuous_authorization_path(config).exists():
+        raise RuntimeError(
+            "producer migration forbidden after continuous authorization"
+        )
+    current, current_sha, current_bytes = _load_producer_file(
+        config, _producer_path(config)
+    )
+    checkpoint = _load_checkpoint(config)
+    transition_path = config.output_root / "transitions" / "00000001.json"
+    existing_transition = None
+    if transition_path.exists():
+        existing_transition = json.loads(
+            _read_regular_bytes(transition_path, "producer transition record")
+        )
+        predecessor_sha = existing_transition.get("from_producer_sha256")
+        accepted_checkpoint_sha256 = existing_transition.get(
+            "pre_migration_checkpoint_sha256"
+        )
+    else:
+        predecessor_sha = checkpoint["producer_sha256"]
+        accepted_checkpoint_sha256 = sha256_file(_checkpoint_path(config))
+    predecessor_path = config.output_root / "producers" / f"{predecessor_sha}.json"
+    if predecessor_path.exists():
+        predecessor, observed_predecessor_sha, predecessor_bytes = _load_producer_file(
+            config, predecessor_path
+        )
+    elif current_sha == predecessor_sha:
+        predecessor, observed_predecessor_sha, predecessor_bytes = (
+            current,
+            current_sha,
+            current_bytes,
+        )
+    else:
+        raise RuntimeError("predecessor producer history missing")
+    if observed_predecessor_sha != predecessor_sha:
+        raise RuntimeError("predecessor producer hash drift")
+    if not config.test_mode and (
+        predecessor_sha != AUTHORIZED_PREDECESSOR_PRODUCER_SHA256
+        or predecessor["software"].get("git_commit") != AUTHORIZED_PREDECESSOR_COMMIT
+    ):
+        raise RuntimeError("predecessor producer is not the accepted 75b1890 identity")
+    successor_value = {
+        "format_version": PRODUCER_FORMAT,
+        "production_id": config.production_id,
+        "config_sha256": config.digest,
+        "inventory_digest": config.inventory_digest,
+        "software": successor_software,
+    }
+    successor_bytes = (
+        json.dumps(successor_value, sort_keys=True, indent=2) + "\n"
+    ).encode()
+    successor_sha = hashlib.sha256(successor_bytes).hexdigest()
+    if current_sha not in {predecessor_sha, successor_sha}:
+        raise RuntimeError(
+            "current producer is neither migration predecessor nor successor"
+        )
+    if checkpoint["producer_sha256"] not in {predecessor_sha, successor_sha}:
+        raise RuntimeError("checkpoint producer is neither predecessor nor successor")
+    # Fully authenticate the accepted old chain with its original producer, even on
+    # convergence runs where current producer/checkpoint already name the successor.
+    if (
+        checkpoint["next_index"] != config.tranche_size
+        or checkpoint["completed_tranches"] != 1
+        or checkpoint["cumulative_errors"] != 0
+        or checkpoint["chain_head"] != AUTHORIZED_FIRST_TRANCHE_DIGEST
+        or checkpoint["complete"]
+    ):
+        raise RuntimeError(
+            "checkpoint is not the accepted one-tranche migration boundary"
+        )
+    record = _load_record(config, 0)
+    if record["producer_sha256"] != predecessor_sha:
+        raise RuntimeError("tranche0 predecessor producer drift")
+    verified = _verify_tranche(config, snapshot, 0, predecessor_sha)
+    if verified["tranche_digest"] != AUTHORIZED_FIRST_TRANCHE_DIGEST:
+        raise RuntimeError("tranche0 digest drift")
+    one = _validate_one_tranche_acceptance(
+        config,
+        one_tranche_acceptance,
+        one_tranche_acceptance_sha256,
+        checkpoint,
+        predecessor_sha,
+        predecessor,
+        accepted_checkpoint_sha256,
+    )
+    migration = _validate_migration_acceptance(
+        config,
+        migration_acceptance,
+        migration_acceptance_sha256,
+        one_tranche_acceptance,
+        one_tranche_acceptance_sha256,
+        checkpoint,
+        predecessor,
+        predecessor_sha,
+        successor_software,
+        accepted_checkpoint_sha256,
+    )
+    transition = {
+        "format_version": PRODUCER_TRANSITION_FORMAT,
+        "production_id": config.production_id,
+        "config_sha256": config.digest,
+        "inventory_digest": config.inventory_digest,
+        "boundary_tranche": 1,
+        "from_producer_sha256": predecessor_sha,
+        "to_producer_sha256": successor_sha,
+        "checkpoint_next_index": config.tranche_size,
+        "checkpoint_completed_tranches": 1,
+        "checkpoint_chain_head": AUTHORIZED_FIRST_TRANCHE_DIGEST,
+        "pre_migration_checkpoint_sha256": accepted_checkpoint_sha256,
+        "one_tranche_acceptance_sha256": one_tranche_acceptance_sha256,
+        "migration_acceptance_sha256": migration_acceptance_sha256,
+        "successor_software": successor_software,
+        "transitioned_at": migration["approved_at"],
+    }
+    transition["transition_digest"] = _transition_digest(transition)
+    result = {
+        "status": "would-migrate-producer",
+        "config_sha256": config.digest,
+        "boundary_tranche": 1,
+        "from_producer_sha256": predecessor_sha,
+        "to_producer_sha256": successor_sha,
+        "transition_digest": transition["transition_digest"],
+        "one_tranche_decision": one["decision"],
+    }
+    if not apply:
+        return result
+    producers = config.output_root / "producers"
+    transitions = config.output_root / "transitions"
+    producers.mkdir(exist_ok=True)
+    transitions.mkdir(exist_ok=True)
+    _write_immutable_bytes(
+        predecessor_path, predecessor_bytes, "predecessor producer history"
+    )
+    successor_path = producers / f"{successor_sha}.json"
+    _write_immutable_json(successor_path, successor_value, "successor producer history")
+    FAULT_HOOK("after_migration_history")
+    _write_immutable_json(transition_path, transition, "producer transition")
+    FAULT_HOOK("after_migration_transition")
+    atomic_json(_producer_path(config), successor_value)
+    FAULT_HOOK("after_migration_current_producer")
+    if checkpoint["producer_sha256"] != successor_sha:
+        checkpoint = {
+            **checkpoint,
+            "producer_sha256": successor_sha,
+            "updated_at": now(),
+        }
+        atomic_json(_checkpoint_path(config), checkpoint)
+    FAULT_HOOK("after_migration_checkpoint")
+    _normalize_migration_telemetry(config, checkpoint)
+    _validate_structure(config)
+    _validate_chain(config, checkpoint)
+    return {**result, "status": "producer-migrated"}
 
 
 def authorize_continuous(
@@ -1019,22 +1744,31 @@ def authorize_continuous(
     acceptance_receipt_sha256: str,
     apply: bool,
 ) -> dict[str, Any]:
-    if (
-        not acceptance_receipt.is_file()
-        or acceptance_receipt.is_symlink()
-        or sha256_file(acceptance_receipt) != acceptance_receipt_sha256
-    ):
-        raise RuntimeError("one-tranche acceptance receipt binding drift")
+    _prevalidate_one_tranche_acceptance(acceptance_receipt, acceptance_receipt_sha256)
     with ManifestSnapshot(config.manifest) as snapshot:
         _validate_identity(config, snapshot)
         with _lock(config):
-            return _authorize_continuous_locked(
-                config,
-                snapshot,
-                acceptance_receipt,
-                acceptance_receipt_sha256,
-                apply,
-            )
+            try:
+                return _authorize_continuous_locked(
+                    config,
+                    snapshot,
+                    acceptance_receipt,
+                    acceptance_receipt_sha256,
+                    apply,
+                )
+            except Exception:
+                if apply and _checkpoint_path(config).is_file():
+                    try:
+                        checkpoint = _load_checkpoint(config)
+                        _normalize_migration_telemetry(
+                            config,
+                            checkpoint,
+                            state="error",
+                            reason="continuous authorization failed; review required",
+                        )
+                    except Exception:
+                        pass
+                raise
 
 
 def _authorize_continuous_locked(
@@ -1057,6 +1791,25 @@ def _authorize_continuous_locked(
     checkpoint = _load_checkpoint(config)
     _validate_progress_structure(config, checkpoint)
     _validate_chain(config, checkpoint)
+    transitions = _load_transition_plan(config, producer_sha)
+    if len(transitions) != 1 or transitions[0]["boundary_tranche"] != 1:
+        raise RuntimeError("exact applied producer migration transition required")
+    transition = transitions[0]
+    predecessor_sha = transition["from_producer_sha256"]
+    predecessor, observed_predecessor_sha, _ = _load_producer_file(
+        config, config.output_root / "producers" / f"{predecessor_sha}.json"
+    )
+    if observed_predecessor_sha != predecessor_sha:
+        raise RuntimeError("predecessor producer history drift")
+    accepted = _validate_one_tranche_acceptance(
+        config,
+        acceptance_receipt,
+        acceptance_receipt_sha256,
+        checkpoint,
+        predecessor_sha,
+        predecessor,
+        transition["pre_migration_checkpoint_sha256"],
+    )
     if (
         checkpoint["next_index"] != config.tranche_size
         or checkpoint["completed_tranches"] != 1
@@ -1065,7 +1818,7 @@ def _authorize_continuous_locked(
         or checkpoint["chain_head"] != AUTHORIZED_FIRST_TRANCHE_DIGEST
     ):
         raise RuntimeError("checkpoint is not the accepted one-tranche gate")
-    verified = _verify_tranche(config, snapshot, 0, producer_sha)
+    verified = _verify_tranche(config, snapshot, 0, predecessor_sha)
     if verified["tranche_digest"] != AUTHORIZED_FIRST_TRANCHE_DIGEST:
         raise RuntimeError("accepted first-tranche digest drift")
     value = {
@@ -1081,8 +1834,12 @@ def _authorize_continuous_locked(
         "tranche_digest": AUTHORIZED_FIRST_TRANCHE_DIGEST,
         "acceptance_receipt": str(acceptance_receipt.resolve()),
         "acceptance_receipt_sha256": acceptance_receipt_sha256,
+        "transition_digest": transition["transition_digest"],
+        "migration_acceptance_sha256": transition["migration_acceptance_sha256"],
         "authorized_at": now(),
     }
+    if accepted["decision"] != "GO":
+        raise RuntimeError("one-tranche acceptance decision is not GO")
     result = {"status": "would-authorize-continuous", **value}
     if not apply:
         return result
@@ -1131,6 +1888,8 @@ def _validate_continuous_authorization(
         "tranche_digest",
         "acceptance_receipt",
         "acceptance_receipt_sha256",
+        "transition_digest",
+        "migration_acceptance_sha256",
         "authorized_at",
     }
     if (
@@ -1149,13 +1908,31 @@ def _validate_continuous_authorization(
         or checkpoint["completed_tranches"] < 1
     ):
         raise RuntimeError("continuous authorization identity/checkpoint drift")
-    receipt = Path(value["acceptance_receipt"])
+    transitions = _load_transition_plan(config, producer_sha)
     if (
-        receipt.is_symlink()
-        or not receipt.is_file()
-        or sha256_file(receipt) != value["acceptance_receipt_sha256"]
+        len(transitions) != 1
+        or transitions[0]["boundary_tranche"] != 1
+        or transitions[0]["transition_digest"] != value["transition_digest"]
+        or transitions[0]["migration_acceptance_sha256"]
+        != value["migration_acceptance_sha256"]
     ):
-        raise RuntimeError("continuous acceptance receipt drift")
+        raise RuntimeError("continuous producer transition drift")
+    receipt = Path(value["acceptance_receipt"])
+    predecessor_sha = transitions[0]["from_producer_sha256"]
+    predecessor, observed_sha, _ = _load_producer_file(
+        config, config.output_root / "producers" / f"{predecessor_sha}.json"
+    )
+    if observed_sha != predecessor_sha:
+        raise RuntimeError("continuous predecessor producer drift")
+    _validate_one_tranche_acceptance(
+        config,
+        receipt,
+        value["acceptance_receipt_sha256"],
+        checkpoint,
+        predecessor_sha,
+        predecessor,
+        transitions[0]["pre_migration_checkpoint_sha256"],
+    )
     first = _load_record(config, 0)
     if first["tranche_digest"] != AUTHORIZED_FIRST_TRANCHE_DIGEST:
         raise RuntimeError("continuous authorized chain ancestor drift")
@@ -1210,11 +1987,13 @@ def _run_with_snapshot(
                     "next_index": checkpoint["next_index"],
                 }
         if checkpoint["completed_tranches"]:
+            last_tranche = checkpoint["completed_tranches"] - 1
+            transitions = _load_transition_plan(config, producer_sha)
             _verify_tranche(
                 config,
                 snapshot,
-                checkpoint["completed_tranches"] - 1,
-                producer_sha,
+                last_tranche,
+                _expected_producer(last_tranche, producer_sha, transitions),
             )
         # A durable record written before a crash is adopted only after full validation.
         # Adoption consumes this invocation's one-tranche allowance: a restart must not
@@ -1472,8 +2251,14 @@ def finalize_validation(config: ProductionConfig) -> dict[str, Any]:
         staging = config.output_root / ".staging"
         if any(staging.iterdir()):
             raise RuntimeError("final production staging root is not empty")
+        transitions = _load_transition_plan(config, producer_sha)
         for tranche in range(checkpoint["completed_tranches"]):
-            _verify_tranche(config, snapshot, tranche, producer_sha)
+            _verify_tranche(
+                config,
+                snapshot,
+                tranche,
+                _expected_producer(tranche, producer_sha, transitions),
+            )
         return {
             "status": "exhaustively-valid",
             "sites": config.site_count,

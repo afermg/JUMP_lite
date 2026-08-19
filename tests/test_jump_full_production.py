@@ -30,6 +30,7 @@ from jump_full_compression.production import (
     authorize_continuous,
     bootstrap_production,
     finalize_validation,
+    migrate_producer,
     run_production,
     verify_tranche,
 )
@@ -145,6 +146,162 @@ class ProductionRunnerTests(unittest.TestCase):
             "feature_processes_mutated": False,
         }
         (config.state_root / "control.json").write_text(json.dumps(control))
+
+    def _acceptance_artifacts(self, config: ProductionConfig, digest: str):
+        predecessor = json.loads((config.output_root / "producer.json").read_text())
+        predecessor_sha = sha256_file(config.output_root / "producer.json")
+        verification_path = self.root / f"verification-{config.site_count}.json"
+        verification_path.write_text(
+            json.dumps(
+                {
+                    "status": "valid",
+                    "tranche": 0,
+                    "sites": 256,
+                    "tranche_digest": digest,
+                }
+            )
+        )
+        before_path = self.root / f"governor-before-{config.site_count}.json"
+        post_path = self.root / f"governor-post-{config.site_count}.json"
+        progress_before = {
+            "MQ": {"receipt_backed_masks": 10, "canonical_profiles": 20},
+            "lossless": {"receipt_backed_masks": 30, "canonical_profiles": 40},
+        }
+        progress_post = {
+            "MQ": {"receipt_backed_masks": 11, "canonical_profiles": 22},
+            "lossless": {"receipt_backed_masks": 33, "canonical_profiles": 44},
+        }
+        before_path.write_text(
+            json.dumps({"metrics": {"authoritative_progress": progress_before}})
+        )
+        post_path.write_text(
+            json.dumps({"metrics": {"authoritative_progress": progress_post}})
+        )
+        accepted_at = "2026-08-19T04:00:00+00:00"
+        acceptance = self.root / f"acceptance-{config.site_count}.json"
+        acceptance_value = {
+            "format_version": "full-jump-one-tranche-acceptance-v1",
+            "decision": "GO",
+            "production_id": config.production_id,
+            "config_sha256": config.digest,
+            "inventory_digest": config.inventory_digest,
+            "frozen_manifest": {
+                "sha256": config.manifest_sha256,
+                "bytes": config.manifest_size,
+                "site_count": config.site_count,
+            },
+            "checkpoint": {
+                "sha256": sha256_file(config.state_root / "checkpoint.json"),
+                "next_index": 256,
+                "completed_tranches": 1,
+                "cumulative_errors": 0,
+                "chain_head": digest,
+            },
+            "tranche0": {
+                "record_sha256": sha256_file(
+                    config.output_root / "tranches/00000000.json"
+                ),
+                "tranche_digest": digest,
+                "site_count": 256,
+            },
+            "verification": {
+                "artifact": {
+                    "path": str(verification_path.resolve()),
+                    "sha256": sha256_file(verification_path),
+                },
+                "status": "valid",
+                "tranche": 0,
+                "sites": 256,
+                "tranche_digest": digest,
+            },
+            "governor": {
+                "before": {
+                    "path": str(before_path.resolve()),
+                    "sha256": sha256_file(before_path),
+                },
+                "post": {
+                    "path": str(post_path.resolve()),
+                    "sha256": sha256_file(post_path),
+                },
+                "feature_deltas": {
+                    "MQ": {"receipt_backed_masks": 1, "canonical_profiles": 2},
+                    "lossless": {
+                        "receipt_backed_masks": 3,
+                        "canonical_profiles": 4,
+                    },
+                },
+                "io_pressure": {
+                    "before_some_avg10": 0,
+                    "after_some_avg10": 0,
+                    "max_some_avg10": 0,
+                },
+            },
+            "predecessor_producer": {
+                "sha256": predecessor_sha,
+                "git_commit": predecessor["software"]["git_commit"],
+            },
+            "reviews": {
+                name: {
+                    "identifier": f"{name}-review-{config.site_count}",
+                    "reviewed_at": accepted_at,
+                }
+                for name in ("code", "science", "ops")
+            },
+            "accepted_at": accepted_at,
+        }
+        acceptance.write_text(
+            json.dumps(acceptance_value, sort_keys=True, indent=2) + "\n"
+        )
+        successor = {
+            **predecessor["software"],
+            "git_commit": "9" * 40,
+            "source_tree_sha256": "8" * 64,
+        }
+        migration = self.root / f"migration-{config.site_count}.json"
+        migration_value = {
+            "format_version": "producer-migration-acceptance-v1",
+            "decision": "GO",
+            "production_id": config.production_id,
+            "config_sha256": config.digest,
+            "inventory_digest": config.inventory_digest,
+            "checkpoint_sha256": acceptance_value["checkpoint"]["sha256"],
+            "tranche0_record_sha256": acceptance_value["tranche0"]["record_sha256"],
+            "tranche0_digest": digest,
+            "one_tranche_acceptance": {
+                "path": str(acceptance.resolve()),
+                "sha256": sha256_file(acceptance),
+            },
+            "predecessor": {
+                "producer_sha256": predecessor_sha,
+                "software": predecessor["software"],
+            },
+            "successor": {"software": successor},
+            "review": {"identifier": "migration-review", "reviewed_at": accepted_at},
+            "approved_at": accepted_at,
+        }
+        migration.write_text(
+            json.dumps(migration_value, sort_keys=True, indent=2) + "\n"
+        )
+        return acceptance, migration, successor
+
+    def _migrate_and_authorize(self, config: ProductionConfig, digest: str):
+        acceptance, migration, successor = self._acceptance_artifacts(config, digest)
+        with (
+            self._identity_patch(),
+            mock.patch(
+                "jump_full_compression.production.software_identity",
+                return_value=successor,
+            ),
+        ):
+            migrate_producer(
+                config,
+                acceptance,
+                sha256_file(acceptance),
+                migration,
+                sha256_file(migration),
+                True,
+            )
+        return acceptance, migration
 
     def test_513_sites_commit_exact_three_compact_tranches_and_tamper_fails(self):
         config = self._config(513)
@@ -582,8 +739,10 @@ class ProductionRunnerTests(unittest.TestCase):
         digest = json.loads(
             (config.output_root / "tranches/00000000.json").read_text()
         )["tranche_digest"]
-        acceptance = self.root / "acceptance.json"
-        acceptance.write_text('{"decision":"GO"}\n')
+        with mock.patch(
+            "jump_full_compression.production.AUTHORIZED_FIRST_TRANCHE_DIGEST", digest
+        ):
+            acceptance, _ = self._migrate_and_authorize(config, digest)
         with (
             self._identity_patch(),
             mock.patch(
@@ -602,6 +761,16 @@ class ProductionRunnerTests(unittest.TestCase):
             result = run_production(config, None, True, continuous=True)
         self.assertEqual(result["status"], "complete")
         self.assertEqual(result["completed_tranches"], 3)
+        with (
+            self._identity_patch(),
+            mock.patch(
+                "jump_full_compression.production.AUTHORIZED_FIRST_TRANCHE_DIGEST",
+                digest,
+            ),
+        ):
+            restart = run_production(config, None, False, continuous=True)
+        self.assertEqual(restart["status"], "would-run-continuous")
+        self.assertEqual(restart["next_index"], 513)
         state = json.loads((config.state_root / "compression.json").read_text())
         self.assertEqual(state["state"], "complete")
         self.assertEqual(state["processed"], 513)
@@ -616,8 +785,10 @@ class ProductionRunnerTests(unittest.TestCase):
         digest = json.loads(
             (config.output_root / "tranches/00000000.json").read_text()
         )["tranche_digest"]
-        acceptance = self.root / "acceptance.json"
-        acceptance.write_text('{"decision":"GO"}\n')
+        with mock.patch(
+            "jump_full_compression.production.AUTHORIZED_FIRST_TRANCHE_DIGEST", digest
+        ):
+            acceptance, _ = self._migrate_and_authorize(config, digest)
         with (
             self._identity_patch(),
             mock.patch(
@@ -626,9 +797,13 @@ class ProductionRunnerTests(unittest.TestCase):
             ),
         ):
             authorize_continuous(config, acceptance, sha256_file(acceptance), True)
-            acceptance.write_text('{"decision":"NO"}\n')
+            value = json.loads(acceptance.read_text())
+            value["decision"] = "NO"
+            acceptance.write_text(json.dumps(value))
             self._unpause(config)
-            with self.assertRaisesRegex(RuntimeError, "acceptance receipt drift"):
+            with self.assertRaisesRegex(
+                RuntimeError, "acceptance receipt binding drift"
+            ):
                 run_production(config, None, True, continuous=True)
 
     def test_continuous_pause_between_tranches_is_terminal(self):
@@ -639,8 +814,10 @@ class ProductionRunnerTests(unittest.TestCase):
         digest = json.loads(
             (config.output_root / "tranches/00000000.json").read_text()
         )["tranche_digest"]
-        acceptance = self.root / "acceptance.json"
-        acceptance.write_text('{"decision":"GO"}\n')
+        with mock.patch(
+            "jump_full_compression.production.AUTHORIZED_FIRST_TRANCHE_DIGEST", digest
+        ):
+            acceptance, _ = self._migrate_and_authorize(config, digest)
 
         def pause_after_record(point):
             if point == "after_tranche_record":
@@ -667,6 +844,183 @@ class ProductionRunnerTests(unittest.TestCase):
         self.assertEqual(state["state"], "paused")
         self.assertEqual(state["processed"], state["next_index"])
 
+    def test_strict_acceptance_rejects_arbitrary_no_and_bad_evidence(self):
+        config = self._config(257)
+        self._bootstrap(config)
+        with self._identity_patch():
+            run_production(config, 1, True)
+        digest = json.loads(
+            (config.output_root / "tranches/00000000.json").read_text()
+        )["tranche_digest"]
+        arbitrary = self.root / "arbitrary.txt"
+        arbitrary.write_text("reviewed and accepted")
+        with (
+            self._identity_patch(),
+            mock.patch(
+                "jump_full_compression.production.AUTHORIZED_FIRST_TRANCHE_DIGEST",
+                digest,
+            ),
+            self.assertRaisesRegex(RuntimeError, "malformed"),
+        ):
+            authorize_continuous(config, arbitrary, sha256_file(arbitrary), False)
+        acceptance, migration, successor = self._acceptance_artifacts(config, digest)
+        for mutation in (
+            lambda value: value.update(decision="NO"),
+            lambda value: value["reviews"]["ops"].update(identifier=""),
+            lambda value: value["governor"]["feature_deltas"]["MQ"].update(
+                receipt_backed_masks=0
+            ),
+            lambda value: value["governor"]["io_pressure"].update(max_some_avg10=0.1),
+        ):
+            value = json.loads(acceptance.read_text())
+            mutation(value)
+            candidate = self.root / f"bad-{len(list(self.root.glob('bad-*')))}.json"
+            candidate.write_text(json.dumps(value))
+            migration_value = json.loads(migration.read_text())
+            migration_value["one_tranche_acceptance"] = {
+                "path": str(candidate.resolve()),
+                "sha256": sha256_file(candidate),
+            }
+            bad_migration = candidate.with_suffix(".migration.json")
+            bad_migration.write_text(json.dumps(migration_value))
+            with (
+                self._identity_patch(),
+                mock.patch(
+                    "jump_full_compression.production.AUTHORIZED_FIRST_TRANCHE_DIGEST",
+                    digest,
+                ),
+                mock.patch(
+                    "jump_full_compression.production.software_identity",
+                    return_value=successor,
+                ),
+                self.assertRaises(RuntimeError),
+            ):
+                migrate_producer(
+                    config,
+                    candidate,
+                    sha256_file(candidate),
+                    bad_migration,
+                    sha256_file(bad_migration),
+                    False,
+                )
+
+    def test_migration_preserves_tranche_zero_and_converges_after_each_fault(self):
+        for index, fault in enumerate(
+            (
+                "after_migration_history",
+                "after_migration_transition",
+                "after_migration_current_producer",
+                "after_migration_checkpoint",
+            )
+        ):
+            with self.subTest(fault=fault):
+                config = self._config(257)
+                config = ProductionConfig(
+                    **{
+                        **config.__dict__,
+                        "output_root": self.root / f"migration-output-{index}",
+                        "state_root": self.root / f"migration-state-{index}",
+                    }
+                )
+                self._bootstrap(config)
+                with self._identity_patch():
+                    run_production(config, 1, True)
+                digest = json.loads(
+                    (config.output_root / "tranches/00000000.json").read_text()
+                )["tranche_digest"]
+                immutable = {
+                    str(path.relative_to(config.output_root)): sha256_file(path)
+                    for root in (
+                        config.output_root / "receipts/00000000",
+                        config.output_root / "codecs/jpegxl_lossy_hq.zarr",
+                        config.output_root / "codecs/jpegxl_lossy_mq.zarr",
+                        config.output_root / "tranches",
+                    )
+                    for path in root.rglob("*")
+                    if path.is_file()
+                }
+                acceptance, migration, successor = self._acceptance_artifacts(
+                    config, digest
+                )
+                fired = False
+
+                def inject(point):
+                    nonlocal fired
+                    if point == fault and not fired:
+                        fired = True
+                        raise RuntimeError(point)
+
+                common = dict(
+                    config=config,
+                    one_tranche_acceptance=acceptance,
+                    one_tranche_acceptance_sha256=sha256_file(acceptance),
+                    migration_acceptance=migration,
+                    migration_acceptance_sha256=sha256_file(migration),
+                    apply=True,
+                )
+                if index == 0:
+                    accepted_config_digest = config.digest
+                    with (
+                        self._identity_patch(),
+                        mock.patch(
+                            "jump_full_compression.production.AUTHORIZED_FIRST_TRANCHE_DIGEST",
+                            digest,
+                        ),
+                        mock.patch(
+                            "jump_full_compression.production.software_identity",
+                            return_value=successor,
+                        ),
+                    ):
+                        preview = migrate_producer(**{**common, "apply": False})
+                    self.assertEqual(preview["status"], "would-migrate-producer")
+                    self.assertEqual(config.digest, accepted_config_digest)
+                    self.assertFalse((config.output_root / "producers").exists())
+                    self.assertFalse((config.output_root / "transitions").exists())
+                with (
+                    self._identity_patch(),
+                    mock.patch(
+                        "jump_full_compression.production.AUTHORIZED_FIRST_TRANCHE_DIGEST",
+                        digest,
+                    ),
+                    mock.patch(
+                        "jump_full_compression.production.software_identity",
+                        return_value=successor,
+                    ),
+                    mock.patch("jump_full_compression.production.FAULT_HOOK", inject),
+                    self.assertRaisesRegex(RuntimeError, fault),
+                ):
+                    migrate_producer(**common)
+                with (
+                    self._identity_patch(),
+                    mock.patch(
+                        "jump_full_compression.production.AUTHORIZED_FIRST_TRANCHE_DIGEST",
+                        digest,
+                    ),
+                    mock.patch(
+                        "jump_full_compression.production.software_identity",
+                        return_value=successor,
+                    ),
+                ):
+                    result = migrate_producer(**common)
+                    self.assertEqual(result["status"], "producer-migrated")
+                    self.assertEqual(verify_tranche(config, 0)["status"], "valid")
+                observed = {
+                    str(path.relative_to(config.output_root)): sha256_file(path)
+                    for relative in immutable
+                    for path in [config.output_root / relative]
+                }
+                self.assertEqual(observed, immutable)
+                checkpoint = json.loads(
+                    (config.state_root / "checkpoint.json").read_text()
+                )
+                current_sha = sha256_file(config.output_root / "producer.json")
+                self.assertEqual(checkpoint["producer_sha256"], current_sha)
+                state = json.loads((config.state_root / "compression.json").read_text())
+                control = json.loads((config.state_root / "control.json").read_text())
+                self.assertEqual(state["state"], "session-complete")
+                self.assertEqual(state["processed"], 256)
+                self.assertTrue(control["paused"])
+
     def test_continuous_stop_between_tranches_is_terminal(self):
         config = self._config(513)
         self._bootstrap(config)
@@ -675,8 +1029,10 @@ class ProductionRunnerTests(unittest.TestCase):
         digest = json.loads(
             (config.output_root / "tranches/00000000.json").read_text()
         )["tranche_digest"]
-        acceptance = self.root / "acceptance.json"
-        acceptance.write_text('{"decision":"GO"}\n')
+        with mock.patch(
+            "jump_full_compression.production.AUTHORIZED_FIRST_TRANCHE_DIGEST", digest
+        ):
+            acceptance, _ = self._migrate_and_authorize(config, digest)
 
         def stop_after_record(point):
             if point == "after_tranche_record":

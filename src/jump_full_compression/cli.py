@@ -19,6 +19,7 @@ from .production import (
     authorize_continuous,
     bootstrap_production,
     finalize_validation,
+    migrate_producer,
     production_status,
     run_production,
     verify_tranche,
@@ -188,6 +189,15 @@ def parser():
     run_mode.add_argument("--max-tranches", type=int)
     run_mode.add_argument("--continuous", action="store_true")
     production_run.add_argument("--apply", action="store_true")
+    production_migrate = commands.add_parser("production-migrate-producer")
+    _add_production_arguments(production_migrate)
+    production_migrate.add_argument(
+        "--one-tranche-acceptance", type=Path, required=True
+    )
+    production_migrate.add_argument("--one-tranche-acceptance-sha256", required=True)
+    production_migrate.add_argument("--migration-acceptance", type=Path, required=True)
+    production_migrate.add_argument("--migration-acceptance-sha256", required=True)
+    production_migrate.add_argument("--apply", action="store_true")
     production_authorize = commands.add_parser("production-authorize-continuous")
     _add_production_arguments(production_authorize)
     production_authorize.add_argument("--acceptance-receipt", type=Path, required=True)
@@ -292,6 +302,21 @@ def main(argv=None):
                     args.max_tranches,
                     args.apply,
                     continuous=args.continuous,
+                ),
+                indent=2,
+            )
+        )
+        return 0
+    if args.command == "production-migrate-producer":
+        print(
+            json.dumps(
+                migrate_producer(
+                    _production_config(args),
+                    args.one_tranche_acceptance,
+                    args.one_tranche_acceptance_sha256,
+                    args.migration_acceptance,
+                    args.migration_acceptance_sha256,
+                    args.apply,
                 ),
                 indent=2,
             )
