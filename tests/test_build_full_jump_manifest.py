@@ -5,8 +5,10 @@ import csv
 import gzip
 import hashlib
 import json
+import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest import mock
@@ -201,6 +203,7 @@ class FullJumpManifestBuilderTests(unittest.TestCase):
             gray_receipt=self.gray_receipt,
             output=self.root / f"{name}.parquet",
             report=self.root / f"{name}.json",
+            _test_memory_available_bytes=128 * 1024**3,
         )
 
     def test_build_excludes_source15_and_damaged_sites_and_includes_gray(self):
@@ -214,6 +217,14 @@ class FullJumpManifestBuilderTests(unittest.TestCase):
         self.assertTrue(set(self.gray) <= {key[:3] for key in keys})
         self.assertEqual(report["counts"]["excluded"]["source_15_rows"], 1)
         self.assertEqual(report["counts"]["excluded"]["known_damaged_site_rows"], 2)
+        self.assertEqual(
+            report["memory_preflight"]["effective_available_source"],
+            "injected-test-only",
+        )
+        self.assertGreaterEqual(
+            report["memory_preflight"]["effective_available_bytes"],
+            report["memory_preflight"]["required_headroom_bytes"],
+        )
         self.assertFalse(report["release_identity_frozen"])
         self.assertEqual(keys, sorted(keys))
         self.assertEqual(len(keys), len(set(keys)))
@@ -283,6 +294,100 @@ class FullJumpManifestBuilderTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "duplicate"):
                 builder.build_manifest(self._args("duplicate"))
 
+    def test_consumes_captured_bytes_despite_same_length_path_replacement(self):
+        original_capture = builder.capture_regular_file
+        original_sha = self._sha(self.preliminary)
+        replaced = False
+
+        def adversarial_capture(path, label):
+            nonlocal replaced
+            payload, observed = original_capture(path, label)
+            if label == "preliminary inventory" and not replaced:
+                replacement = path.with_suffix(".replacement")
+                replacement.write_bytes(b"X" * len(payload))
+                os.replace(replacement, path)
+                replaced = True
+            return payload, observed
+
+        with mock.patch.object(
+            builder, "capture_regular_file", side_effect=adversarial_capture
+        ):
+            report = builder.build_manifest(self._args("captured"))
+        self.assertTrue(replaced)
+        self.assertEqual(report["inputs"]["preliminary"]["sha256"], original_sha)
+        self.assertNotEqual(self._sha(self.preliminary), original_sha)
+
+    def test_gray_csv_parsing_uses_the_captured_bound_bytes(self):
+        original_capture = builder.capture_regular_file
+        first_entry = json.loads(self.gray_receipt.read_text())["entries"][0]
+        target = Path(first_entry["path"])
+        replaced = False
+
+        def adversarial_capture(path, label):
+            nonlocal replaced
+            payload, observed = original_capture(path, label)
+            if label == "staged gray CSV" and path == target and not replaced:
+                replacement = path.with_suffix(".replacement")
+                replacement.write_bytes(b"Y" * len(payload))
+                os.replace(replacement, path)
+                replaced = True
+            return payload, observed
+
+        with mock.patch.object(
+            builder, "capture_regular_file", side_effect=adversarial_capture
+        ):
+            report = builder.build_manifest(self._args("gray-captured"))
+        self.assertTrue(replaced)
+        reported = next(
+            item
+            for item in report["inputs"]["gray_entries"]
+            if (item["source"], item["batch"], item["plate"])
+            == (first_entry["source"], first_entry["batch"], first_entry["plate"])
+        )
+        self.assertEqual(reported["sha256"], first_entry["sha256"])
+        self.assertNotEqual(self._sha(target), first_entry["sha256"])
+
+    def test_memory_preflight_fails_before_table_materialization(self):
+        args = self._args("memory")
+        args._test_memory_available_bytes = 1
+        with mock.patch.object(builder.pq, "read_table") as read_table:
+            with self.assertRaisesRegex(RuntimeError, "insufficient memory headroom"):
+                builder.build_manifest(args)
+        read_table.assert_not_called()
+        self.assertFalse(args.output.exists())
+        self.assertFalse(args.report.exists())
+
+    def test_first_pyarrow_import_sees_overridden_thread_environment(self):
+        names = list(builder.THREAD_ENV)
+        code = (
+            """
+import builtins, json, os
+names = %r
+original = builtins.__import__
+def intercept(name, *args, **kwargs):
+    if name == 'pyarrow':
+        builtins.__import__ = original
+        print(json.dumps({key: os.environ.get(key) for key in names}, sort_keys=True))
+    return original(name, *args, **kwargs)
+builtins.__import__ = intercept
+import prep.build_full_jump_manifest
+"""
+            % names
+        )
+        environment = os.environ.copy()
+        environment.update({name: "999" for name in names})
+        environment["PYTHONPATH"] = f"{self.repo / 'src'}:{self.repo}"
+        result = subprocess.run(
+            [sys.executable, "-c", code],
+            cwd=self.repo,
+            env=environment,
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        observed = json.loads(result.stdout.strip().splitlines()[0])
+        self.assertEqual(observed, {name: "1" for name in names})
+
     def test_atomic_refusal_cleanup_and_determinism(self):
         first = self._args("first")
         second = self._args("second")
@@ -292,6 +397,11 @@ class FullJumpManifestBuilderTests(unittest.TestCase):
         self.assertEqual(report1, report2)
         with self.assertRaises(FileExistsError):
             builder.build_manifest(first)
+        orphan = self._args("orphan")
+        orphan.output.write_bytes(b"fail-closed orphan")
+        with self.assertRaises(FileExistsError):
+            builder.build_manifest(orphan)
+        self.assertFalse(orphan.report.exists())
         bad = self._args("bad")
         receipt = json.loads(self.gray_receipt.read_text())
         receipt["entries"][0]["sha256"] = "f" * 64
@@ -300,6 +410,23 @@ class FullJumpManifestBuilderTests(unittest.TestCase):
             builder.build_manifest(bad)
         self.assertFalse(bad.output.exists())
         self.assertFalse(bad.report.exists())
+        self.gray_receipt = self._gray_inputs()
+        publication = self._args("publication")
+        real_link = os.link
+        calls = 0
+
+        def fail_report_link(source, destination):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise OSError("simulated report publication failure")
+            return real_link(source, destination)
+
+        with mock.patch.object(builder.os, "link", side_effect=fail_report_link):
+            with self.assertRaisesRegex(OSError, "report publication failure"):
+                builder.build_manifest(publication)
+        self.assertFalse(publication.output.exists())
+        self.assertFalse(publication.report.exists())
         self.assertEqual(list(self.root.glob(".*.building-*")), [])
 
 

@@ -8,7 +8,9 @@ from datetime import date, datetime
 import hashlib
 import json
 import math
+import os
 from pathlib import Path
+import stat
 from typing import Any, Iterator, Mapping
 
 import pyarrow.parquet as pq
@@ -199,22 +201,58 @@ def iter_inventory(
             yield row
 
 
-def _artifact_binding(path: Path) -> dict[str, Any]:
-    if not path.is_file() or path.is_symlink():
+def _capture_json_artifact(path: Path) -> tuple[dict[str, Any], dict[str, Any]]:
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as error:
         raise RuntimeError(
             f"policy artifact must be a regular non-symlink file: {path}"
-        )
-    return {"bytes": path.stat().st_size, "sha256": sha256_file(path)}
-
-
-def _load_json_object(path: Path) -> dict[str, Any]:
+        ) from error
     try:
-        payload = json.loads(path.read_text())
+        before = os.fstat(descriptor)
+        if not stat.S_ISREG(before.st_mode):
+            raise RuntimeError(f"policy artifact is not a regular file: {path}")
+        chunks = []
+        while block := os.read(descriptor, 1024 * 1024):
+            chunks.append(block)
+        after = os.fstat(descriptor)
+    finally:
+        os.close(descriptor)
+    try:
+        current = os.stat(path, follow_symlinks=False)
+    except OSError as error:
+        raise RuntimeError(f"policy artifact changed during capture: {path}") from error
+
+    def identity(value: os.stat_result) -> tuple[int, int, int, int, int]:
+        return (
+            value.st_dev,
+            value.st_ino,
+            value.st_size,
+            value.st_mtime_ns,
+            value.st_ctime_ns,
+        )
+
+    if (
+        stat.S_ISLNK(current.st_mode)
+        or not stat.S_ISREG(current.st_mode)
+        or identity(before) != identity(after)
+        or identity(after) != identity(current)
+    ):
+        raise RuntimeError(f"policy artifact changed during capture: {path}")
+    content = b"".join(chunks)
+    if len(content) != before.st_size:
+        raise RuntimeError(f"policy artifact byte-count drift: {path}")
+    try:
+        payload = json.loads(content)
     except Exception as error:
         raise RuntimeError(f"policy artifact is not valid JSON: {path}") from error
     if not isinstance(payload, dict):
         raise RuntimeError(f"policy artifact must contain a JSON object: {path}")
-    return payload
+    return {
+        "bytes": len(content),
+        "sha256": hashlib.sha256(content).hexdigest(),
+    }, payload
 
 
 def _validate_frozen_policy(
@@ -233,14 +271,10 @@ def _validate_frozen_policy(
             "frozen audit requires explicit exclusion policy, damaged-object ledger, "
             "damaged-site ledger, and QC plate-classification ledger"
         )
-    policy_binding = _artifact_binding(policy_path)
-    object_binding = _artifact_binding(damaged_objects_path)
-    site_binding = _artifact_binding(damaged_sites_path)
-    qc_binding = _artifact_binding(qc_plates_path)
-    policy = _load_json_object(policy_path)
-    objects = _load_json_object(damaged_objects_path)
-    sites = _load_json_object(damaged_sites_path)
-    qc_plates = _load_json_object(qc_plates_path)
+    policy_binding, policy = _capture_json_artifact(policy_path)
+    object_binding, objects = _capture_json_artifact(damaged_objects_path)
+    site_binding, sites = _capture_json_artifact(damaged_sites_path)
+    qc_binding, qc_plates = _capture_json_artifact(qc_plates_path)
 
     # These independent pins bind every canonical ledger byte, including JSON
     # key sets, list order, scope, evidence strings, paths, and all values.

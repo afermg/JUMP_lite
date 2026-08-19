@@ -11,29 +11,41 @@ from __future__ import annotations
 
 import argparse
 import csv
+import gc
 import gzip
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
+import stat
 import subprocess
 import sys
 from typing import Any, Iterable
 
-# Cap native pools before importing PyArrow.
-for _name in (
+# Override every relevant native pool before the first PyArrow/Numpy/native import.
+THREAD_ENV = (
     "ARROW_NUM_THREADS",
-    "OMP_NUM_THREADS",
-    "OPENBLAS_NUM_THREADS",
+    "BLIS_NUM_THREADS",
     "MKL_NUM_THREADS",
     "NUMEXPR_NUM_THREADS",
-):
-    os.environ.setdefault(_name, "1")
+    "OMP_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "POLARS_MAX_THREADS",
+    "RAYON_NUM_THREADS",
+    "TBB_NUM_THREADS",
+    "VECLIB_MAXIMUM_THREADS",
+)
+for _name in THREAD_ENV:
+    os.environ[_name] = "1"
 
 import pyarrow as pa  # noqa: E402
 import pyarrow.compute as pc  # noqa: E402
 import pyarrow.csv as pacsv  # noqa: E402
 import pyarrow.parquet as pq  # noqa: E402
+
+pa.set_cpu_count(1)
+pa.set_io_thread_count(1)
 
 from jump_full_compression.inventory import _validate_frozen_policy  # noqa: E402
 
@@ -57,6 +69,8 @@ DAMAGED_KEYS = {
 }
 GRAY_RECEIPT_FORMAT = "full-jump-gray-input-receipt-v1"
 REPORT_FORMAT = "full-jump-production-manifest-build-v1"
+MINIMUM_MEMORY_HEADROOM = 64 * 1024**3
+MEMORY_MULTIPLIER = 6
 
 
 def sha256_file(path: Path) -> str:
@@ -74,15 +88,65 @@ def regular_file(path: Path, label: str) -> None:
         )
 
 
+def _stable_stat(value: os.stat_result) -> tuple[int, int, int, int, int]:
+    return (
+        value.st_dev,
+        value.st_ino,
+        value.st_size,
+        value.st_mtime_ns,
+        value.st_ctime_ns,
+    )
+
+
+def capture_regular_file(path: Path, label: str) -> tuple[bytes, dict[str, Any]]:
+    """Read and bind exactly one stable regular-file snapshot without following links."""
+    if not path.is_absolute():
+        raise RuntimeError(f"{label} path must be absolute: {path}")
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as error:
+        raise RuntimeError(f"cannot safely open {label}: {path}") from error
+    try:
+        before = os.fstat(descriptor)
+        if not stat.S_ISREG(before.st_mode):
+            raise RuntimeError(f"{label} is not a regular file: {path}")
+        chunks: list[bytes] = []
+        digest = hashlib.sha256()
+        while True:
+            block = os.read(descriptor, 1024 * 1024)
+            if not block:
+                break
+            chunks.append(block)
+            digest.update(block)
+        after = os.fstat(descriptor)
+    finally:
+        os.close(descriptor)
+    try:
+        current = os.stat(path, follow_symlinks=False)
+    except OSError as error:
+        raise RuntimeError(f"{label} path changed during capture: {path}") from error
+    if (
+        stat.S_ISLNK(current.st_mode)
+        or not stat.S_ISREG(current.st_mode)
+        or _stable_stat(before) != _stable_stat(after)
+        or _stable_stat(after) != _stable_stat(current)
+    ):
+        raise RuntimeError(f"{label} changed during capture: {path}")
+    payload = b"".join(chunks)
+    if len(payload) != before.st_size:
+        raise RuntimeError(f"{label} byte-count changed during capture: {path}")
+    return payload, {"bytes": len(payload), "sha256": digest.hexdigest()}
+
+
 def binding(path: Path) -> dict[str, Any]:
     regular_file(path, "artifact")
     return {"bytes": path.stat().st_size, "sha256": sha256_file(path)}
 
 
-def json_object(path: Path, label: str) -> dict[str, Any]:
-    regular_file(path, label)
+def json_bytes(payload: bytes, label: str) -> dict[str, Any]:
     try:
-        value = json.loads(path.read_text())
+        value = json.loads(payload)
     except Exception as error:
         raise RuntimeError(f"{label} is not valid JSON") from error
     if not isinstance(value, dict):
@@ -101,10 +165,12 @@ def pinned_plate_universe(checkout: Path) -> set[tuple[str, str, str]]:
     if commit != UPSTREAM_COMMIT:
         raise RuntimeError(f"datasets checkout commit drift: {commit}")
     plate_csv = checkout / "metadata/plate.csv.gz"
-    regular_file(plate_csv, "pinned plate metadata")
-    if sha256_file(plate_csv) != PLATE_CSV_SHA256:
+    plate_bytes, plate_binding = capture_regular_file(
+        plate_csv, "pinned plate metadata"
+    )
+    if plate_binding["sha256"] != PLATE_CSV_SHA256:
         raise RuntimeError("pinned plate metadata SHA-256 drift")
-    with gzip.open(plate_csv, "rt", newline="") as handle:
+    with gzip.open(io.BytesIO(plate_bytes), "rt", newline="") as handle:
         rows = list(csv.DictReader(handle))
     required = {"Metadata_Source", "Metadata_Batch", "Metadata_Plate"}
     if len(rows) != UPSTREAM_PLATE_COUNT or not rows or not required <= set(rows[0]):
@@ -183,10 +249,95 @@ def validate_rows(
     return plates, dict(sorted(counts.items()))
 
 
+def parquet_uncompressed_bytes(payload: bytes) -> int:
+    parquet = pq.ParquetFile(pa.BufferReader(payload))
+    metadata = parquet.metadata
+    return sum(
+        metadata.row_group(row_group).column(column).total_uncompressed_size
+        for row_group in range(metadata.num_row_groups)
+        for column in range(metadata.num_columns)
+    )
+
+
+def _host_available_memory() -> int:
+    try:
+        fields = {
+            line.split(":", 1)[0]: line.split(":", 1)[1].strip()
+            for line in Path("/proc/meminfo").read_text().splitlines()
+            if ":" in line
+        }
+        amount, unit = fields["MemAvailable"].split()
+        if unit != "kB":
+            raise ValueError(unit)
+        return int(amount) * 1024
+    except Exception as error:
+        raise RuntimeError("cannot determine Linux MemAvailable") from error
+
+
+def _cgroup_available_memory() -> int | None:
+    try:
+        relative = next(
+            line.split("::", 1)[1]
+            for line in Path("/proc/self/cgroup").read_text().splitlines()
+            if line.startswith("0::")
+        )
+        root = Path("/sys/fs/cgroup") / relative.lstrip("/")
+        maximum = (root / "memory.max").read_text().strip()
+        current = int((root / "memory.current").read_text().strip())
+        if maximum == "max":
+            return None
+        return max(0, int(maximum) - current)
+    except (FileNotFoundError, StopIteration):
+        return None
+    except Exception as error:
+        raise RuntimeError("cannot determine cgroup-v2 available memory") from error
+
+
+def memory_preflight(
+    payload: bytes, test_available: int | None = None
+) -> dict[str, Any]:
+    uncompressed = parquet_uncompressed_bytes(payload)
+    required = max(MINIMUM_MEMORY_HEADROOM, MEMORY_MULTIPLIER * uncompressed)
+    if test_available is None:
+        host_available = _host_available_memory()
+        cgroup_available = _cgroup_available_memory()
+        available = min(
+            value for value in (host_available, cgroup_available) if value is not None
+        )
+        source = (
+            "min(linux-memavailable,cgroup-v2)"
+            if cgroup_available is not None
+            else "linux-memavailable"
+        )
+    else:
+        host_available = None
+        cgroup_available = None
+        available = test_available
+        source = "injected-test-only"
+    result = {
+        "parquet_uncompressed_column_chunk_bytes": uncompressed,
+        "multiplier": MEMORY_MULTIPLIER,
+        "minimum_headroom_bytes": MINIMUM_MEMORY_HEADROOM,
+        "required_headroom_bytes": required,
+        "host_mem_available_bytes": host_available,
+        "cgroup_available_bytes": cgroup_available,
+        "effective_available_bytes": available,
+        "effective_available_source": source,
+    }
+    if available < required:
+        raise RuntimeError(
+            f"insufficient memory headroom: available={available} required={required}"
+        )
+    return result
+
+
 def load_gray_inputs(
     receipt_path: Path, expected_gray: set[tuple[str, str, str]]
 ) -> tuple[pa.Table, list[dict[str, Any]], dict[str, Any]]:
-    receipt = json_object(receipt_path, "gray input receipt")
+    receipt_bytes, receipt_binding = capture_regular_file(
+        receipt_path, "gray input receipt"
+    )
+    receipt = json_bytes(receipt_bytes, "gray input receipt")
     if (
         set(receipt) != {"format_version", "entries"}
         or receipt.get("format_version") != GRAY_RECEIPT_FORMAT
@@ -214,8 +365,7 @@ def load_gray_inputs(
             raise RuntimeError("duplicate gray receipt identity")
         identities.add(identity)
         path = Path(entry["path"])
-        regular_file(path, "staged gray CSV")
-        observed = binding(path)
+        csv_bytes, observed = capture_regular_file(path, "staged gray CSV")
         if observed != {"bytes": entry["bytes"], "sha256": entry["sha256"]}:
             raise RuntimeError(f"gray input receipt binding drift for {identity}")
         expected_uri = (
@@ -226,7 +376,7 @@ def load_gray_inputs(
         if entry["public_uri"] != expected_uri:
             raise RuntimeError(f"gray public URI drift for {identity}")
         table = pacsv.read_csv(
-            path,
+            pa.BufferReader(csv_bytes),
             read_options=pacsv.ReadOptions(use_threads=False),
             convert_options=pacsv.ConvertOptions(
                 column_types={"Metadata_Site": pa.int64()}
@@ -243,7 +393,7 @@ def load_gray_inputs(
     if identities != expected_gray:
         raise RuntimeError("gray receipt identities differ from canonical gray ledger")
     observations.sort(key=lambda item: (item["source"], item["batch"], item["plate"]))
-    return pa.concat_tables(tables), observations, binding(receipt_path)
+    return pa.concat_tables(tables), observations, receipt_binding
 
 
 def _filter_preliminary(
@@ -313,8 +463,9 @@ def build_manifest(args: argparse.Namespace) -> dict[str, Any]:
         raise RuntimeError(f"temporary output already exists: {temporary}")
 
     preliminary = args.preliminary
-    regular_file(preliminary, "preliminary inventory")
-    prelim_binding = binding(preliminary)
+    preliminary_bytes, prelim_binding = capture_regular_file(
+        preliminary, "preliminary inventory"
+    )
     configured_preliminary = {
         "bytes": args.preliminary_bytes,
         "sha256": args.preliminary_sha256,
@@ -326,6 +477,9 @@ def build_manifest(args: argparse.Namespace) -> dict[str, Any]:
         raise RuntimeError("configured preliminary identity is not the canonical input")
     if prelim_binding != configured_preliminary:
         raise RuntimeError("preliminary inventory binding drift")
+    memory = memory_preflight(
+        preliminary_bytes, getattr(args, "_test_memory_available_bytes", None)
+    )
     universe = pinned_plate_universe(args.datasets_checkout)
     for path, label in (
         (args.exclusion_policy, "exclusion policy"),
@@ -346,7 +500,8 @@ def build_manifest(args: argparse.Namespace) -> dict[str, Any]:
     gray = policy.pop("gray_plate_keys")
     expected_preliminary = universe - red - gray
 
-    table = pq.read_table(preliminary, use_threads=False)
+    table = pq.read_table(pa.BufferReader(preliminary_bytes), use_threads=False)
+    del preliminary_bytes
     table = _require_core_schema(table, "preliminary inventory", allow_extra=False)
     preliminary_plates, preliminary_counts = validate_rows(
         table, "preliminary inventory", allow_source_15_missing_rna=True
@@ -398,6 +553,11 @@ def build_manifest(args: argparse.Namespace) -> dict[str, Any]:
     ordered = pc.take(combined, order)
     validate_sorted_unique(ordered)
     _, final_counts = validate_rows(ordered, "ordered manifest")
+    preliminary_rows = table.num_rows
+    gray_rows = gray_table.num_rows
+    final_rows = ordered.num_rows
+    output_columns = list(ordered.column_names)
+    output_schema = str(ordered.schema)
 
     try:
         pq.write_table(
@@ -410,11 +570,17 @@ def build_manifest(args: argparse.Namespace) -> dict[str, Any]:
         )
         with temporary.open("rb") as handle:
             os.fsync(handle.fileno())
+        # Drop every full-table/sort reference before independently rereading
+        # the just-written output for its publication checks.
+        del table, filtered, gray_table, combined, order, ordered
+        gc.collect()
         observed = pq.read_table(temporary, use_threads=False)
         observed = _require_core_schema(observed, "written manifest", allow_extra=False)
         validate_sorted_unique(observed)
-        if observed.num_rows != ordered.num_rows:
+        if observed.num_rows != final_rows:
             raise RuntimeError("written manifest row-count drift")
+        del observed
+        gc.collect()
         output_binding = binding(temporary.resolve())
         script = Path(__file__).resolve()
         report = {
@@ -437,11 +603,11 @@ def build_manifest(args: argparse.Namespace) -> dict[str, Any]:
                 "gray_entries": gray_entries,
             },
             "counts": {
-                "preliminary_rows": table.num_rows,
+                "preliminary_rows": preliminary_rows,
                 "preliminary_source_counts": preliminary_counts,
                 "excluded": exclusions,
-                "gray_rows_added": gray_table.num_rows,
-                "final_rows": ordered.num_rows,
+                "gray_rows_added": gray_rows,
+                "final_rows": final_rows,
                 "final_source_counts": final_counts,
                 "red_plate_count": len(red),
                 "gray_plate_count": len(gray),
@@ -449,12 +615,13 @@ def build_manifest(args: argparse.Namespace) -> dict[str, Any]:
             },
             "output": {
                 **output_binding,
-                "rows": ordered.num_rows,
-                "columns": list(ordered.column_names),
-                "schema": str(ordered.schema),
+                "rows": final_rows,
+                "columns": output_columns,
+                "schema": output_schema,
                 "strict_identity_order": True,
                 "unique_identities": True,
             },
+            "memory_preflight": memory,
             "software": {
                 "python": sys.version,
                 "pyarrow": pa.__version__,
@@ -463,6 +630,7 @@ def build_manifest(args: argparse.Namespace) -> dict[str, Any]:
                     "pyarrow_cpu": pa.cpu_count(),
                     "pyarrow_io": pa.io_thread_count(),
                 },
+                "thread_env": {name: os.environ[name] for name in THREAD_ENV},
             },
             "next_step": "run the separate frozen inventory audit; this report does not freeze identity",
         }

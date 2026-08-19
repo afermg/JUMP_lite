@@ -111,9 +111,11 @@ Building the complete manifest is deliberately split into three reviewed steps:
 2. **Build offline.** `prep/build_full_jump_manifest.py` makes no network calls.
    It binds the exact preliminary Parquet, pinned datasets checkout and all
    policy ledgers; proves the preliminary plate universe; excludes all
-   `source_15` rows and both damaged sites; adds only the six receipted gray
-   CSVs; and atomically writes a unique, strictly identity-sorted Parquet plus a
-   content-bound build report. The report explicitly keeps
+   `source_15` rows and both damaged sites; and adds only the six receipted gray
+   CSVs. Preliminary Parquet and gray CSV parsing uses the exact stable bytes
+   captured and hashed in memory. The builder publishes a unique, strictly
+   identity-sorted Parquet first, then publishes its content-bound report as the
+   completion marker. The report explicitly keeps
    `release_identity_frozen=false`.
 3. **Freeze separately.** Run `jump_full_compression audit --kind frozen` with
    the checked-in policy and three ledgers. Only a successful frozen-audit
@@ -136,11 +138,22 @@ PYTHONPATH=src python prep/build_full_jump_manifest.py \
   --report /absolute/identity/full-jump-production-manifest-build.json
 ```
 
-The builder caps PyArrow CPU and I/O pools at one, imports no Python DuckDB,
-refuses existing outputs, and removes unpublished temporary files after any
-failure. Gray CSVs may contain non-URL load-data columns, but the builder
-selects exactly the five identity and five `URL_Orig*` columns and rejects
-missing channels or unsupported URL channels.
+The builder overrides all native thread-pool environment variables to one,
+caps PyArrow CPU and I/O pools at one, and imports no Python DuckDB. Before
+materializing the preliminary table it sums Parquet uncompressed column-chunk
+bytes and requires available Linux/cgroup memory of at least 64 GiB or six times
+that payload, whichever is larger; the build report records this preflight.
+Gray CSVs may contain non-URL load-data columns, but the builder selects exactly
+the five identity and five `URL_Orig*` columns and rejects missing channels or
+unsupported URL channels.
+
+Output and report are not an atomic pair. The output is published first without
+overwrite, and the report is the completion marker. Ordinary report-publication
+failures remove the just-published output, but a process or host crash between
+the two publications can leave a fail-closed orphan output. A path with output
+but no report must never be adopted or overwritten; explicitly quarantine or
+remove that orphan after review before rerunning. The builder otherwise refuses
+existing outputs and removes unpublished temporary files after failures.
 
 ## Reviewed launch sequence
 
