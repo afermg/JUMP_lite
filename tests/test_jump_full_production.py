@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import subprocess
 import tempfile
 import types
 import time
@@ -26,6 +27,7 @@ from jump_full_compression.production import (
     _rows_slice,
     _source_observation_valid,
     _validate_identity,
+    _verify_receipt_signature,
     acknowledge_production_errors,
     authorize_continuous,
     bootstrap_production,
@@ -172,10 +174,24 @@ class ProductionRunnerTests(unittest.TestCase):
             "lossless": {"receipt_backed_masks": 33, "canonical_profiles": 44},
         }
         before_path.write_text(
-            json.dumps({"metrics": {"authoritative_progress": progress_before}})
+            json.dumps(
+                {
+                    "metrics": {
+                        "authoritative_progress": progress_before,
+                        "io_pressure_avg10": 0.0,
+                    }
+                }
+            )
         )
         post_path.write_text(
-            json.dumps({"metrics": {"authoritative_progress": progress_post}})
+            json.dumps(
+                {
+                    "metrics": {
+                        "authoritative_progress": progress_post,
+                        "io_pressure_avg10": 0.0,
+                    }
+                }
+            )
         )
         accepted_at = "2026-08-19T04:00:00+00:00"
         acceptance = self.root / f"acceptance-{config.site_count}.json"
@@ -749,6 +765,15 @@ class ProductionRunnerTests(unittest.TestCase):
                 "jump_full_compression.production.AUTHORIZED_FIRST_TRANCHE_DIGEST",
                 digest,
             ),
+            self.assertRaisesRegex(RuntimeError, "bounded production is forbidden"),
+        ):
+            run_production(config, 1, True)
+        with (
+            self._identity_patch(),
+            mock.patch(
+                "jump_full_compression.production.AUTHORIZED_FIRST_TRANCHE_DIGEST",
+                digest,
+            ),
         ):
             preview = authorize_continuous(
                 config, acceptance, sha256_file(acceptance), False
@@ -844,6 +869,57 @@ class ProductionRunnerTests(unittest.TestCase):
         self.assertEqual(state["state"], "paused")
         self.assertEqual(state["processed"], state["next_index"])
 
+    def test_production_approval_rejects_unsigned_arbitrary_and_tampered_signatures(
+        self,
+    ):
+        receipt = self.root / "signed-review.json"
+        receipt.write_text('{"decision":"GO"}\n')
+        key = self.root / "untrusted-review-key"
+        subprocess.run(
+            ["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(key)],
+            check=True,
+        )
+        subprocess.run(
+            [
+                "ssh-keygen",
+                "-Y",
+                "sign",
+                "-f",
+                str(key),
+                "-n",
+                "jump-full-production-v1",
+                str(receipt),
+            ],
+            check=True,
+            stdout=subprocess.DEVNULL,
+        )
+        signature = receipt.with_suffix(".json.sig")
+        with self.assertRaisesRegex(RuntimeError, "required"):
+            _verify_receipt_signature(
+                receipt.read_bytes(), None, test_mode=False, label="test receipt"
+            )
+        with self.assertRaisesRegex(RuntimeError, "invalid"):
+            _verify_receipt_signature(
+                receipt.read_bytes(), signature, test_mode=False, label="test receipt"
+            )
+        with self.assertRaisesRegex(RuntimeError, "invalid"):
+            _verify_receipt_signature(
+                receipt.read_bytes() + b"tamper",
+                signature,
+                test_mode=False,
+                label="test receipt",
+            )
+        completed = types.SimpleNamespace(
+            returncode=0, stdout=b"Good signature", stderr=b""
+        )
+        with mock.patch(
+            "jump_full_compression.production.subprocess.run", return_value=completed
+        ):
+            observed = _verify_receipt_signature(
+                receipt.read_bytes(), signature, test_mode=False, label="test receipt"
+            )
+        self.assertEqual(observed, sha256_file(signature))
+
     def test_strict_acceptance_rejects_arbitrary_no_and_bad_evidence(self):
         config = self._config(257)
         self._bootstrap(config)
@@ -903,10 +979,45 @@ class ProductionRunnerTests(unittest.TestCase):
                     sha256_file(bad_migration),
                     False,
                 )
+        acceptance, migration, successor = self._acceptance_artifacts(config, digest)
+        value = json.loads(acceptance.read_text())
+        before = Path(value["governor"]["before"]["path"])
+        before_value = json.loads(before.read_text())
+        before_value["metrics"]["io_pressure_avg10"] = 99.0
+        before.write_text(json.dumps(before_value))
+        value["governor"]["before"]["sha256"] = sha256_file(before)
+        acceptance.write_text(json.dumps(value))
+        migration_value = json.loads(migration.read_text())
+        migration_value["one_tranche_acceptance"]["sha256"] = sha256_file(acceptance)
+        migration.write_text(json.dumps(migration_value))
+        with (
+            self._identity_patch(),
+            mock.patch(
+                "jump_full_compression.production.AUTHORIZED_FIRST_TRANCHE_DIGEST",
+                digest,
+            ),
+            mock.patch(
+                "jump_full_compression.production.software_identity",
+                return_value=successor,
+            ),
+            self.assertRaisesRegex(RuntimeError, "I/O pressure artifacts"),
+        ):
+            migrate_producer(
+                config,
+                acceptance,
+                sha256_file(acceptance),
+                migration,
+                sha256_file(migration),
+                False,
+            )
 
     def test_migration_preserves_tranche_zero_and_converges_after_each_fault(self):
+        class SimulatedKill(BaseException):
+            pass
+
         for index, fault in enumerate(
             (
+                "after_migration_pause",
                 "after_migration_history",
                 "after_migration_transition",
                 "after_migration_current_producer",
@@ -948,7 +1059,7 @@ class ProductionRunnerTests(unittest.TestCase):
                     nonlocal fired
                     if point == fault and not fired:
                         fired = True
-                        raise RuntimeError(point)
+                        raise SimulatedKill(point)
 
                 common = dict(
                     config=config,
@@ -987,9 +1098,23 @@ class ProductionRunnerTests(unittest.TestCase):
                         return_value=successor,
                     ),
                     mock.patch("jump_full_compression.production.FAULT_HOOK", inject),
-                    self.assertRaisesRegex(RuntimeError, fault),
+                    self.assertRaisesRegex(SimulatedKill, fault),
                 ):
                     migrate_producer(**common)
+                control_after_fault = json.loads(
+                    (config.state_root / "control.json").read_text()
+                )
+                telemetry_after_fault = json.loads(
+                    (config.state_root / "compression.json").read_text()
+                )
+                self.assertTrue(control_after_fault["paused"])
+                self.assertEqual(telemetry_after_fault["state"], "session-complete")
+                self.assertEqual(telemetry_after_fault["processed"], 256)
+                with (
+                    self._identity_patch(),
+                    self.assertRaises(RuntimeError),
+                ):
+                    run_production(config, None, False, continuous=True)
                 with (
                     self._identity_patch(),
                     mock.patch(

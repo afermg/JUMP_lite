@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 from concurrent.futures import ThreadPoolExecutor
 import fcntl
 import hashlib
@@ -13,6 +14,8 @@ import re
 import resource
 import shutil
 import stat
+import subprocess
+import tempfile
 import threading
 import time
 from datetime import datetime
@@ -68,6 +71,20 @@ AUTHORIZED_PREDECESSOR_PRODUCER_SHA256 = (
     "eea9ed8964f7d2f3ce9a164becdfa0530818b07855cde1b578f22e8c686d469a"
 )
 AUTHORIZED_PREDECESSOR_COMMIT = "75b18904ea0fe18610feb840888794733fea2fd0"
+APPROVAL_NAMESPACE = "jump-full-production-v1"
+APPROVAL_IDENTITY = "jump-full-review"
+APPROVAL_PUBLIC_KEY_FINGERPRINT = "SHA256:JK9i/FuG+bMhtlMIjgX4u+XYQ+yrmG8GMxO6nSN8pBQ"
+APPROVAL_ALLOWED_SIGNERS_SHA256 = (
+    "27e18a389a4b974fb9059bbaf43f5d0eee045414b7082c87c99d163f0ce235cd"
+)
+APPROVAL_ALLOWED_SIGNERS_BYTES = (
+    b"jump-full-review ssh-ed25519 "
+    b"AAAAC3NzaC1lZDI1NTE5AAAAIHg3AJwvkuUxf0+7xXR+XymqqcJa88YwpyxQNJdlKmMN\n"
+)
+SSH_KEYGEN = Path(
+    "/nix/store/wn31bzs6yk4gy35lpba3iwvp9dgqpgvz-openssh-10.2p1/bin/ssh-keygen"
+)
+SSH_KEYGEN_SHA256 = "a1acab479e790c2e19847d7f8dd51e9f9c4e3ef1d7d61ce9b07cbecb70226bbe"
 IDLE_TERMINAL_STATES = {"session-complete", "complete", "stopped", "paused"}
 
 
@@ -338,6 +355,83 @@ def _read_regular_bytes(path: Path, label: str) -> bytes:
             return handle.read()
     finally:
         os.close(descriptor)
+
+
+def _read_absolute_regular_bytes(path: Path, label: str) -> bytes:
+    if not path.is_absolute():
+        raise RuntimeError(f"{label} path must be absolute")
+    return _read_regular_bytes(path, label)
+
+
+def _verify_receipt_signature(
+    receipt_bytes: bytes,
+    signature_path: Path | None,
+    *,
+    test_mode: bool,
+    label: str,
+) -> str:
+    if test_mode:
+        if (
+            signature_path is None
+            or str(signature_path) == "/test-mode-signature-bypass"
+        ):
+            return "test-mode-signature-bypass"
+        return hashlib.sha256(
+            _read_absolute_regular_bytes(signature_path, f"{label} signature")
+        ).hexdigest()
+    if signature_path is None:
+        raise RuntimeError(f"{label} detached signature is required")
+    signature_bytes = _read_absolute_regular_bytes(signature_path, f"{label} signature")
+    signature_sha256 = hashlib.sha256(signature_bytes).hexdigest()
+    metadata_path = (
+        Path(__file__).resolve().parents[2]
+        / "metadata/full_jump_compression/continuous_approval_allowed_signers"
+    )
+    allowed = _read_absolute_regular_bytes(metadata_path, "approval allowed-signers")
+    try:
+        public_key_blob = base64.b64decode(allowed.split()[2], validate=True)
+        observed_fingerprint = "SHA256:" + base64.b64encode(
+            hashlib.sha256(public_key_blob).digest()
+        ).decode().rstrip("=")
+    except Exception as error:
+        raise RuntimeError("approval allowed-signers identity malformed") from error
+    if (
+        allowed != APPROVAL_ALLOWED_SIGNERS_BYTES
+        or hashlib.sha256(allowed).hexdigest() != APPROVAL_ALLOWED_SIGNERS_SHA256
+        or observed_fingerprint != APPROVAL_PUBLIC_KEY_FINGERPRINT
+    ):
+        raise RuntimeError("approval allowed-signers identity drift")
+    ssh_keygen_bytes = _read_absolute_regular_bytes(SSH_KEYGEN, "ssh-keygen executable")
+    if hashlib.sha256(ssh_keygen_bytes).hexdigest() != SSH_KEYGEN_SHA256:
+        raise RuntimeError("pinned ssh-keygen identity drift")
+    with tempfile.TemporaryDirectory(prefix="jump-full-approval-") as temporary:
+        root = Path(temporary)
+        allowed_path = root / "allowed_signers"
+        stable_signature = root / "receipt.sig"
+        allowed_path.write_bytes(allowed)
+        stable_signature.write_bytes(signature_bytes)
+        completed = subprocess.run(
+            [
+                str(SSH_KEYGEN),
+                "-Y",
+                "verify",
+                "-f",
+                str(allowed_path),
+                "-I",
+                APPROVAL_IDENTITY,
+                "-n",
+                APPROVAL_NAMESPACE,
+                "-s",
+                str(stable_signature),
+            ],
+            input=receipt_bytes,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+    if completed.returncode != 0:
+        raise RuntimeError(f"{label} detached signature invalid")
+    return signature_sha256
 
 
 def _validate_producer_payload(
@@ -765,8 +859,15 @@ def _load_transition_plan(
         "checkpoint_completed_tranches",
         "checkpoint_chain_head",
         "pre_migration_checkpoint_sha256",
+        "one_tranche_acceptance",
         "one_tranche_acceptance_sha256",
+        "migration_acceptance",
         "migration_acceptance_sha256",
+        "one_tranche_acceptance_signature",
+        "one_tranche_acceptance_signature_sha256",
+        "migration_acceptance_signature",
+        "migration_acceptance_signature_sha256",
+        "approval_identity",
         "successor_software",
         "transitioned_at",
         "transition_digest",
@@ -792,6 +893,19 @@ def _load_transition_plan(
             or value.get("checkpoint_next_index")
             != min(boundary * config.tranche_size, config.site_count)
             or value.get("transition_digest") != _transition_digest(value)
+            or value.get("approval_identity")
+            != {
+                "identity": APPROVAL_IDENTITY,
+                "namespace": APPROVAL_NAMESPACE,
+                "public_key_fingerprint": APPROVAL_PUBLIC_KEY_FINGERPRINT,
+                "allowed_signers_sha256": APPROVAL_ALLOWED_SIGNERS_SHA256,
+                "ssh_keygen": str(SSH_KEYGEN),
+                "ssh_keygen_sha256": SSH_KEYGEN_SHA256,
+            }
+            or not Path(value.get("one_tranche_acceptance", "")).is_absolute()
+            or not Path(value.get("migration_acceptance", "")).is_absolute()
+            or not Path(value.get("one_tranche_acceptance_signature", "")).is_absolute()
+            or not Path(value.get("migration_acceptance_signature", "")).is_absolute()
             or value.get("from_producer_sha256") == value.get("to_producer_sha256")
             or value.get("to_producer_sha256") in seen_producers
             or (
@@ -1172,26 +1286,41 @@ def _artifact_binding(value: Any, label: str) -> tuple[Path, str, Any]:
     binding = _strict_keys(value, {"path", "sha256"}, label)
     path = Path(binding["path"])
     digest = binding["sha256"]
+    try:
+        encoded = _read_absolute_regular_bytes(path, label)
+    except RuntimeError as error:
+        raise RuntimeError(f"{label} binding drift") from error
     if (
         not isinstance(digest, str)
         or len(digest) != 64
-        or path.is_symlink()
-        or not path.is_file()
-        or sha256_file(path) != digest
+        or hashlib.sha256(encoded).hexdigest() != digest
     ):
         raise RuntimeError(f"{label} binding drift")
     try:
-        payload = json.loads(_read_regular_bytes(path, label))
+        payload = json.loads(encoded)
     except Exception as error:
         raise RuntimeError(f"{label} malformed") from error
     return path, digest, payload
 
 
-def _prevalidate_one_tranche_acceptance(path: Path, expected_sha256: str) -> None:
-    if path.is_symlink() or not path.is_file() or sha256_file(path) != expected_sha256:
+def _prevalidate_one_tranche_acceptance(
+    path: Path,
+    expected_sha256: str,
+    signature_path: Path | None,
+    *,
+    test_mode: bool,
+) -> tuple[dict[str, Any], str]:
+    encoded = _read_absolute_regular_bytes(path, "one-tranche acceptance receipt")
+    if hashlib.sha256(encoded).hexdigest() != expected_sha256:
         raise RuntimeError("one-tranche acceptance receipt binding drift")
+    signature_sha256 = _verify_receipt_signature(
+        encoded,
+        signature_path,
+        test_mode=test_mode,
+        label="one-tranche acceptance receipt",
+    )
     try:
-        value = json.loads(_read_regular_bytes(path, "one-tranche acceptance receipt"))
+        value = json.loads(encoded)
     except Exception as error:
         raise RuntimeError("one-tranche acceptance receipt malformed") from error
     required = {
@@ -1214,22 +1343,22 @@ def _prevalidate_one_tranche_acceptance(path: Path, expected_sha256: str) -> Non
         raise RuntimeError("one-tranche acceptance format invalid")
     if value["decision"] != "GO":
         raise RuntimeError("one-tranche acceptance decision is not GO")
+    return value, signature_sha256
 
 
 def _validate_one_tranche_acceptance(
     config: ProductionConfig,
     path: Path,
     expected_sha256: str,
+    signature_path: Path | None,
     checkpoint: dict[str, Any],
     predecessor_sha: str,
     predecessor: dict[str, Any],
     accepted_checkpoint_sha256: str,
 ) -> dict[str, Any]:
-    _prevalidate_one_tranche_acceptance(path, expected_sha256)
-    try:
-        value = json.loads(_read_regular_bytes(path, "one-tranche acceptance receipt"))
-    except Exception as error:
-        raise RuntimeError("one-tranche acceptance receipt malformed") from error
+    value, signature_sha256 = _prevalidate_one_tranche_acceptance(
+        path, expected_sha256, signature_path, test_mode=config.test_mode
+    )
     required = {
         "format_version",
         "decision",
@@ -1364,17 +1493,30 @@ def _validate_one_tranche_acceptance(
         {"before_some_avg10", "after_some_avg10", "max_some_avg10"},
         "I/O pressure evidence",
     )
-    if any(
-        not isinstance(value, (int, float)) or value != 0 for value in pressure.values()
+    try:
+        observed_pressure = {
+            "before_some_avg10": before["metrics"]["io_pressure_avg10"],
+            "after_some_avg10": post["metrics"]["io_pressure_avg10"],
+        }
+    except Exception as error:
+        raise RuntimeError("governor I/O pressure evidence malformed") from error
+    observed_pressure["max_some_avg10"] = max(observed_pressure.values())
+    if (
+        any(type(item) not in (int, float) for item in pressure.values())
+        or any(item != 0.0 for item in pressure.values())
+        or any(type(item) not in (int, float) for item in observed_pressure.values())
+        or any(item != 0.0 for item in observed_pressure.values())
+        or pressure != observed_pressure
     ):
-        raise RuntimeError("I/O pressure evidence is not zero")
-    return value
+        raise RuntimeError("I/O pressure artifacts are not exactly zero")
+    return {**value, "_signature_sha256": signature_sha256}
 
 
 def _validate_migration_acceptance(
     config: ProductionConfig,
     path: Path,
     expected_sha256: str,
+    signature_path: Path | None,
     one_tranche_path: Path,
     one_tranche_sha256: str,
     checkpoint: dict[str, Any],
@@ -1383,10 +1525,17 @@ def _validate_migration_acceptance(
     successor_software: dict[str, Any],
     accepted_checkpoint_sha256: str,
 ) -> dict[str, Any]:
-    if path.is_symlink() or not path.is_file() or sha256_file(path) != expected_sha256:
+    encoded = _read_absolute_regular_bytes(path, "migration acceptance receipt")
+    if hashlib.sha256(encoded).hexdigest() != expected_sha256:
         raise RuntimeError("producer migration acceptance binding drift")
+    signature_sha256 = _verify_receipt_signature(
+        encoded,
+        signature_path,
+        test_mode=config.test_mode,
+        label="producer migration acceptance receipt",
+    )
     try:
-        value = json.loads(_read_regular_bytes(path, "migration acceptance receipt"))
+        value = json.loads(encoded)
     except Exception as error:
         raise RuntimeError("producer migration acceptance malformed") from error
     _strict_keys(
@@ -1442,7 +1591,7 @@ def _validate_migration_acceptance(
         or checkpoint["cumulative_errors"] != 0
     ):
         raise RuntimeError("producer migration acceptance semantic drift")
-    return value
+    return {**value, "_signature_sha256": signature_sha256}
 
 
 def _atomic_json_create(
@@ -1498,22 +1647,6 @@ def _normalize_migration_telemetry(
 ) -> None:
     telemetry = _resource_telemetry()
     atomic_json(
-        config.state_root / "compression.json",
-        {
-            "format_version": STATE_FORMAT,
-            "candidate_id": config.production_id,
-            "config_sha256": config.digest,
-            "state": state,
-            "next_index": checkpoint["next_index"],
-            "processed": checkpoint["next_index"],
-            "sites": config.site_count,
-            "cumulative_errors": checkpoint["cumulative_errors"],
-            "heartbeat_unix": time.time(),
-            **telemetry,
-            "peak_tasks": telemetry["current_tasks"],
-        },
-    )
-    atomic_json(
         config.state_root / "control.json",
         {
             "format_version": "full-jump-compression-control-v2",
@@ -1532,6 +1665,22 @@ def _normalize_migration_telemetry(
             "governor_evaluation_required": True,
         },
     )
+    atomic_json(
+        config.state_root / "compression.json",
+        {
+            "format_version": STATE_FORMAT,
+            "candidate_id": config.production_id,
+            "config_sha256": config.digest,
+            "state": state,
+            "next_index": checkpoint["next_index"],
+            "processed": checkpoint["next_index"],
+            "sites": config.site_count,
+            "cumulative_errors": checkpoint["cumulative_errors"],
+            "heartbeat_unix": time.time(),
+            **telemetry,
+            "peak_tasks": telemetry["current_tasks"],
+        },
+    )
 
 
 def migrate_producer(
@@ -1541,6 +1690,8 @@ def migrate_producer(
     migration_acceptance: Path,
     migration_acceptance_sha256: str,
     apply: bool,
+    one_tranche_acceptance_signature: Path | None = None,
+    migration_acceptance_signature: Path | None = None,
 ) -> dict[str, Any]:
     successor_software = software_identity(require_clean=not config.test_mode)
     with ManifestSnapshot(config.manifest) as snapshot:
@@ -1556,6 +1707,8 @@ def migrate_producer(
                     migration_acceptance_sha256,
                     successor_software,
                     apply,
+                    one_tranche_acceptance_signature,
+                    migration_acceptance_signature,
                 )
             except Exception:
                 # The lock proves no bounded or continuous compressor is active. Keep
@@ -1583,6 +1736,8 @@ def _migrate_producer_locked(
     migration_acceptance_sha256: str,
     successor_software: dict[str, Any],
     apply: bool,
+    one_tranche_acceptance_signature: Path | None,
+    migration_acceptance_signature: Path | None,
 ) -> dict[str, Any]:
     if _continuous_authorization_path(config).exists():
         raise RuntimeError(
@@ -1664,6 +1819,7 @@ def _migrate_producer_locked(
         config,
         one_tranche_acceptance,
         one_tranche_acceptance_sha256,
+        one_tranche_acceptance_signature,
         checkpoint,
         predecessor_sha,
         predecessor,
@@ -1673,6 +1829,7 @@ def _migrate_producer_locked(
         config,
         migration_acceptance,
         migration_acceptance_sha256,
+        migration_acceptance_signature,
         one_tranche_acceptance,
         one_tranche_acceptance_sha256,
         checkpoint,
@@ -1693,8 +1850,30 @@ def _migrate_producer_locked(
         "checkpoint_completed_tranches": 1,
         "checkpoint_chain_head": AUTHORIZED_FIRST_TRANCHE_DIGEST,
         "pre_migration_checkpoint_sha256": accepted_checkpoint_sha256,
+        "one_tranche_acceptance": str(one_tranche_acceptance.resolve()),
         "one_tranche_acceptance_sha256": one_tranche_acceptance_sha256,
+        "migration_acceptance": str(migration_acceptance.resolve()),
         "migration_acceptance_sha256": migration_acceptance_sha256,
+        "one_tranche_acceptance_signature": (
+            str(one_tranche_acceptance_signature.resolve())
+            if one_tranche_acceptance_signature is not None
+            else "/test-mode-signature-bypass"
+        ),
+        "one_tranche_acceptance_signature_sha256": one["_signature_sha256"],
+        "migration_acceptance_signature": (
+            str(migration_acceptance_signature.resolve())
+            if migration_acceptance_signature is not None
+            else "/test-mode-signature-bypass"
+        ),
+        "migration_acceptance_signature_sha256": migration["_signature_sha256"],
+        "approval_identity": {
+            "identity": APPROVAL_IDENTITY,
+            "namespace": APPROVAL_NAMESPACE,
+            "public_key_fingerprint": APPROVAL_PUBLIC_KEY_FINGERPRINT,
+            "allowed_signers_sha256": APPROVAL_ALLOWED_SIGNERS_SHA256,
+            "ssh_keygen": str(SSH_KEYGEN),
+            "ssh_keygen_sha256": SSH_KEYGEN_SHA256,
+        },
         "successor_software": successor_software,
         "transitioned_at": migration["approved_at"],
     }
@@ -1710,6 +1889,10 @@ def _migrate_producer_locked(
     }
     if not apply:
         return result
+    # Publish the execution fence before the first producer/transition/checkpoint
+    # mutation. BaseException/SIGKILL after this point therefore remains paused.
+    _normalize_migration_telemetry(config, checkpoint)
+    FAULT_HOOK("after_migration_pause")
     producers = config.output_root / "producers"
     transitions = config.output_root / "transitions"
     producers.mkdir(exist_ok=True)
@@ -1743,8 +1926,14 @@ def authorize_continuous(
     acceptance_receipt: Path,
     acceptance_receipt_sha256: str,
     apply: bool,
+    acceptance_signature: Path | None = None,
 ) -> dict[str, Any]:
-    _prevalidate_one_tranche_acceptance(acceptance_receipt, acceptance_receipt_sha256)
+    _prevalidate_one_tranche_acceptance(
+        acceptance_receipt,
+        acceptance_receipt_sha256,
+        acceptance_signature,
+        test_mode=config.test_mode,
+    )
     with ManifestSnapshot(config.manifest) as snapshot:
         _validate_identity(config, snapshot)
         with _lock(config):
@@ -1755,6 +1944,7 @@ def authorize_continuous(
                     acceptance_receipt,
                     acceptance_receipt_sha256,
                     apply,
+                    acceptance_signature,
                 )
             except Exception:
                 if apply and _checkpoint_path(config).is_file():
@@ -1777,6 +1967,7 @@ def _authorize_continuous_locked(
     acceptance_receipt: Path,
     acceptance_receipt_sha256: str,
     apply: bool,
+    acceptance_signature: Path | None,
 ) -> dict[str, Any]:
     marker = _continuous_authorization_path(config)
     if marker.exists() or marker.is_symlink():
@@ -1805,6 +1996,7 @@ def _authorize_continuous_locked(
         config,
         acceptance_receipt,
         acceptance_receipt_sha256,
+        acceptance_signature,
         checkpoint,
         predecessor_sha,
         predecessor,
@@ -1834,6 +2026,13 @@ def _authorize_continuous_locked(
         "tranche_digest": AUTHORIZED_FIRST_TRANCHE_DIGEST,
         "acceptance_receipt": str(acceptance_receipt.resolve()),
         "acceptance_receipt_sha256": acceptance_receipt_sha256,
+        "acceptance_signature": str(
+            acceptance_signature.resolve()
+            if acceptance_signature is not None
+            else "/test-mode-signature-bypass"
+        ),
+        "acceptance_signature_sha256": accepted["_signature_sha256"],
+        "approval_identity": transition["approval_identity"],
         "transition_digest": transition["transition_digest"],
         "migration_acceptance_sha256": transition["migration_acceptance_sha256"],
         "authorized_at": now(),
@@ -1888,6 +2087,9 @@ def _validate_continuous_authorization(
         "tranche_digest",
         "acceptance_receipt",
         "acceptance_receipt_sha256",
+        "acceptance_signature",
+        "acceptance_signature_sha256",
+        "approval_identity",
         "transition_digest",
         "migration_acceptance_sha256",
         "authorized_at",
@@ -1904,6 +2106,15 @@ def _validate_continuous_authorization(
         or value.get("authorized_chain_head") != AUTHORIZED_FIRST_TRANCHE_DIGEST
         or value.get("tranche") != 0
         or value.get("tranche_digest") != AUTHORIZED_FIRST_TRANCHE_DIGEST
+        or value.get("approval_identity")
+        != {
+            "identity": APPROVAL_IDENTITY,
+            "namespace": APPROVAL_NAMESPACE,
+            "public_key_fingerprint": APPROVAL_PUBLIC_KEY_FINGERPRINT,
+            "allowed_signers_sha256": APPROVAL_ALLOWED_SIGNERS_SHA256,
+            "ssh_keygen": str(SSH_KEYGEN),
+            "ssh_keygen_sha256": SSH_KEYGEN_SHA256,
+        }
         or checkpoint["next_index"] < value.get("authorized_next_index", -1)
         or checkpoint["completed_tranches"] < 1
     ):
@@ -1924,15 +2135,42 @@ def _validate_continuous_authorization(
     )
     if observed_sha != predecessor_sha:
         raise RuntimeError("continuous predecessor producer drift")
-    _validate_one_tranche_acceptance(
+    revalidated = _validate_one_tranche_acceptance(
         config,
         receipt,
         value["acceptance_receipt_sha256"],
+        Path(value["acceptance_signature"]),
         checkpoint,
         predecessor_sha,
         predecessor,
         transitions[0]["pre_migration_checkpoint_sha256"],
     )
+    if revalidated["_signature_sha256"] != value["acceptance_signature_sha256"]:
+        raise RuntimeError("continuous acceptance signature binding drift")
+    migration_revalidated = _validate_migration_acceptance(
+        config,
+        Path(transitions[0]["migration_acceptance"]),
+        transitions[0]["migration_acceptance_sha256"],
+        Path(transitions[0]["migration_acceptance_signature"]),
+        Path(transitions[0]["one_tranche_acceptance"]),
+        transitions[0]["one_tranche_acceptance_sha256"],
+        {
+            **checkpoint,
+            "next_index": config.tranche_size,
+            "completed_tranches": 1,
+            "chain_head": AUTHORIZED_FIRST_TRANCHE_DIGEST,
+            "cumulative_errors": 0,
+        },
+        predecessor,
+        predecessor_sha,
+        transitions[0]["successor_software"],
+        transitions[0]["pre_migration_checkpoint_sha256"],
+    )
+    if (
+        migration_revalidated["_signature_sha256"]
+        != transitions[0]["migration_acceptance_signature_sha256"]
+    ):
+        raise RuntimeError("continuous migration signature binding drift")
     first = _load_record(config, 0)
     if first["tranche_digest"] != AUTHORIZED_FIRST_TRANCHE_DIGEST:
         raise RuntimeError("continuous authorized chain ancestor drift")
@@ -1978,6 +2216,12 @@ def _run_with_snapshot(
         if checkpoint.get("producer_sha256") != producer_sha:
             raise RuntimeError("checkpoint producer binding drift")
         _validate_chain(config, checkpoint)
+        transitions = _load_transition_plan(config, producer_sha)
+        if transitions and not continuous:
+            raise RuntimeError(
+                "bounded production is forbidden after producer migration; "
+                "continuous authorization is required"
+            )
         if continuous:
             _validate_continuous_authorization(config, checkpoint, producer_sha)
             if not apply:
@@ -1988,7 +2232,6 @@ def _run_with_snapshot(
                 }
         if checkpoint["completed_tranches"]:
             last_tranche = checkpoint["completed_tranches"] - 1
-            transitions = _load_transition_plan(config, producer_sha)
             _verify_tranche(
                 config,
                 snapshot,

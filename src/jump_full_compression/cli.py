@@ -195,13 +195,22 @@ def parser():
         "--one-tranche-acceptance", type=Path, required=True
     )
     production_migrate.add_argument("--one-tranche-acceptance-sha256", required=True)
+    production_migrate.add_argument(
+        "--one-tranche-acceptance-signature", type=Path, required=True
+    )
     production_migrate.add_argument("--migration-acceptance", type=Path, required=True)
     production_migrate.add_argument("--migration-acceptance-sha256", required=True)
+    production_migrate.add_argument(
+        "--migration-acceptance-signature", type=Path, required=True
+    )
     production_migrate.add_argument("--apply", action="store_true")
     production_authorize = commands.add_parser("production-authorize-continuous")
     _add_production_arguments(production_authorize)
     production_authorize.add_argument("--acceptance-receipt", type=Path, required=True)
     production_authorize.add_argument("--acceptance-receipt-sha256", required=True)
+    production_authorize.add_argument(
+        "--one-tranche-acceptance-signature", type=Path, required=True
+    )
     production_authorize.add_argument("--apply", action="store_true")
     production_ack = commands.add_parser("production-acknowledge-errors")
     _add_production_arguments(production_ack)
@@ -317,6 +326,8 @@ def main(argv=None):
                     args.migration_acceptance,
                     args.migration_acceptance_sha256,
                     args.apply,
+                    args.one_tranche_acceptance_signature,
+                    args.migration_acceptance_signature,
                 ),
                 indent=2,
             )
@@ -330,6 +341,7 @@ def main(argv=None):
                     args.acceptance_receipt,
                     args.acceptance_receipt_sha256,
                     args.apply,
+                    args.one_tranche_acceptance_signature,
                 ),
                 indent=2,
             )

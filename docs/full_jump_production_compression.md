@@ -39,7 +39,28 @@ its caller-supplied SHA-256), rechecks its artifacts and semantics, authenticate
 applied transition and old tranche under its predecessor producer, then atomically
 creates a non-overwritable authorization marker and republishes control paused.
 
-### Exact acceptance schemas
+### Signed acceptance authority and exact schemas
+
+Both acceptance JSON files require detached OpenSSH signatures from the pinned
+`jump-full-review` Ed25519 key. The canonical allowed-signers file is
+`metadata/full_jump_compression/continuous_approval_allowed_signers`; runtime pins its
+exact bytes, SHA-256, public-key fingerprint, and the exact `ssh-keygen` executable.
+The signing operator signs each final, immutable receipt (the private-key location is
+intentionally not documented):
+
+```bash
+ssh-keygen -Y sign -f "$REVIEW_SIGNING_KEY" -n jump-full-production-v1 one-tranche-acceptance.json
+ssh-keygen -Y sign -f "$REVIEW_SIGNING_KEY" -n jump-full-production-v1 producer-migration-acceptance.json
+ssh-keygen -Y verify -f metadata/full_jump_compression/continuous_approval_allowed_signers \
+  -I jump-full-review -n jump-full-production-v1 -s one-tranche-acceptance.json.sig \
+  < one-tranche-acceptance.json
+```
+
+Pass both absolute signature paths to migration as
+`--one-tranche-acceptance-signature` and `--migration-acceptance-signature`; pass the
+former again to authorization. Signature and receipt bytes are captured and verified
+from regular non-symlink files. The marker records their hashes and runtime revalidates
+both signatures before every continuous invocation.
 
 Every object below rejects extra or missing keys. All SHA values are lowercase
 64-character SHA-256 strings; all timestamps are timezone-aware ISO-8601 strings; all
@@ -77,7 +98,9 @@ artifact paths are absolute regular non-symlink files whose bytes match `sha256`
 All four feature deltas must be positive integers and must equal the post-minus-before
 values in the two bound governor artifacts. The three review identifiers must be
 nonempty and distinct. Verification artifact fields must themselves report valid
-tranche 0, 256 sites, and the accepted digest. Every I/O-pressure value must be zero.
+tranche 0, 256 sites, and the accepted digest. `metrics.io_pressure_avg10` must be
+numeric and exactly `0.0` in each bound governor artifact, and those derived values
+must exactly equal the receipt's three I/O-pressure assertions.
 
 `producer-migration-acceptance-v1` has exactly:
 
@@ -115,8 +138,10 @@ successor software, and creates immutable `producers/<sha>.json` histories and
 checkpoint producer binding, terminal telemetry, and paused control. It never rewrites
 an existing site receipt, chunk, or tranche record. Repeating apply after interruption
 at any migration durability boundary converges to the same transition. Any conflicting
-history/transition/current producer fails closed. Run the governor only after migration
-and continuous authorization.
+history/transition/current producer fails closed. After any producer transition, bounded
+production is forbidden as well as paused: no further tranche can run until the signed
+continuous marker exists. Run the governor only after migration and continuous
+authorization.
 
 Only the separate `jump-full-production-continuous.service` uses `--continuous`.
 Continuous execution fails closed without the authenticated marker and proves the
