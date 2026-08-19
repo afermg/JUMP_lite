@@ -994,6 +994,9 @@ def _run_with_snapshot(
                 producer_sha,
             )
         # A durable record written before a crash is adopted only after full validation.
+        # Adoption consumes this invocation's one-tranche allowance: a restart must not
+        # both adopt tranche N and create tranche N+1.
+        committed = 0
         ahead = _record_path(config, checkpoint["completed_tranches"])
         if ahead.exists():
             tranche = checkpoint["completed_tranches"]
@@ -1027,6 +1030,7 @@ def _run_with_snapshot(
                 "updated_at": now(),
             }
             atomic_json(_checkpoint_path(config), checkpoint)
+            committed = 1
         control = _production_control(config, checkpoint["cumulative_errors"])
         if control.get("paused") is not False:
             return {
@@ -1042,7 +1046,6 @@ def _run_with_snapshot(
             "sites": config.site_count,
             "cumulative_errors": checkpoint["cumulative_errors"],
         }
-        committed = 0
         with Heartbeat(config, heartbeat_fields) as heartbeat:
             while (
                 checkpoint["next_index"] < config.site_count

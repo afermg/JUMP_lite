@@ -278,8 +278,8 @@ class ProductionRunnerTests(unittest.TestCase):
         with self._identity_patch():
             self.assertEqual(run_production(config, 1, True)["status"], "complete")
 
-    def test_after_record_crash_is_adopted_only_after_full_validation(self):
-        config = self._config(3)
+    def test_after_record_crash_adoption_consumes_restart_tranche_allowance(self):
+        config = self._config(513)
         self._bootstrap(config)
         fired = False
 
@@ -301,10 +301,21 @@ class ProductionRunnerTests(unittest.TestCase):
         with self._identity_patch():
             acknowledge_production_errors(config, count, True)
         self._unpause(config, count)
+
+        # This invocation may adopt tranche 0, but must not also build tranche 1.
         with self._identity_patch():
-            result = run_production(config, 1, True)
-        self.assertEqual(result["status"], "complete")
-        self.assertEqual(result["next_index"], 3)
+            adopted = run_production(config, 1, True)
+        self.assertEqual(adopted["status"], "session-complete")
+        self.assertEqual(adopted["committed_tranches"], 1)
+        self.assertEqual(adopted["next_index"], 256)
+        self.assertFalse((config.output_root / "tranches/00000001.json").exists())
+
+        # A later, separate invocation retains permission to build tranche 1.
+        with self._identity_patch():
+            second = run_production(config, 1, True)
+        self.assertEqual(second["status"], "session-complete")
+        self.assertEqual(second["next_index"], 512)
+        self.assertTrue((config.output_root / "tranches/00000001.json").is_file())
 
     def test_corrupt_after_write_blocks_tranche_commit(self):
         config = self._config(4)

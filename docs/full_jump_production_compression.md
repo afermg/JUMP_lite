@@ -44,12 +44,43 @@ the templates because systemd never receives a broader writable parent. The sepa
 three-hour governor reuses the candidate-compatible telemetry fields but mutates only
 compression control. It never changes feature extraction.
 
-## Commands
+## Deployment and commands
+
+Bootstrap and every service invocation must use one clean detached deployment at the
+reviewed commit. Remove transient files (including `.pi-subagents`), require a clean
+tracked tree, and make the deployment read-only before bootstrap. Do not bootstrap
+from a development worktree and then point systemd at a different checkout. The
+interpreter must be the same resolved executable with the same file identity and
+installed dependency versions used by the unit:
+`/work/users/amunoz/projects/JUMP_lite/.venv/bin/python`.
+
+Both bootstrap dry-run and bootstrap apply must be launched with the exact systemd
+environment, not merely an interactive-shell approximation. In particular, set the
+ten captured thread variables to literal `1`:
+
+```sh
+export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
+export BLIS_NUM_THREADS=1 VECLIB_MAXIMUM_THREADS=1 NUMEXPR_NUM_THREADS=1
+export TBB_NUM_THREADS=1 ARROW_NUM_THREADS=1 POLARS_MAX_THREADS=1
+export RAYON_NUM_THREADS=1
+export CUDA_VISIBLE_DEVICES=
+export GIT_EXECUTABLE=/nix/store/1k2lblqlj39azh6wn1sffa2869vrg3mr-git-2.54.0/bin/git
+export DEPLOY_ROOT=/the/reviewed/read-only/detached-deployment
+export PYTHONPATH="$DEPLOY_ROOT/src"
+PYTHON=/work/users/amunoz/projects/JUMP_lite/.venv/bin/python
+```
+
+Use that same `DEPLOY_ROOT`, `PYTHON`, `PYTHONPATH`, `GIT_EXECUTABLE`, empty
+`CUDA_VISIBLE_DEVICES`, and ten literal thread values for dry-run, apply, validation,
+and the installed units. `producer.json` binds the clean Git tree, resolved Git
+executable and hash, resolved interpreter and hash, dependency versions, and thread
+environment; any mismatch makes later production operations fail closed.
 
 All commands require the complete explicit production identity argument set shown by
-`python -m jump_full_compression production-bootstrap --help`.
+`$PYTHON -m jump_full_compression production-bootstrap --help`.
 
-1. Run `production-bootstrap` without `--apply`, review, then apply once.
+1. Run `production-bootstrap` without `--apply`, review, then apply once, using the
+   exact environment and deployment above for both commands.
 2. Run the production governor with apply and verify fresh unpaused control.
 3. Start `jump-full-production-compress.service`; it can commit at most one tranche.
 4. Run `production-verify-tranche --tranche 0` and independent review.
