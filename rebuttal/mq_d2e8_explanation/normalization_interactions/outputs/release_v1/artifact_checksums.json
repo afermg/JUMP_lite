@@ -1,0 +1,65 @@
+{
+  "artifacts": [
+    {
+      "bytes": 1942,
+      "path": "REPORT.md",
+      "sha256": "e057e7d26d767abac7392b990130947c892ea2a1f00e20cce9bfaef814206a32"
+    },
+    {
+      "bytes": 1576,
+      "path": "factor_summary.csv",
+      "sha256": "490a0a701517b2f307fed0217d0e8b603e8149ddf3f9cd038ba0c02541b3fb31"
+    },
+    {
+      "bytes": 4970,
+      "path": "family_factor_summary.csv",
+      "sha256": "2c3aeab6d9208e00e2787698a6ddb61c3f1992932f411dcc41cf482f4370ead4"
+    },
+    {
+      "bytes": 360,
+      "path": "family_summary.csv",
+      "sha256": "13a7282e55796ed18815d678fb0f3243f577d73a061f4277f1ac183582f7c058"
+    },
+    {
+      "bytes": 34245,
+      "path": "normalization_interactions.pdf",
+      "sha256": "cee6d9f560542977e922906c1978a7dfb26960cb4ad5d9400c2c6c1fb0313a42"
+    },
+    {
+      "bytes": 125956,
+      "path": "normalization_interactions.png",
+      "sha256": "3a532ec7fbff955ff2e5960d316941694a73e014b0fd49251daf01a6cfb90904"
+    },
+    {
+      "bytes": 48944,
+      "path": "paired_recipe_deltas.csv",
+      "sha256": "f6c710ea8c5449c37a8cb43a7d9ade2719e810012a1ec83f65e750db70ef4172"
+    },
+    {
+      "bytes": 754,
+      "path": "provenance.json",
+      "sha256": "6f63f0c6a6c8b1271e4c41cfe5ac9429d931cf5560dc4eecd7de0f5d6c86a0bc"
+    },
+    {
+      "bytes": 5009,
+      "path": "recipe_sign_consistency.csv",
+      "sha256": "b39e32580a0a6c9aa13ae80caf738d390f26a7f45fa736cdeb02d248645f2a61"
+    },
+    {
+      "bytes": 225,
+      "path": "variation_decomposition.csv",
+      "sha256": "53c9b4e1c22d90fe1755dea3faf1dfa5eeaa3f749a59fbb8de9f0d8349828ea1"
+    }
+  ],
+  "input": {
+    "bytes": 1096114,
+    "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/sweep_results.csv",
+    "rows": 2860,
+    "sha256": "08923c7bd27bca54c0a3f484429ced31d1b48ad097c974773591a89ac63eb53a"
+  },
+  "schema_version": 1,
+  "source": {
+    "path": "analyze.py",
+    "sha256": "7611e5466e2c52df843418345cb711d210e6ae4a88723e96815eec7e27216e9e"
+  }
+}

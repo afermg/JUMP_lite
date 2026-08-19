@@ -1,0 +1,507 @@
+{
+  "analysis": "plate_unit_influence",
+  "canonical_inputs_read_only": true,
+  "codecs": [
+    "D2-E8",
+    "MQ"
+  ],
+  "expected_counts": {
+    "configs_per_zstd_family": 48,
+    "maximum_profiles_per_variant": 1536,
+    "minimum_profiles_per_variant": 1500,
+    "pa_units": 306,
+    "pc_units": 201,
+    "plates": 4
+  },
+  "families": [
+    "cp_measure",
+    "dinov2",
+    "morphem",
+    "openphenom",
+    "subcell"
+  ],
+  "inputs": [
+    {
+      "path": "rebuttal/mq_d2e8_explanation/plate_unit_influence/analyze.py",
+      "path_scope": "repo_relative",
+      "role": "scoring_source",
+      "sha256": "2621d62f8a18c4063b0b0d6eb10fb695434565a1660a90728d675cc519927a1a",
+      "size_bytes": 32458
+    },
+    {
+      "path": "src/norm_3/io.py",
+      "path_scope": "repo_relative",
+      "role": "scoring_source",
+      "sha256": "8596149862af855a880eb8bb70d736135d126e9a230e50c1cd4df0426c1507e1",
+      "size_bytes": 7166
+    },
+    {
+      "path": "src/norm_3/metrics.py",
+      "path_scope": "repo_relative",
+      "role": "scoring_source",
+      "sha256": "af91b2cf87eed387d2b23b9613d2e196ccd16ec50bd3684151017e3d21c5d1ea",
+      "size_bytes": 46866
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/sweep_results.csv",
+      "path_scope": "absolute",
+      "role": "sweep",
+      "sha256": "08923c7bd27bca54c0a3f484429ced31d1b48ad097c974773591a89ac63eb53a",
+      "size_bytes": 1096114
+    },
+    {
+      "codec": "D2-E8",
+      "family": "cp_measure",
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/cp_measure_jump_target2_4plate_jpegxl_lossy_d2_e8_raw_features/std_ctrl__outlier100__INT__prune0.9__tvn_efaar_e0.05/pipeline_config.yaml",
+      "path_scope": "absolute",
+      "role": "config",
+      "sha256": "0a95311ba459cf8d8fb87fbbd14a6baf657eb0e114da10bd08436132b62bc998",
+      "size_bytes": 3630
+    },
+    {
+      "codec": "D2-E8",
+      "family": "cp_measure",
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/cp_measure_jump_target2_4plate_jpegxl_lossy_d2_e8_raw_features/std_ctrl__outlier100__INT__prune0.9__tvn_efaar_e0.05/results/metrics.json",
+      "path_scope": "absolute",
+      "role": "metrics",
+      "sha256": "efb626b7f37c5976216aeb29998c7388c862c3109caa51042470e673c1bb66e5",
+      "size_bytes": 920
+    },
+    {
+      "codec": "D2-E8",
+      "family": "cp_measure",
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/cp_measure_jump_target2_4plate_jpegxl_lossy_d2_e8_raw_features/std_ctrl__outlier100__INT__prune0.9__tvn_efaar_e0.05/output.parquet",
+      "path_scope": "absolute",
+      "role": "output",
+      "sha256": "8a429b946ce2832bb7762b57c2bb95b9fd99dbd1aceb962284af6d397a6ef484",
+      "size_bytes": 1621925
+    },
+    {
+      "codec": "D2-E8",
+      "family": "cp_measure",
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/cp_measure_jump_target2_4plate_jpegxl_lossy_d2_e8_raw_features/std_ctrl__outlier100__INT__prune0.9__tvn_efaar_e0.05/results/phenotypic_activity_map.csv",
+      "path_scope": "absolute",
+      "role": "pa",
+      "sha256": "2fb81aef6a58b3324cc0090102ccc3706aa98c4091469c98e9f63c934735b6b8",
+      "size_bytes": 43295
+    },
+    {
+      "codec": "D2-E8",
+      "family": "cp_measure",
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/cp_measure_jump_target2_4plate_jpegxl_lossy_d2_e8_raw_features/std_ctrl__outlier100__INT__prune0.9__tvn_efaar_e0.05/results/phenotypic_consistency_per_target.csv",
+      "path_scope": "absolute",
+      "role": "pc",
+      "sha256": "b4bfc830f060f7469a7afbc3147bce891533fc815ba828421c4bea30c63cc9e8",
+      "size_bytes": 24428
+    },
+    {
+      "codec": "MQ",
+      "family": "cp_measure",
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/cp_measure_jump_target2_4plate_jpegxl_lossy_mq_raw_features/std_ctrl__outlier100__INT__prune0.9__tvn_efaar_e0.05/pipeline_config.yaml",
+      "path_scope": "absolute",
+      "role": "config",
+      "sha256": "cf4178a1a0e0a796ed134bbea9e9446268072018c5418f47cc3a7e30249060a7",
+      "size_bytes": 3627
+    },
+    {
+      "codec": "MQ",
+      "family": "cp_measure",
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/cp_measure_jump_target2_4plate_jpegxl_lossy_mq_raw_features/std_ctrl__outlier100__INT__prune0.9__tvn_efaar_e0.05/results/metrics.json",
+      "path_scope": "absolute",
+      "role": "metrics",
+      "sha256": "0f94b14810367f73cbbe255988973d109199c6931f4da7bee81fa73d21c8b08c",
+      "size_bytes": 921
+    },
+    {
+      "codec": "MQ",
+      "family": "cp_measure",
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/cp_measure_jump_target2_4plate_jpegxl_lossy_mq_raw_features/std_ctrl__outlier100__INT__prune0.9__tvn_efaar_e0.05/output.parquet",
+      "path_scope": "absolute",
+      "role": "output",
+      "sha256": "1411f41605f4568252b6cfe29355b746db054584e10df4c7b3ab7c19f9c26bd3",
+      "size_bytes": 1622847
+    },
+    {
+      "codec": "MQ",
+      "family": "cp_measure",
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/cp_measure_jump_target2_4plate_jpegxl_lossy_mq_raw_features/std_ctrl__outlier100__INT__prune0.9__tvn_efaar_e0.05/results/phenotypic_activity_map.csv",
+      "path_scope": "absolute",
+      "role": "pa",
+      "sha256": "f7058807e43baac677e30628fd4d9da7352c3d355f38b76d935db5f60caf0a26",
+      "size_bytes": 43171
+    },
+    {
+      "codec": "MQ",
+      "family": "cp_measure",
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/cp_measure_jump_target2_4plate_jpegxl_lossy_mq_raw_features/std_ctrl__outlier100__INT__prune0.9__tvn_efaar_e0.05/results/phenotypic_consistency_per_target.csv",
+      "path_scope": "absolute",
+      "role": "pc",
+      "sha256": "44068604bb039e4fc2fd5f7950ab780415adfa3bd3761a544ff013b0a43af71e",
+      "size_bytes": 24376
+    },
+    {
+      "codec": "D2-E8",
+      "family": "dinov2",
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/dinov2_jump_target2_4plate_jpegxl_lossy_d2_e8_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/pipeline_config.yaml",
+      "path_scope": "absolute",
+      "role": "config",
+      "sha256": "60d63d1b347c621c769d1371497cdf7ff893a5664425c18f6d0ec205b57fceea",
+      "size_bytes": 3473
+    },
+    {
+      "codec": "D2-E8",
+      "family": "dinov2",
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/dinov2_jump_target2_4plate_jpegxl_lossy_d2_e8_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/results/metrics.json",
+      "path_scope": "absolute",
+      "role": "metrics",
+      "sha256": "517921f69d076baf85d26c529d35b854cb3e7a7b7fa845dfe0be2c4156e907ee",
+      "size_bytes": 920
+    },
+    {
+      "codec": "D2-E8",
+      "family": "dinov2",
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/dinov2_jump_target2_4plate_jpegxl_lossy_d2_e8_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/output.parquet",
+      "path_scope": "absolute",
+      "role": "output",
+      "sha256": "7cc6c7a13a74e6cce3ad5ea28a52372457767ae2f8bd207cd06fdea8aa30ce85",
+      "size_bytes": 841806
+    },
+    {
+      "codec": "D2-E8",
+      "family": "dinov2",
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/dinov2_jump_target2_4plate_jpegxl_lossy_d2_e8_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/results/phenotypic_activity_map.csv",
+      "path_scope": "absolute",
+      "role": "pa",
+      "sha256": "d190066f11469835a75d5dd485fc51fbc8991cc3a95a2573c436f42a8aebf919",
+      "size_bytes": 42932
+    },
+    {
+      "codec": "D2-E8",
+      "family": "dinov2",
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/dinov2_jump_target2_4plate_jpegxl_lossy_d2_e8_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/results/phenotypic_consistency_per_target.csv",
+      "path_scope": "absolute",
+      "role": "pc",
+      "sha256": "03a988666e794c40e22992a3f6527cc9ce91a9f40ae2308616df02eab24bf424",
+      "size_bytes": 24346
+    },
+    {
+      "codec": "MQ",
+      "family": "dinov2",
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/dinov2_jump_target2_4plate_jpegxl_lossy_mq_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/pipeline_config.yaml",
+      "path_scope": "absolute",
+      "role": "config",
+      "sha256": "c967842cb131b76bd83a56b635c9acd43f13ffb5bd36d08f045c3ee91e470a3b",
+      "size_bytes": 3470
+    },
+    {
+      "codec": "MQ",
+      "family": "dinov2",
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/dinov2_jump_target2_4plate_jpegxl_lossy_mq_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/results/metrics.json",
+      "path_scope": "absolute",
+      "role": "metrics",
+      "sha256": "faf3497561fc2fe96a4af1308ae1a33179369149c3fe511cf8a9853ed46c398b",
+      "size_bytes": 919
+    },
+    {
+      "codec": "MQ",
+      "family": "dinov2",
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/dinov2_jump_target2_4plate_jpegxl_lossy_mq_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/output.parquet",
+      "path_scope": "absolute",
+      "role": "output",
+      "sha256": "0bf8a050fa5a35fd8a67a119ecf544f3a2ac57decd8f53168e91cc059f8b9788",
+      "size_bytes": 841788
+    },
+    {
+      "codec": "MQ",
+      "family": "dinov2",
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/dinov2_jump_target2_4plate_jpegxl_lossy_mq_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/results/phenotypic_activity_map.csv",
+      "path_scope": "absolute",
+      "role": "pa",
+      "sha256": "8f7449dc7565bc3577d27c2da43f5e7fc993f0bf1e847fdc072b4c6234919984",
+      "size_bytes": 42927
+    },
+    {
+      "codec": "MQ",
+      "family": "dinov2",
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/dinov2_jump_target2_4plate_jpegxl_lossy_mq_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/results/phenotypic_consistency_per_target.csv",
+      "path_scope": "absolute",
+      "role": "pc",
+      "sha256": "1aa1023ad5e142c4ad686d1d3505f10bf6a446680d5893d315024f1b2f839f20",
+      "size_bytes": 24359
+    },
+    {
+      "codec": "D2-E8",
+      "family": "morphem",
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/morphem_jump_target2_4plate_jpegxl_lossy_d2_e8_raw_features/robustmad_all__prune0.9__tvn_efaar_e0.05/pipeline_config.yaml",
+      "path_scope": "absolute",
+      "role": "config",
+      "sha256": "703034f2904ac2a58fecd4a94479301c560030b03f0d9531e8196b23d9cfefeb",
+      "size_bytes": 3477
+    },
+    {
+      "codec": "D2-E8",
+      "family": "morphem",
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/morphem_jump_target2_4plate_jpegxl_lossy_d2_e8_raw_features/robustmad_all__prune0.9__tvn_efaar_e0.05/results/metrics.json",
+      "path_scope": "absolute",
+      "role": "metrics",
+      "sha256": "18e3156b893a1a9e94cb89f2eb1ebede3ef22e21b974b9fa71bff78d9e8629f7",
+      "size_bytes": 915
+    },
+    {
+      "codec": "D2-E8",
+      "family": "morphem",
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/morphem_jump_target2_4plate_jpegxl_lossy_d2_e8_raw_features/robustmad_all__prune0.9__tvn_efaar_e0.05/output.parquet",
+      "path_scope": "absolute",
+      "role": "output",
+      "sha256": "7267797e09f8f3739cffec7b22c2b1afc3057dd78b6a975bbe27688243c47a7d",
+      "size_bytes": 842809
+    },
+    {
+      "codec": "D2-E8",
+      "family": "morphem",
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/morphem_jump_target2_4plate_jpegxl_lossy_d2_e8_raw_features/robustmad_all__prune0.9__tvn_efaar_e0.05/results/phenotypic_activity_map.csv",
+      "path_scope": "absolute",
+      "role": "pa",
+      "sha256": "71410d86ef0a9fc046041b7623f3444e5495682276466c791caa203c83c0c941",
+      "size_bytes": 42084
+    },
+    {
+      "codec": "D2-E8",
+      "family": "morphem",
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/morphem_jump_target2_4plate_jpegxl_lossy_d2_e8_raw_features/robustmad_all__prune0.9__tvn_efaar_e0.05/results/phenotypic_consistency_per_target.csv",
+      "path_scope": "absolute",
+      "role": "pc",
+      "sha256": "904cd6d7d14a246ff0f385e488537edf2041530013580f51a5b19bff14d0beb3",
+      "size_bytes": 24350
+    },
+    {
+      "codec": "MQ",
+      "family": "morphem",
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/morphem_jump_target2_4plate_jpegxl_lossy_mq_raw_features/robustmad_all__prune0.9__tvn_efaar_e0.05/pipeline_config.yaml",
+      "path_scope": "absolute",
+      "role": "config",
+      "sha256": "2bd14a7deb5a327fc2d1e3e8ce35e293eeb8534375c69fd2ea135d989f0563ec",
+      "size_bytes": 3474
+    },
+    {
+      "codec": "MQ",
+      "family": "morphem",
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/morphem_jump_target2_4plate_jpegxl_lossy_mq_raw_features/robustmad_all__prune0.9__tvn_efaar_e0.05/results/metrics.json",
+      "path_scope": "absolute",
+      "role": "metrics",
+      "sha256": "1caf4934f53116d7f2b2402c8678877a4d512e8560e4d10089f54e7d50d5e19e",
+      "size_bytes": 916
+    },
+    {
+      "codec": "MQ",
+      "family": "morphem",
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/morphem_jump_target2_4plate_jpegxl_lossy_mq_raw_features/robustmad_all__prune0.9__tvn_efaar_e0.05/output.parquet",
+      "path_scope": "absolute",
+      "role": "output",
+      "sha256": "eef313b4e2931198437f5a091864691bffae9e01accbcd77f1d4742098d69ee1",
+      "size_bytes": 842558
+    },
+    {
+      "codec": "MQ",
+      "family": "morphem",
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/morphem_jump_target2_4plate_jpegxl_lossy_mq_raw_features/robustmad_all__prune0.9__tvn_efaar_e0.05/results/phenotypic_activity_map.csv",
+      "path_scope": "absolute",
+      "role": "pa",
+      "sha256": "98ea8aa40fc67f0e67d82c9184d575d82e9f041b39cc3d76a5c1dd5ba85fa2aa",
+      "size_bytes": 42483
+    },
+    {
+      "codec": "MQ",
+      "family": "morphem",
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/morphem_jump_target2_4plate_jpegxl_lossy_mq_raw_features/robustmad_all__prune0.9__tvn_efaar_e0.05/results/phenotypic_consistency_per_target.csv",
+      "path_scope": "absolute",
+      "role": "pc",
+      "sha256": "f6c9b2daf1b8ebd5fd1ed17e8340be47a11e6f43c7b0fb3ebe9037b038bd8f76",
+      "size_bytes": 24348
+    },
+    {
+      "codec": "D2-E8",
+      "family": "openphenom",
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/openphenom_jump_target2_4plate_jpegxl_lossy_d2_e8_raw_features/std_all__prune0.9__tvn_efaar_e0.05/pipeline_config.yaml",
+      "path_scope": "absolute",
+      "role": "config",
+      "sha256": "8b8ed48bb9056beb77dc79ef0c22af43265cf41b8f6665c95744e53b9b1180d5",
+      "size_bytes": 3482
+    },
+    {
+      "codec": "D2-E8",
+      "family": "openphenom",
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/openphenom_jump_target2_4plate_jpegxl_lossy_d2_e8_raw_features/std_all__prune0.9__tvn_efaar_e0.05/results/metrics.json",
+      "path_scope": "absolute",
+      "role": "metrics",
+      "sha256": "5a786b846be0beb4d0ce83002dca4f7eeeca6fda03942a54a51f8daa2253deeb",
+      "size_bytes": 920
+    },
+    {
+      "codec": "D2-E8",
+      "family": "openphenom",
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/openphenom_jump_target2_4plate_jpegxl_lossy_d2_e8_raw_features/std_all__prune0.9__tvn_efaar_e0.05/output.parquet",
+      "path_scope": "absolute",
+      "role": "output",
+      "sha256": "eab134197452d6b2406a438104620c288db70dcc73aa5a2752f16043e8eb8906",
+      "size_bytes": 842627
+    },
+    {
+      "codec": "D2-E8",
+      "family": "openphenom",
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/openphenom_jump_target2_4plate_jpegxl_lossy_d2_e8_raw_features/std_all__prune0.9__tvn_efaar_e0.05/results/phenotypic_activity_map.csv",
+      "path_scope": "absolute",
+      "role": "pa",
+      "sha256": "7ac65f1f5bc8aa89984bde948b77b98153cb029220336636eaa9fdb93eca23cd",
+      "size_bytes": 43249
+    },
+    {
+      "codec": "D2-E8",
+      "family": "openphenom",
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/openphenom_jump_target2_4plate_jpegxl_lossy_d2_e8_raw_features/std_all__prune0.9__tvn_efaar_e0.05/results/phenotypic_consistency_per_target.csv",
+      "path_scope": "absolute",
+      "role": "pc",
+      "sha256": "f4edd6a90e9552474fb7d6a49656654342a16b0c6ae11b38361ff68f79b7e7d3",
+      "size_bytes": 24398
+    },
+    {
+      "codec": "MQ",
+      "family": "openphenom",
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/openphenom_jump_target2_4plate_jpegxl_lossy_mq_raw_features/std_all__prune0.9__tvn_efaar_e0.05/pipeline_config.yaml",
+      "path_scope": "absolute",
+      "role": "config",
+      "sha256": "ef14c6861a69262107b3407d4da081f36fb62f84a1954dee1236570c600caabd",
+      "size_bytes": 3479
+    },
+    {
+      "codec": "MQ",
+      "family": "openphenom",
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/openphenom_jump_target2_4plate_jpegxl_lossy_mq_raw_features/std_all__prune0.9__tvn_efaar_e0.05/results/metrics.json",
+      "path_scope": "absolute",
+      "role": "metrics",
+      "sha256": "6ef5f63f2cf1242b8dbc48f73ed8fd5b145941f15c828e8aab8bc96e1f71dcba",
+      "size_bytes": 918
+    },
+    {
+      "codec": "MQ",
+      "family": "openphenom",
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/openphenom_jump_target2_4plate_jpegxl_lossy_mq_raw_features/std_all__prune0.9__tvn_efaar_e0.05/output.parquet",
+      "path_scope": "absolute",
+      "role": "output",
+      "sha256": "28beef232fc0edd5d30010ae7e03072b176a5be351a607cbec83d4c6fb96d5e6",
+      "size_bytes": 842475
+    },
+    {
+      "codec": "MQ",
+      "family": "openphenom",
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/openphenom_jump_target2_4plate_jpegxl_lossy_mq_raw_features/std_all__prune0.9__tvn_efaar_e0.05/results/phenotypic_activity_map.csv",
+      "path_scope": "absolute",
+      "role": "pa",
+      "sha256": "3c298a70380e5ff826c65e4f482a2e4e83a6c594b843caff2e339936b4bbf876",
+      "size_bytes": 43279
+    },
+    {
+      "codec": "MQ",
+      "family": "openphenom",
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/openphenom_jump_target2_4plate_jpegxl_lossy_mq_raw_features/std_all__prune0.9__tvn_efaar_e0.05/results/phenotypic_consistency_per_target.csv",
+      "path_scope": "absolute",
+      "role": "pc",
+      "sha256": "903e780bbc6366981cca5197c06a51271048dcb36350b6f0c53736625f45f00f",
+      "size_bytes": 24390
+    },
+    {
+      "codec": "D2-E8",
+      "family": "subcell",
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/subcell__clip01_jump_target2_4plate_jpegxl_lossy_d2_e8_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/pipeline_config.yaml",
+      "path_scope": "absolute",
+      "role": "config",
+      "sha256": "99dff0198932b4af68814b7f8a235e115ea986ee646c710f6aceb6008fb1daee",
+      "size_bytes": 3482
+    },
+    {
+      "codec": "D2-E8",
+      "family": "subcell",
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/subcell__clip01_jump_target2_4plate_jpegxl_lossy_d2_e8_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/results/metrics.json",
+      "path_scope": "absolute",
+      "role": "metrics",
+      "sha256": "abdfb4eb7972255b7efbaa25c53a2f60551d99bdc8e1db6a56048443b4c18653",
+      "size_bytes": 917
+    },
+    {
+      "codec": "D2-E8",
+      "family": "subcell",
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/subcell__clip01_jump_target2_4plate_jpegxl_lossy_d2_e8_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/output.parquet",
+      "path_scope": "absolute",
+      "role": "output",
+      "sha256": "d1a3b873486ceedece1e2714b4b42cf2bc9d292cebff5001ec7156279eea8e5e",
+      "size_bytes": 841283
+    },
+    {
+      "codec": "D2-E8",
+      "family": "subcell",
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/subcell__clip01_jump_target2_4plate_jpegxl_lossy_d2_e8_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/results/phenotypic_activity_map.csv",
+      "path_scope": "absolute",
+      "role": "pa",
+      "sha256": "a50ca11fdfb0f49e9c8c2aa16d97c30654d08eb1227a8f53b3d2717e4bf37ec9",
+      "size_bytes": 43038
+    },
+    {
+      "codec": "D2-E8",
+      "family": "subcell",
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/subcell__clip01_jump_target2_4plate_jpegxl_lossy_d2_e8_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/results/phenotypic_consistency_per_target.csv",
+      "path_scope": "absolute",
+      "role": "pc",
+      "sha256": "5223452cd1b915a423efdb88a9426cf0c1f5463a8eea8dfe91c735b15a09baf2",
+      "size_bytes": 24481
+    },
+    {
+      "codec": "MQ",
+      "family": "subcell",
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/subcell__clip01_jump_target2_4plate_jpegxl_lossy_mq_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/pipeline_config.yaml",
+      "path_scope": "absolute",
+      "role": "config",
+      "sha256": "259dd5bed828570643c1f1019309e4529df269e0f30b7e4e7ea5ef0df3d02ef3",
+      "size_bytes": 3479
+    },
+    {
+      "codec": "MQ",
+      "family": "subcell",
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/subcell__clip01_jump_target2_4plate_jpegxl_lossy_mq_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/results/metrics.json",
+      "path_scope": "absolute",
+      "role": "metrics",
+      "sha256": "192db480e0cf8423434c573e690b9b325fb99a02f53d4c44d4f7c308eb38f19e",
+      "size_bytes": 919
+    },
+    {
+      "codec": "MQ",
+      "family": "subcell",
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/subcell__clip01_jump_target2_4plate_jpegxl_lossy_mq_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/output.parquet",
+      "path_scope": "absolute",
+      "role": "output",
+      "sha256": "20ab36044d193d50649ffb691968369b2d4bd2e365b130e7d7ccb8570adeb0c0",
+      "size_bytes": 841505
+    },
+    {
+      "codec": "MQ",
+      "family": "subcell",
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/subcell__clip01_jump_target2_4plate_jpegxl_lossy_mq_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/results/phenotypic_activity_map.csv",
+      "path_scope": "absolute",
+      "role": "pa",
+      "sha256": "201b4a6e11acb6f85651d136af7dac38fd7716a42c9e60f4159d60170f62601c",
+      "size_bytes": 43122
+    },
+    {
+      "codec": "MQ",
+      "family": "subcell",
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/subcell__clip01_jump_target2_4plate_jpegxl_lossy_mq_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/results/phenotypic_consistency_per_target.csv",
+      "path_scope": "absolute",
+      "role": "pc",
+      "sha256": "ded0269e854ffadd01684d47771fe4c9d6b4b175ad71aadbaffbe1952ff91d5a",
+      "size_bytes": 24407
+    }
+  ],
+  "population_contract": "Every reported MQ-D2-E8 contrast uses the exact family-specific intersection of Metadata_id across codecs.",
+  "protocol_version": 3,
+  "qualification": "Plate and laboratory are confounded; influence is descriptive; no denoising or biological improvement is inferred.",
+  "selection": "lexical tie-break after maximizing PA*PC/100 on Zstd only"
+}

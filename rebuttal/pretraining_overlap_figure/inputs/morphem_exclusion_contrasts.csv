@@ -1,0 +1,7 @@
+subset,subset_label,retained_wells,comparator,estimate,ci_low,ci_high,holm_p,bootstrap_replicates
+morphem_same_acquisition_wells_excluded,Directly matched wells excluded,109790,DINOv2,0.015630184147874399,0.0120264111161858,0.01941817809528,0.00041999160016790001,50000
+morphem_same_acquisition_wells_excluded,Directly matched wells excluded,109790,OpenPhenom,0.015800825910190799,0.0126250594852262,0.0191927414322406,0.00041999160016790001,50000
+morphem_same_acquisition_wells_excluded,Directly matched wells excluded,109790,SubCell,0.016068235722322199,0.012598930913845599,0.0197658436379257,0.00041999160016790001,50000
+morphem_same_acquisition_plates_excluded,All matched-plate wells excluded,74137,DINOv2,0.0120362564849397,0.0085900631840788999,0.0156062959779096,0.00041999160016790001,50000
+morphem_same_acquisition_plates_excluded,All matched-plate wells excluded,74137,OpenPhenom,0.0117646846517373,0.0087260313505985003,0.014960167382329999,0.00041999160016790001,50000
+morphem_same_acquisition_plates_excluded,All matched-plate wells excluded,74137,SubCell,0.0124903767708328,0.0094037557852190007,0.0157488928245085,0.00041999160016790001,50000

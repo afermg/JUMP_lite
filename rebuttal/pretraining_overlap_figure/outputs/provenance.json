@@ -1,0 +1,31 @@
+{
+  "analysis": "MorphEM-specific pretraining-overlap exclusion figure",
+  "archived_parent_sources": {
+    "sensitivity_pairwise.csv": {
+      "sha256": "0f52305a2d285e4e4843f2b3d2ee6e19ee8333cab3c7f10b41d282a2fe4fbcf2"
+    },
+    "sensitivity_subset_summary.csv": {
+      "sha256": "07bb24483cc54745181f1851e445bc14f6461e991541c66fa502e47077f16ebe"
+    }
+  },
+  "bootstrap_replicates": 50000,
+  "comparators": [
+    "DINOv2",
+    "SubCell",
+    "OpenPhenom"
+  ],
+  "displayed_subsets": [
+    "morphem_same_acquisition_wells_excluded",
+    "morphem_same_acquisition_plates_excluded"
+  ],
+  "exclusion_policy": "Only exclusions supported by MorphEM's acquisition-level CHAMMI-75 inventory are displayed. No OpenPhenom-specific exclusion is constructed because no image- or plate-level membership manifest is available.",
+  "frozen_inputs": {
+    "morphem_exclusion_contrasts.csv": {
+      "sha256": "a05ce4c88ceabb6a54c7254a406aed225d5e7cdf0dfc861bcfb82cec73e3a2a8"
+    },
+    "morphem_exclusion_subsets.csv": {
+      "sha256": "5e3016d0d546724447c1c205a92df1169b6d6f3b981db6c8134e2e5c4bc8b9b2"
+    }
+  },
+  "plot_source_sha256": "1aeb38617490e7eec3f2b327e096fec61eb310b0bf04699ba93cda861b07a40c"
+}

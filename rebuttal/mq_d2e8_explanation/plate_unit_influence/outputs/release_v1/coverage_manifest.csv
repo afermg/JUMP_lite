@@ -1,0 +1,11 @@
+family,codec,original_rows,common_rows,dropped_for_common
+cp_measure,D2-E8,1519,1519,0
+cp_measure,MQ,1520,1519,1
+dinov2,D2-E8,1536,1536,0
+dinov2,MQ,1536,1536,0
+morphem,D2-E8,1536,1536,0
+morphem,MQ,1536,1536,0
+openphenom,D2-E8,1536,1536,0
+openphenom,MQ,1536,1536,0
+subcell,D2-E8,1536,1536,0
+subcell,MQ,1536,1536,0

@@ -1,0 +1,121 @@
+{
+  "active_panels": [
+    "A_matched_family_recipe",
+    "B_fixed_recipe_bootstrap"
+  ],
+  "analysis": "mq_d2e8_synthesis",
+  "canonical_datasets_read": false,
+  "family_order": [
+    "cp_measure",
+    "dinov2",
+    "morphem",
+    "openphenom",
+    "subcell"
+  ],
+  "inputs": [
+    {
+      "key": "paired",
+      "path": "paired_recipes/outputs/release_v1/results/paired_config_deltas.csv",
+      "sha256": "6490dfa4a2641a6b8e1a21230dc92df22282ab7209582b7b7caf40de0ef737be",
+      "size_bytes": 55488
+    },
+    {
+      "key": "pooled",
+      "path": "paired_recipes/outputs/release_v1/results/pooled_summary.csv",
+      "sha256": "092b6e87497cf3f95499dc266bbe6f41eef456442b841ed5e30fb12e1debec2b",
+      "size_bytes": 648
+    },
+    {
+      "key": "family",
+      "path": "paired_recipes/outputs/release_v1/results/family_summary.csv",
+      "sha256": "5a2088d20a0f4f53ba77de4cb1c9361bfcfef4f30dfeefc417f3bcf72993d63d",
+      "size_bytes": 1742
+    },
+    {
+      "key": "fixed",
+      "path": "fixed_recipe_bootstrap/outputs/release_v1/results/mq_vs_d2e8.csv",
+      "sha256": "28019c50c85850b21a2ce162c4cfb36cf38952610db71d458442b87ad1e44612",
+      "size_bytes": 2590
+    },
+    {
+      "key": "fixed_recipes",
+      "path": "fixed_recipe_bootstrap/outputs/release_v1/manifests/selected_recipes.csv",
+      "sha256": "666be4164d02158d899a9a23600fd01db0bbf84e2724b1825bbb14bd216e4b97",
+      "size_bytes": 28948
+    },
+    {
+      "key": "interaction",
+      "path": "normalization_interactions/outputs/release_v1/paired_recipe_deltas.csv",
+      "sha256": "f6c710ea8c5449c37a8cb43a7d9ade2719e810012a1ec83f65e750db70ef4172",
+      "size_bytes": 48944
+    },
+    {
+      "key": "variation",
+      "path": "normalization_interactions/outputs/release_v1/variation_decomposition.csv",
+      "sha256": "53c9b4e1c22d90fe1755dea3faf1dfa5eeaa3f749a59fbb8de9f0d8349828ea1",
+      "size_bytes": 225
+    },
+    {
+      "key": "signs",
+      "path": "normalization_interactions/outputs/release_v1/recipe_sign_consistency.csv",
+      "sha256": "b39e32580a0a6c9aa13ae80caf738d390f26a7f45fa736cdeb02d248645f2a61",
+      "size_bytes": 5009
+    },
+    {
+      "key": "loo",
+      "path": "plate_unit_influence/outputs/release_v1/leave_one_plate_out.csv",
+      "sha256": "f814a603de2726153942aa83c9ffa42955d54314715d4b3fed67d31deee08c3e",
+      "size_bytes": 5251
+    },
+    {
+      "key": "influence",
+      "path": "plate_unit_influence/outputs/release_v1/influence_summary.csv",
+      "sha256": "09eacf714e929fb2319e3d596c10d56dd3e7405f7053e578269e053ee95120b1",
+      "size_bytes": 958
+    },
+    {
+      "key": "coverage",
+      "path": "plate_unit_influence/outputs/release_v1/coverage_manifest.csv",
+      "sha256": "93f5199b112ced5403b586cb7b666540347be5829254ebb5c23891dfd8ef293d",
+      "size_bytes": 313
+    },
+    {
+      "key": "effort",
+      "path": "effort_sensitivity/outputs/e3_vs_hq_bootstrap.csv",
+      "sha256": "35ccf05afd62c10cfc4ffa9ebb3a18045da859c38d2517da7ff58028a949cb05",
+      "size_bytes": 2210
+    },
+    {
+      "key": "quality",
+      "path": "effort_sensitivity/outputs/image_quality_summary.csv",
+      "sha256": "c02c6d8670f40d708dfd4169b97fe69ccb55b8c5a0ba15be00ee9483363910ea",
+      "size_bytes": 281
+    },
+    {
+      "key": "features",
+      "path": "effort_sensitivity/outputs/feature_correlation_summary.csv",
+      "sha256": "a81b414db59ff99e30a3afa7877236454d3a3fe5a1b1a205ca2fdc3efee4d0b4",
+      "size_bytes": 215
+    },
+    {
+      "key": "segmentation",
+      "path": "effort_sensitivity/outputs/segmentation_common_site_summary.csv",
+      "sha256": "d011ff3fa962d9f131a1b4b62af83250fb578dc411a1e59bf70e058803724f93",
+      "size_bytes": 547
+    },
+    {
+      "key": "effort_recipes",
+      "path": "effort_sensitivity/outputs/selected_recipes.csv",
+      "sha256": "b4a27d9d69e4af7ec65d5fc3326dbed7b8827045d1a06c86a9bac667a082e4db",
+      "size_bytes": 22838
+    }
+  ],
+  "protocol_version": 2,
+  "qualifications": [
+    "recipe cells are deterministic sensitivities, not biological replicates",
+    "plate and laboratory are confounded",
+    "PA and PC bootstrap margins use a working-independence approximation",
+    "historical default effort is unpinned and the codec grid is not factorial",
+    "no denoising or biological improvement is inferred"
+  ]
+}

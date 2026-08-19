@@ -1,0 +1,24 @@
+{
+  "analysis": "normalization_interactions",
+  "canonical_inputs_read_only": true,
+  "contrast": "MQ - D2-E8",
+  "created_utc": "2026-08-18T00:00:00Z",
+  "estimand": "unscaled NAP product = PA_mean_nap * PC_mean_nap",
+  "families": [
+    "cp_measure",
+    "DINOv2",
+    "MorphEM",
+    "OpenPhenom",
+    "SubCell"
+  ],
+  "input": {
+    "bytes": 1096114,
+    "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/sweep_results.csv",
+    "rows": 2860,
+    "sha256": "08923c7bd27bca54c0a3f484429ced31d1b48ad097c974773591a89ac63eb53a"
+  },
+  "normalization_or_extraction_rerun": false,
+  "paired_rows": 240,
+  "recipes_per_family": 48,
+  "source_sha256": "7611e5466e2c52df843418345cb711d210e6ae4a88723e96815eec7e27216e9e"
+}

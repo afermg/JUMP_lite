@@ -500,27 +500,19 @@ def _plot_rank(scores: dict[tuple[str, str], float | None], *,
         ax.plot([x, x], [y_bot, y_top], color="white", linewidth=3,
                 solid_capstyle="butt", zorder=3)
 
-    # Black horizontal separator around the CellProfiler row, only for the
-    # lossy codecs (hq / mq / d20). A thick white line underneath the black
-    # one creates visible whitespace between CellProfiler and its neighbours.
-    if codec_key in {"hq", "mq", "d20"} and "CellProfiler" in model_order:
-        cp_idx = model_order.index("CellProfiler")
-        task_left = task_x_edges[0]
-        task_right = task_x_edges[-1]
-        mean_left = mean_x_edges[0]
-        mean_right = mean_x_edges[-1]
-        for y in (cp_idx - 0.5, cp_idx + 0.5):
-            ax.plot([task_left, task_right], [y, y], color="white",
-                    linewidth=14.0, solid_capstyle="butt", zorder=4)
-            ax.plot([mean_left, mean_right], [y, y], color="white",
-                    linewidth=14.0, solid_capstyle="butt", zorder=4)
-            ax.plot([task_left, task_right], [y, y], color="black",
-                    linewidth=2.0, solid_capstyle="butt", zorder=5)
-            ax.plot([mean_left, mean_right], [y, y], color="black",
-                    linewidth=2.0, solid_capstyle="butt", zorder=5)
+    # Identify the strongest representation independently for every task and
+    # for the normalized Mean. Site-count differences are disclosed only with
+    # symbols on the row labels and explained in the manuscript caption; the
+    # heatmap does not visually separate the tabular rows.
+    winner_by_col = {
+        task: score_df[task].idxmax()
+        for task in TASK_ORDER
+    }
+    winner_by_col["Mean"] = row_score.idxmax()
 
     # Annotate raw values for tasks; for the Mean column, annotate the
     # normalised value directly (it's the row mean of [0,1]-scaled scores).
+    # The strongest displayed value is bold within each column.
     for yi, fam in enumerate(model_order):
         for xi, col in enumerate(display_cols):
             x_pos = col_x[xi]
@@ -539,7 +531,8 @@ def _plot_rank(scores: dict[tuple[str, str], float | None], *,
             txt_color = "white" if norm > 0.88 else "black"
             ax.text(x_pos, yi, anno, fontsize=fs_anno,
                     ha="center", va="center", color=txt_color,
-                    fontweight="bold", zorder=4)
+                    fontweight="bold" if fam == winner_by_col[col] else "normal",
+                    zorder=4)
     # Group dividers are handled by the white gap from pcolormesh edges + the
     # wider mean_gap offset — no explicit separator line needed.
 
@@ -579,14 +572,20 @@ def _plot_rank(scores: dict[tuple[str, str], float | None], *,
     ax.set_ylim(n_models - 0.5, -2.0)
 
     ax.set_yticks(np.arange(n_models))
-    # For lossy codec figures, mark CellProfiler as still being computed on
-    # the raw (uncompressed) features since it has no codec sweep.
-    if codec_key in {"hq", "mq", "d20"}:
-        ytick_labels = [
-            f"{m}\n(raw)" if m == "CellProfiler" else m for m in model_order
-        ]
-    else:
-        ytick_labels = list(model_order)
+    # Mark, without separating, the representations with additional site
+    # access. The caption defines * (direct six-to-nine-site aggregation) and
+    # ^ (Cell Count derived from those archived well profiles). Lossy panels
+    # also retain the Raw-only disclosure for both tabular representations.
+    ytick_labels = []
+    for model in model_order:
+        if model == "CellProfiler":
+            label = f"{model}*"
+            ytick_labels.append(f"{label} (Raw)" if codec_key in {"hq", "mq", "d20"} else label)
+        elif model == "CellCount":
+            label = f"{model}^"
+            ytick_labels.append(f"{label} (Raw)" if codec_key in {"hq", "mq", "d20"} else label)
+        else:
+            ytick_labels.append(model)
     ax.set_yticklabels(ytick_labels, fontsize=fs_tick)
     for tick_label in ax.get_yticklabels():
         tick_label.set_fontweight("bold")

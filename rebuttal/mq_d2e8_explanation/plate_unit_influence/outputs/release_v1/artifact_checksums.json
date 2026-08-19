@@ -1,0 +1,59 @@
+{
+  "artifacts": [
+    {
+      "path": "REPORT.md",
+      "sha256": "536bcf5dcd19bad7cdd16cab3a40c0374d85ea15e2f4051bc3521119f2b0a8a3",
+      "size_bytes": 1509
+    },
+    {
+      "path": "coverage_manifest.csv",
+      "sha256": "93f5199b112ced5403b586cb7b666540347be5829254ebb5c23891dfd8ef293d",
+      "size_bytes": 313
+    },
+    {
+      "path": "fixed_recipe_points.csv",
+      "sha256": "620c1ef9305f262f457d0601b29d5dd53d4d9a7282b8ddb858fb2d90d193d7a1",
+      "size_bytes": 2359
+    },
+    {
+      "path": "influence_summary.csv",
+      "sha256": "09eacf714e929fb2319e3d596c10d56dd3e7405f7053e578269e053ee95120b1",
+      "size_bytes": 958
+    },
+    {
+      "path": "leave_one_plate_out.csv",
+      "sha256": "f814a603de2726153942aa83c9ffa42955d54314715d4b3fed67d31deee08c3e",
+      "size_bytes": 5251
+    },
+    {
+      "path": "plate_unit_influence.pdf",
+      "sha256": "49eb8505c61bdbde376e168bc846f18f734833ddbc6aeee58b9d58455026aa7d",
+      "size_bytes": 35409
+    },
+    {
+      "path": "plate_unit_influence.png",
+      "sha256": "0958c289d99000de46088e42517a1faba1f650954e76eb920f6f68331305cd42",
+      "size_bytes": 232901
+    },
+    {
+      "path": "provenance.json",
+      "sha256": "20b7331f7fe5c9459dc328b6a578e4d1a48ad8d27416e0e3c99544bf430ba015",
+      "size_bytes": 24598
+    },
+    {
+      "path": "selected_recipes.csv",
+      "sha256": "6c3df8e212a1206dccb81f164610095e36a2b4029f661dce1af6a1a621c23228",
+      "size_bytes": 797
+    },
+    {
+      "path": "top_influential_units.csv",
+      "sha256": "32abc608cf19264e1201c168bae9ce63ddda097f20fe1f435b60c0ea627800f5",
+      "size_bytes": 16970
+    },
+    {
+      "path": "unit_contributions.csv",
+      "sha256": "52f25089e4f9bd5c87844d5e443bd4ffbfdd09bc27c99aba839f15cda569a8aa",
+      "size_bytes": 418799
+    }
+  ]
+}

@@ -1,0 +1,428 @@
+{
+  "inputs": [
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/cp_measure_jump_target2_4plate_jpegxl_lossy_effort_3_raw_features/std_ctrl__outlier100__INT__prune0.9__tvn_efaar_e0.05/output.parquet",
+      "sha256": "4b048929c5545e27de1a5ba14a209da6e1c43bfea49e0c222b05966283592a22",
+      "size_bytes": 1604871
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/cp_measure_jump_target2_4plate_jpegxl_lossy_effort_3_raw_features/std_ctrl__outlier100__INT__prune0.9__tvn_efaar_e0.05/pipeline_config.yaml",
+      "sha256": "c21f785b00fa50a18d9f1fadf6c6a9383204a3930cabb62a5967a7a445b1cf18",
+      "size_bytes": 3633
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/cp_measure_jump_target2_4plate_jpegxl_lossy_effort_3_raw_features/std_ctrl__outlier100__INT__prune0.9__tvn_efaar_e0.05/results/metrics.json",
+      "sha256": "ac653179a8f603f29d61c4919882b477c6e4708f532cd8f1ac04b22b0f5f32f1",
+      "size_bytes": 921
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/cp_measure_jump_target2_4plate_jpegxl_lossy_effort_3_raw_features/std_ctrl__outlier100__INT__prune0.9__tvn_efaar_e0.05/results/phenotypic_activity_map.csv",
+      "sha256": "0af661aabfcb1dd682d61849349018c9e74aae62a1f29b731933ee7664bf42f1",
+      "size_bytes": 43169
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/cp_measure_jump_target2_4plate_jpegxl_lossy_effort_3_raw_features/std_ctrl__outlier100__INT__prune0.9__tvn_efaar_e0.05/results/phenotypic_consistency_per_target.csv",
+      "sha256": "0e8aa624301065cf3e1304f48a8ce9bfc986b6368a00bca3e96595429ac83556",
+      "size_bytes": 24344
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/cp_measure_jump_target2_4plate_jpegxl_lossy_hq_raw_features/std_ctrl__outlier100__INT__prune0.9__tvn_efaar_e0.05/output.parquet",
+      "sha256": "3a59021bca63311ecfeae9b34c8060a052c08600004c81d8e6614029a2897f16",
+      "size_bytes": 1621514
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/cp_measure_jump_target2_4plate_jpegxl_lossy_hq_raw_features/std_ctrl__outlier100__INT__prune0.9__tvn_efaar_e0.05/pipeline_config.yaml",
+      "sha256": "5e8a5873d030509d97e9ccbeb8713c20a758694722e9fe6bc28a57f1f548a96d",
+      "size_bytes": 3627
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/cp_measure_jump_target2_4plate_jpegxl_lossy_hq_raw_features/std_ctrl__outlier100__INT__prune0.9__tvn_efaar_e0.05/results/metrics.json",
+      "sha256": "6e28f4e63df2b1fa8334173b0539df5b89f1cc22bee95e00de661a826c612847",
+      "size_bytes": 921
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/cp_measure_jump_target2_4plate_jpegxl_lossy_hq_raw_features/std_ctrl__outlier100__INT__prune0.9__tvn_efaar_e0.05/results/phenotypic_activity_map.csv",
+      "sha256": "8a47726521749dcedf597ceffa89e47004721c25c2cca46b94556d7f10536c9e",
+      "size_bytes": 43087
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/cp_measure_jump_target2_4plate_jpegxl_lossy_hq_raw_features/std_ctrl__outlier100__INT__prune0.9__tvn_efaar_e0.05/results/phenotypic_consistency_per_target.csv",
+      "sha256": "e09d979b7773670de8501f1cd704a852cf7dfcc51d7d6068752faf612d1d8b27",
+      "size_bytes": 24247
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/cp_measure_jump_target2_4plate_zstd_raw_features/std_ctrl__outlier100__INT__prune0.9__tvn_efaar_e0.05/output.parquet",
+      "sha256": "043690a491d46cc4a4f5c38a8a7fb49d29587e187cc528521324b5adf4612e40",
+      "size_bytes": 1624828
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/cp_measure_jump_target2_4plate_zstd_raw_features/std_ctrl__outlier100__INT__prune0.9__tvn_efaar_e0.05/pipeline_config.yaml",
+      "sha256": "22754d2e36bec2506e02dd15a171fd1402dfe31681f73975d9da511b735764e8",
+      "size_bytes": 3616
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/cp_measure_jump_target2_4plate_zstd_raw_features/std_ctrl__outlier100__INT__prune0.9__tvn_efaar_e0.05/results/metrics.json",
+      "sha256": "288ce70e02392e63c43073fb4f3f639766cc12cce2d8b238a244f0ea31480f19",
+      "size_bytes": 920
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/cp_measure_jump_target2_4plate_zstd_raw_features/std_ctrl__outlier100__INT__prune0.9__tvn_efaar_e0.05/results/phenotypic_activity_map.csv",
+      "sha256": "8b5b71842b70aeef5c7c593d5cf430c1c3f901556e2e216fc6e506281f82aafe",
+      "size_bytes": 43107
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/cp_measure_jump_target2_4plate_zstd_raw_features/std_ctrl__outlier100__INT__prune0.9__tvn_efaar_e0.05/results/phenotypic_consistency_per_target.csv",
+      "sha256": "4ce9ae2ba2d363010ba250831683dc5f08c5f035957f2320bc50db8a4dfbb154",
+      "size_bytes": 24387
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/dinov2_jump_target2_4plate_jpegxl_lossy_effort_3_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/output.parquet",
+      "sha256": "33e04c3c70a21f23af5db28b748ca055c24f3a313fbe7c0a31a95013f9666805",
+      "size_bytes": 842361
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/dinov2_jump_target2_4plate_jpegxl_lossy_effort_3_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/pipeline_config.yaml",
+      "sha256": "be9d1f7b3c4f467e431a02ff1d1112314db37e86fae3188e259183ad7ed4fe8c",
+      "size_bytes": 3476
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/dinov2_jump_target2_4plate_jpegxl_lossy_effort_3_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/results/metrics.json",
+      "sha256": "97d4f7c2d900ef9c8c93b8a9b03ac3c9d98cd5441377c3ddab37314d8b3b4c56",
+      "size_bytes": 918
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/dinov2_jump_target2_4plate_jpegxl_lossy_effort_3_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/results/phenotypic_activity_map.csv",
+      "sha256": "193a604e244c64c31d7cd6f08b948a513e04e1b5096c3b777c4016c2d69c6434",
+      "size_bytes": 42784
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/dinov2_jump_target2_4plate_jpegxl_lossy_effort_3_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/results/phenotypic_consistency_per_target.csv",
+      "sha256": "b9e22eb3e2add6af4a742a6ae29e2d57c1d2032aaea7eaa22f6c43913ef8e01b",
+      "size_bytes": 24415
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/dinov2_jump_target2_4plate_jpegxl_lossy_hq_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/output.parquet",
+      "sha256": "5a746bfd068d298218f0d4f2abb5e6e26a35a17ea6274ad1caeb7b69be408339",
+      "size_bytes": 842330
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/dinov2_jump_target2_4plate_jpegxl_lossy_hq_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/pipeline_config.yaml",
+      "sha256": "a1a24fa4d57167a2b72b60b47db4d6cc10999850f891a988a71deb62997d2f0a",
+      "size_bytes": 3470
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/dinov2_jump_target2_4plate_jpegxl_lossy_hq_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/results/metrics.json",
+      "sha256": "4be19ea3d158d08423f2e27206e6eb64c46f7dfa3dc59db70a55168768b3c48d",
+      "size_bytes": 919
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/dinov2_jump_target2_4plate_jpegxl_lossy_hq_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/results/phenotypic_activity_map.csv",
+      "sha256": "47eb1a4106ae82cd1c9ce98c89f1bd6a66315b7b4fcc8c7b5e82681dfe80a603",
+      "size_bytes": 42997
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/dinov2_jump_target2_4plate_jpegxl_lossy_hq_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/results/phenotypic_consistency_per_target.csv",
+      "sha256": "03bcf54dfec600f0fd8238c1aac82bb074eec9a656a44de384ffc1248c2bd519",
+      "size_bytes": 24396
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/dinov2_jump_target2_4plate_zstd_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/output.parquet",
+      "sha256": "793dd9d7a6b299a9381bbd49fa6466668f7ed2c69ed125641ff15e0573f60c15",
+      "size_bytes": 842302
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/dinov2_jump_target2_4plate_zstd_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/pipeline_config.yaml",
+      "sha256": "6bd84faa38181e434dd2ca956fa2fc6ae1f0cb87fb86142ca2b5966b8cfc8d6f",
+      "size_bytes": 3459
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/dinov2_jump_target2_4plate_zstd_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/results/metrics.json",
+      "sha256": "35a8340e8ddbd75ccfe8420e27125ac9eb3e149b1da59098792f50fb5543de77",
+      "size_bytes": 905
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/dinov2_jump_target2_4plate_zstd_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/results/phenotypic_activity_map.csv",
+      "sha256": "2b0dc9199bf19c8a449bbfde7ef4c9474334c054274032f12d66f2ae7fd23ef8",
+      "size_bytes": 42735
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/dinov2_jump_target2_4plate_zstd_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/results/phenotypic_consistency_per_target.csv",
+      "sha256": "fbd472a2770b7c800f34fc1251e924f687ff556ab50307cff59781ae301552d2",
+      "size_bytes": 24395
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/morphem_jump_target2_4plate_jpegxl_lossy_effort_3_raw_features/robustmad_all__prune0.9__tvn_efaar_e0.05/output.parquet",
+      "sha256": "998a9db5d1d3864a7a1ef47ff9a9ab649fc998d15575dae63026f28c3b87da43",
+      "size_bytes": 842800
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/morphem_jump_target2_4plate_jpegxl_lossy_effort_3_raw_features/robustmad_all__prune0.9__tvn_efaar_e0.05/pipeline_config.yaml",
+      "sha256": "38575cac18296f93c02684d768802f01a17700d800ffaaf63cd02ba1879040ea",
+      "size_bytes": 3480
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/morphem_jump_target2_4plate_jpegxl_lossy_effort_3_raw_features/robustmad_all__prune0.9__tvn_efaar_e0.05/results/metrics.json",
+      "sha256": "8159143ee107eca0ff4bc66e90d65454efd6f9a2887f991c500c77bc90c13f78",
+      "size_bytes": 919
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/morphem_jump_target2_4plate_jpegxl_lossy_effort_3_raw_features/robustmad_all__prune0.9__tvn_efaar_e0.05/results/phenotypic_activity_map.csv",
+      "sha256": "fec23b2a4f9c79cbad4feff7edb40f4d16fe70b7c8a77d1deac44e8d16c66129",
+      "size_bytes": 42228
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/morphem_jump_target2_4plate_jpegxl_lossy_effort_3_raw_features/robustmad_all__prune0.9__tvn_efaar_e0.05/results/phenotypic_consistency_per_target.csv",
+      "sha256": "ce5d59f071a0fe23da6ed1587acf70e6e02b44e0c95badd83baefbc5b438ba41",
+      "size_bytes": 24404
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/morphem_jump_target2_4plate_jpegxl_lossy_hq_raw_features/robustmad_all__prune0.9__tvn_efaar_e0.05/output.parquet",
+      "sha256": "a10827392540f5013e5d3558f374128c256d962e199d6b17b0db81fe39051716",
+      "size_bytes": 842750
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/morphem_jump_target2_4plate_jpegxl_lossy_hq_raw_features/robustmad_all__prune0.9__tvn_efaar_e0.05/pipeline_config.yaml",
+      "sha256": "6500f12792d0ea47a6bcabddcfcd6cf12fb60b9381517b14550b37cda5a18181",
+      "size_bytes": 3474
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/morphem_jump_target2_4plate_jpegxl_lossy_hq_raw_features/robustmad_all__prune0.9__tvn_efaar_e0.05/results/metrics.json",
+      "sha256": "d042cf6dc15c09fae5d92c924d80859eb748b2d5ff407cd346ece19d85ac64c6",
+      "size_bytes": 918
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/morphem_jump_target2_4plate_jpegxl_lossy_hq_raw_features/robustmad_all__prune0.9__tvn_efaar_e0.05/results/phenotypic_activity_map.csv",
+      "sha256": "32ad845c2c4efb9c56d604731fc699a4bc4ce99e2b1b019fc845a1dbaa7a8e9a",
+      "size_bytes": 42430
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/morphem_jump_target2_4plate_jpegxl_lossy_hq_raw_features/robustmad_all__prune0.9__tvn_efaar_e0.05/results/phenotypic_consistency_per_target.csv",
+      "sha256": "d05f10eb3d8624e5efb18df2a341455beb60185fbb26d62e3e47abadffb79812",
+      "size_bytes": 24338
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/morphem_jump_target2_4plate_zstd_raw_features/robustmad_all__prune0.9__tvn_efaar_e0.05/output.parquet",
+      "sha256": "a8c2e7676dbad374d3dc517ff1e995dab42e710e95b1d104dc3ce83780936663",
+      "size_bytes": 842374
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/morphem_jump_target2_4plate_zstd_raw_features/robustmad_all__prune0.9__tvn_efaar_e0.05/pipeline_config.yaml",
+      "sha256": "61973bc8a77fb606240fe6f5c1c955f344be21f7c9b32f071660e2850bed2946",
+      "size_bytes": 3463
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/morphem_jump_target2_4plate_zstd_raw_features/robustmad_all__prune0.9__tvn_efaar_e0.05/results/metrics.json",
+      "sha256": "40c4ca943bc3c88f11ab35a6467fe3bdce0024b319173ae95effba0b394ef75a",
+      "size_bytes": 920
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/morphem_jump_target2_4plate_zstd_raw_features/robustmad_all__prune0.9__tvn_efaar_e0.05/results/phenotypic_activity_map.csv",
+      "sha256": "41cde0c5ee58926073b2aa93a2e31360142d6cdaa0fafa0b7069da1ed2881e89",
+      "size_bytes": 42372
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/morphem_jump_target2_4plate_zstd_raw_features/robustmad_all__prune0.9__tvn_efaar_e0.05/results/phenotypic_consistency_per_target.csv",
+      "sha256": "da21c1a85207f840a0794b0ec2d979751b98254915bfcb58f46d337425871217",
+      "size_bytes": 24361
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/openphenom_jump_target2_4plate_jpegxl_lossy_effort_3_raw_features/std_all__prune0.9__tvn_efaar_e0.05/output.parquet",
+      "sha256": "c70e516803fc904941cf6fa20a835e9233cd4f1b27355a0e4f5f61e0cb45781a",
+      "size_bytes": 842692
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/openphenom_jump_target2_4plate_jpegxl_lossy_effort_3_raw_features/std_all__prune0.9__tvn_efaar_e0.05/pipeline_config.yaml",
+      "sha256": "329dc106123841fc6d805386b5d6efed57e7a71925d7e710209d083e230471a6",
+      "size_bytes": 3485
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/openphenom_jump_target2_4plate_jpegxl_lossy_effort_3_raw_features/std_all__prune0.9__tvn_efaar_e0.05/results/metrics.json",
+      "sha256": "d767cc77df31f030854f1974aa6908739a32d5018bc9d4999928120bfd66123d",
+      "size_bytes": 922
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/openphenom_jump_target2_4plate_jpegxl_lossy_effort_3_raw_features/std_all__prune0.9__tvn_efaar_e0.05/results/phenotypic_activity_map.csv",
+      "sha256": "a88bf5a2f276153cfe3498505af5e356251880b292575186853848831def2b64",
+      "size_bytes": 43156
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/openphenom_jump_target2_4plate_jpegxl_lossy_effort_3_raw_features/std_all__prune0.9__tvn_efaar_e0.05/results/phenotypic_consistency_per_target.csv",
+      "sha256": "d680dc435b22dcb8b8261240278d840feee8c2bad4da5b4d02d88a14af2230d5",
+      "size_bytes": 24372
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/openphenom_jump_target2_4plate_jpegxl_lossy_hq_raw_features/std_all__prune0.9__tvn_efaar_e0.05/output.parquet",
+      "sha256": "f383faabb209a14e5247c0cae727b6550e55d9b657be526f86d654c83f22fee8",
+      "size_bytes": 842804
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/openphenom_jump_target2_4plate_jpegxl_lossy_hq_raw_features/std_all__prune0.9__tvn_efaar_e0.05/pipeline_config.yaml",
+      "sha256": "af256a469c2ae6b84b133185314b244119a9e8c2e7f62c3b0cec27f2e96eee60",
+      "size_bytes": 3479
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/openphenom_jump_target2_4plate_jpegxl_lossy_hq_raw_features/std_all__prune0.9__tvn_efaar_e0.05/results/metrics.json",
+      "sha256": "41c9b6d314f4de75931d9afd3d42b099998562486560955327ed73ccc15a5d6f",
+      "size_bytes": 916
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/openphenom_jump_target2_4plate_jpegxl_lossy_hq_raw_features/std_all__prune0.9__tvn_efaar_e0.05/results/phenotypic_activity_map.csv",
+      "sha256": "ac4758a5a50a3ab535ea962f91df1e689a46bbb7868454901df68efeca90c8be",
+      "size_bytes": 43344
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/openphenom_jump_target2_4plate_jpegxl_lossy_hq_raw_features/std_all__prune0.9__tvn_efaar_e0.05/results/phenotypic_consistency_per_target.csv",
+      "sha256": "58785bc28a9ebb0fd167add271141f1ef187762854601b9c5cc7e6dba9697fea",
+      "size_bytes": 24426
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/openphenom_jump_target2_4plate_zstd_raw_features/std_all__prune0.9__tvn_efaar_e0.05/output.parquet",
+      "sha256": "3bd6de670116126178498458cdd0a79f027da491815ac9581157e181bc906985",
+      "size_bytes": 842661
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/openphenom_jump_target2_4plate_zstd_raw_features/std_all__prune0.9__tvn_efaar_e0.05/pipeline_config.yaml",
+      "sha256": "2f16acdf5af2ab5b4cf5189969aebe9cf55f7734bf43e5fe274f0f1b6fcc34e6",
+      "size_bytes": 3468
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/openphenom_jump_target2_4plate_zstd_raw_features/std_all__prune0.9__tvn_efaar_e0.05/results/metrics.json",
+      "sha256": "a2957ceb768a4397601895a62046d94d4443b5475a375a3a6407620fdc5cc676",
+      "size_bytes": 918
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/openphenom_jump_target2_4plate_zstd_raw_features/std_all__prune0.9__tvn_efaar_e0.05/results/phenotypic_activity_map.csv",
+      "sha256": "024bb6843637f0de7412c6a6796c003652ff0a31a6cd3424ebf2a62630c63806",
+      "size_bytes": 43380
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/openphenom_jump_target2_4plate_zstd_raw_features/std_all__prune0.9__tvn_efaar_e0.05/results/phenotypic_consistency_per_target.csv",
+      "sha256": "198fd2ed7c497c85a13c18ba286c64c753c39b6db846492d0adf65a0e2b3ad14",
+      "size_bytes": 24389
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/subcell__clip01_jump_target2_4plate_jpegxl_lossy_effort_3_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/output.parquet",
+      "sha256": "695d797eeb9cc4d544e8295a50d5bb41bfc0f00310f11d91e005438a7c9f5aa2",
+      "size_bytes": 841541
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/subcell__clip01_jump_target2_4plate_jpegxl_lossy_effort_3_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/pipeline_config.yaml",
+      "sha256": "cbb5089dffae49fb0244bc2e93ca908144ef3725724f60cac46c2e929f1ce868",
+      "size_bytes": 3485
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/subcell__clip01_jump_target2_4plate_jpegxl_lossy_effort_3_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/results/metrics.json",
+      "sha256": "59aa6a5b16619b50aac4bb1da70ddc5077c308c12d1757ebc53927a1c9d2dbc3",
+      "size_bytes": 906
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/subcell__clip01_jump_target2_4plate_jpegxl_lossy_effort_3_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/results/phenotypic_activity_map.csv",
+      "sha256": "d0e6b9be1157067cdef6744a9107f59a09261f1cb5b8d0308c7ffdccb3dcfe0c",
+      "size_bytes": 43064
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/subcell__clip01_jump_target2_4plate_jpegxl_lossy_effort_3_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/results/phenotypic_consistency_per_target.csv",
+      "sha256": "ea59a61ed24f5a910a603d4e26e411133e8f1d95b5196cfb9e80ccaff2bd07ab",
+      "size_bytes": 24459
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/subcell__clip01_jump_target2_4plate_jpegxl_lossy_hq_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/output.parquet",
+      "sha256": "54f9fb3aeda1cbce60af88ffd83b75d8fb436f5ac51abacbddf52cab9d81c6ac",
+      "size_bytes": 841564
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/subcell__clip01_jump_target2_4plate_jpegxl_lossy_hq_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/pipeline_config.yaml",
+      "sha256": "c1b7017e5183afa5412291f0a1ef87cbe3988a67638a00d01af083a97ff70b76",
+      "size_bytes": 3479
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/subcell__clip01_jump_target2_4plate_jpegxl_lossy_hq_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/results/metrics.json",
+      "sha256": "1a236996f8485261f4afed570ea8891469bb4619d6e0fd5ebfc4351b8689b415",
+      "size_bytes": 919
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/subcell__clip01_jump_target2_4plate_jpegxl_lossy_hq_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/results/phenotypic_activity_map.csv",
+      "sha256": "6c4565c94ea8be125300240f59999731e58c1db1fdf6c4fb1f54571782dc15fd",
+      "size_bytes": 43071
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/subcell__clip01_jump_target2_4plate_jpegxl_lossy_hq_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/results/phenotypic_consistency_per_target.csv",
+      "sha256": "78b0750f2de886466eb2d9b8979ba86d416f3ba5daa90720f2657fbdb3334954",
+      "size_bytes": 24314
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/subcell__clip01_jump_target2_4plate_zstd_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/output.parquet",
+      "sha256": "5ea5e89a9b02a881b74274d4fdaf271231219493ab7383f06fce2a7ab10f1007",
+      "size_bytes": 841526
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/subcell__clip01_jump_target2_4plate_zstd_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/pipeline_config.yaml",
+      "sha256": "2b743622fb49b3aaa36fe29fa226207aefecd601faabb210d5c4a2185b45ce04",
+      "size_bytes": 3468
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/subcell__clip01_jump_target2_4plate_zstd_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/results/metrics.json",
+      "sha256": "94457ebd675b2d01fe1aeab175b08dc0c90fda87e778292e0ccaa63af3c4d2a6",
+      "size_bytes": 919
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/subcell__clip01_jump_target2_4plate_zstd_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/results/phenotypic_activity_map.csv",
+      "sha256": "ad186f1fa3d769cec97a22e44f4bccb242012e0d0d1d5618a668ab94b5a3b43b",
+      "size_bytes": 43083
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/subcell__clip01_jump_target2_4plate_zstd_raw_features/robustmad_ctrl__prune0.9__tvn_efaar_e0.05/results/phenotypic_consistency_per_target.csv",
+      "sha256": "6881c98274af199bd5ce4abf27d24cbef5f164799f7ce82fad77852d6226cfb6",
+      "size_bytes": 23865
+    },
+    {
+      "path": "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/sweep_results.csv",
+      "sha256": "08923c7bd27bca54c0a3f484429ced31d1b48ad097c974773591a89ac63eb53a",
+      "size_bytes": 1096114
+    },
+    {
+      "path": "/work/users/jfredinh/projects/cleaning-JUMP_CORE/analysis/image_quality/output/quality_metrics.csv",
+      "sha256": "1bac02ffc9190dc8dab4ef2ec6a01dc2b02240b03211bfc7560bc1ab583483eb",
+      "size_bytes": 224818
+    },
+    {
+      "path": "/work/users/jfredinh/projects/cleaning-JUMP_CORE/analysis/output/codec_feature_correlation.csv",
+      "sha256": "c9c433d9b01fb89d32a91bd86452af400775e3f5b7674deb49df2067ef489a62",
+      "size_bytes": 120194
+    },
+    {
+      "path": "/work/users/jfredinh/projects/cleaning-JUMP_CORE/analysis/segmentation/output/segmentation_comparison/detailed_results/segment_cell_jpegxl_lossy_effort_3.csv",
+      "sha256": "dd621918dce6b9e3d4d2970c3c1775b2f80f3ed03692e263fb7ec056eb2dd72c",
+      "size_bytes": 4956736
+    },
+    {
+      "path": "/work/users/jfredinh/projects/cleaning-JUMP_CORE/analysis/segmentation/output/segmentation_comparison/detailed_results/segment_cell_jpegxl_lossy_hq.csv",
+      "sha256": "4c6e5fc9f662926ef0c551a9de08aa3c9c3f617b40a035d058cee878dce4b584",
+      "size_bytes": 4777896
+    },
+    {
+      "path": "/work/users/jfredinh/projects/cleaning-JUMP_CORE/analysis/segmentation/output/segmentation_comparison/detailed_results/segment_nuclei_jpegxl_lossy_effort_3.csv",
+      "sha256": "6624823230ce7e5a1f53c147fa5f90a7f520b9679d4a2f49616c9748fda7a622",
+      "size_bytes": 4687505
+    },
+    {
+      "path": "/work/users/jfredinh/projects/cleaning-JUMP_CORE/analysis/segmentation/output/segmentation_comparison/detailed_results/segment_nuclei_jpegxl_lossy_hq.csv",
+      "sha256": "4010099b2fbec3dc33119b245bd1064c726675be23b21b009232fde11bfb9498",
+      "size_bytes": 4597989
+    }
+  ],
+  "producer_source": {
+    "path": "src/compress_tif.py",
+    "repository_commit": "0ed6a2617279e028f789a96fe154cd2464c57210",
+    "sha256": "9bb6bec0a23a8fb091c1e1990f62690c55b74e34d1a49165b21bbb1aabaa54bf",
+    "size_bytes": 8396
+  },
+  "protocol": "effort_sensitivity_inputs_v1",
+  "selected_recipes": {
+    "cp_measure": "std_ctrl__outlier100__INT__prune0.9__tvn_efaar_e0.05",
+    "dinov2": "robustmad_ctrl__prune0.9__tvn_efaar_e0.05",
+    "morphem": "robustmad_all__prune0.9__tvn_efaar_e0.05",
+    "openphenom": "std_all__prune0.9__tvn_efaar_e0.05",
+    "subcell": "robustmad_ctrl__prune0.9__tvn_efaar_e0.05"
+  }
+}

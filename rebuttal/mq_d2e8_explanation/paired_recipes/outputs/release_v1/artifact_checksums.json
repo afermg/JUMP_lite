@@ -1,0 +1,44 @@
+{
+  "artifacts": [
+    {
+      "path": "REPORT.md",
+      "size_bytes": 1455,
+      "sha256": "64dfbc51557e01528523a9685548055bf227f18180aee02aae5258900da4bad8"
+    },
+    {
+      "path": "paired_recipes.pdf",
+      "size_bytes": 25614,
+      "sha256": "eb7eca3300db763343e2b4e9f5651512986aba55d053060186a28276a634ca31"
+    },
+    {
+      "path": "paired_recipes.png",
+      "size_bytes": 306664,
+      "sha256": "b310d2c41867a423990baa0e6a03e361c2476f974e30e039059656d2aba511da"
+    },
+    {
+      "path": "provenance.json",
+      "size_bytes": 758,
+      "sha256": "0b25f73d25d1419169d98e6197ebd2ca1a180b84f4aa4aa4d7bb5b3969cdd08f"
+    },
+    {
+      "path": "results/family_summary.csv",
+      "size_bytes": 1742,
+      "sha256": "5a2088d20a0f4f53ba77de4cb1c9361bfcfef4f30dfeefc417f3bcf72993d63d"
+    },
+    {
+      "path": "results/paired_config_deltas.csv",
+      "size_bytes": 55488,
+      "sha256": "6490dfa4a2641a6b8e1a21230dc92df22282ab7209582b7b7caf40de0ef737be"
+    },
+    {
+      "path": "results/pooled_summary.csv",
+      "size_bytes": 648,
+      "sha256": "092b6e87497cf3f95499dc266bbe6f41eef456442b841ed5e30fb12e1debec2b"
+    },
+    {
+      "path": "results/selected_grid.csv",
+      "size_bytes": 67754,
+      "sha256": "4aac73c5880f857f12b28b56a3fbe33af07f146f5476f17565a2d66da4a7dc40"
+    }
+  ]
+}
