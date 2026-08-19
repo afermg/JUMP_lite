@@ -1,0 +1,31 @@
+{
+  "audit_behavior": "validate_only_never_filter",
+  "format_version": "full-jump-production-exclusion-policy-v1",
+  "known_damaged_objects": {
+    "action": "exclude_entire_affected_site",
+    "object_ledger": {
+      "bytes": 4561,
+      "path": "metadata/full_jump_compression/known_damaged_objects_v1.json",
+      "sha256": "5666af0c025a0fd97381ab831c49de7bbadf45747c5a97a0e19930a4c469857d"
+    },
+    "site_ledger": {
+      "bytes": 1434,
+      "path": "metadata/full_jump_compression/known_damaged_sites_v1.json",
+      "sha256": "b5ab319a6a7b910ef82423243ec3dadd731deb89eab614f632f8d29e60dfe15d"
+    },
+    "status": "resolved"
+  },
+  "red_gray_release_policy": {
+    "action": null,
+    "release_identity_blocked": true,
+    "status": "unresolved"
+  },
+  "source_15": {
+    "action": "exclude_all_rows",
+    "status": "resolved"
+  },
+  "unknown_decode_failures": {
+    "action": "fatal",
+    "status": "resolved"
+  }
+}

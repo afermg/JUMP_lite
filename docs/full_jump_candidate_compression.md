@@ -7,8 +7,9 @@ a final `jump_full` dataset or a CPG prefix.
 
 - Zarr v2, one site-major array/full-site `uint16` chunk.
 - HQ is JPEG XL distance 1.0; MQ is distance 3.0; `numthreads=1`.
-- Channel order is `AGP,DNA,ER,Mito,RNA`; `source_15` is exactly
-  `AGP,DNA,ER,Mito`. RNA is never synthesized.
+- Channel order is `AGP,DNA,ER,Mito,RNA`; bounded historical candidates may
+  contain `source_15` as exactly `AGP,DNA,ER,Mito`. RNA is never synthesized.
+  Production frozen manifests exclude all `source_15` rows.
 - One source decode feeds both codecs.
 - OMP/OpenBLAS/MKL/BLIS/VecLib/NumExpr/TBB/PyArrow/Polars/Rayon are capped at
   one before third-party imports and recorded.
@@ -62,9 +63,29 @@ are recorded separately. Loading a report recomputes its content digest,
 checks local-evidence integrity, and validates the current file SHA-256/bytes.
 Changing a report field without regenerating the accepted digest is rejected.
 
-The preliminary `misc/jump_index.parquet` remains raw input only. Production is
-blocked on a pinned inventory, official red/gray policy, source-15 collision
-policy, damaged-object policy, and final CPG namespace.
+The preliminary `misc/jump_index.parquet` remains raw input only. The production
+policies for `source_15` and known damaged objects are resolved as exclusions:
+all `source_15` rows are excluded, and both affected `source_7` sites are
+excluded whole. The exact four zero-filled objects and derived two-site set are
+preserved under `metadata/full_jump_compression/`; unknown decode failures
+remain fatal. Historical candidate behavior is unchanged, including the
+completed four-channel `source_15` canary.
+
+A frozen audit validates but never filters these exclusions. It requires the
+explicit policy and both bound ledgers:
+
+```bash
+python -m jump_full_compression audit --kind frozen \
+  --input /absolute/frozen.parquet --report /absolute/frozen-audit.json \
+  --exclusion-policy metadata/full_jump_compression/production_exclusion_policy_v1.json \
+  --damaged-objects metadata/full_jump_compression/known_damaged_objects_v1.json \
+  --damaged-sites metadata/full_jump_compression/known_damaged_sites_v1.json
+```
+
+The checked-in policy intentionally leaves red/gray handling unresolved, so it
+must fail frozen auditing until that field is explicitly resolved and reviewed.
+Production remains blocked on that red/gray decision, a commit-pinned complete
+inventory, and the final CPG namespace.
 
 ## Reviewed launch sequence
 

@@ -55,6 +55,21 @@ def parser():
     audit.add_argument("--input", type=Path, required=True)
     audit.add_argument("--report", type=Path, required=True)
     audit.add_argument("--kind", choices=("raw", "candidate", "frozen"), default="raw")
+    audit.add_argument(
+        "--exclusion-policy",
+        type=Path,
+        help="required for frozen audits; production exclusion-policy JSON",
+    )
+    audit.add_argument(
+        "--damaged-objects",
+        type=Path,
+        help="required for frozen audits; known damaged-object ledger JSON",
+    )
+    audit.add_argument(
+        "--damaged-sites",
+        type=Path,
+        help="required for frozen audits; derived damaged-site ledger JSON",
+    )
     run = commands.add_parser("run")
     _add_config_arguments(run)
     run.add_argument("--apply", action="store_true")
@@ -76,7 +91,13 @@ def parser():
     gov.add_argument("--test-mode", action="store_true", help=argparse.SUPPRESS)
     adopt = commands.add_parser("validate-adoption")
     _add_config_arguments(adopt)
-    for name in ("frozen-manifest", "frozen-audit"):
+    for name in (
+        "frozen-manifest",
+        "frozen-audit",
+        "exclusion-policy",
+        "damaged-objects",
+        "damaged-sites",
+    ):
         adopt.add_argument(f"--{name}", type=Path, required=True)
     adopt.add_argument("--frozen-inventory-digest", required=True)
     status = commands.add_parser("status")
@@ -90,7 +111,15 @@ def main(argv=None):
         assert_runtime_task_ceiling()
         print(
             json.dumps(
-                audit_inventory(args.input, args.report, kind=args.kind), indent=2
+                audit_inventory(
+                    args.input,
+                    args.report,
+                    kind=args.kind,
+                    exclusion_policy=args.exclusion_policy,
+                    damaged_objects=args.damaged_objects,
+                    damaged_sites=args.damaged_sites,
+                ),
+                indent=2,
             )
         )
         return 0
@@ -133,6 +162,9 @@ def main(argv=None):
                     args.frozen_manifest,
                     args.frozen_audit,
                     args.frozen_inventory_digest,
+                    args.exclusion_policy,
+                    args.damaged_objects,
+                    args.damaged_sites,
                 ),
                 indent=2,
             )

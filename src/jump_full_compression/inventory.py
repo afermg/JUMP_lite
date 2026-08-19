@@ -23,6 +23,46 @@ from .model import (
     site_key,
 )
 
+KNOWN_DAMAGED_OBJECTS = (
+    (
+        2,
+        "ER",
+        "URL_OrigER",
+        "CP3-SC1-18_I22_T0001F003L01A03Z01C04.tif",
+    ),
+    (
+        3,
+        "DNA",
+        "URL_OrigDNA",
+        "CP3-SC1-18_I22_T0001F004L01A01Z01C01.tif",
+    ),
+    (
+        3,
+        "Mito",
+        "URL_OrigMito",
+        "CP3-SC1-18_I22_T0001F004L01A01Z01C02.tif",
+    ),
+    (
+        3,
+        "RNA",
+        "URL_OrigRNA",
+        "CP3-SC1-18_I22_T0001F004L01A02Z01C03.tif",
+    ),
+)
+KNOWN_DAMAGED_SITE_KEYS = frozenset(
+    {
+        "source_7__20210727_Run3__CP3-SC1-18__I22__2",
+        "source_7__20210727_Run3__CP3-SC1-18__I22__3",
+    }
+)
+_DAMAGED_PREFIX = (
+    "s3://cellpainting-gallery/cpg0016-jump/source_7/images/20210727_Run3/"
+    "images/CP3-SC1-18/"
+)
+_DAMAGED_BYTES = 2_768_896
+_DAMAGED_ETAG = "d4ffe90e54a5af4e2009e5984da69f03"
+_DAMAGED_SHA256 = "5943e9d0a21bc6cc913afecb6e36f2e53d57813d5cd486557a855905293cfe0f"
+
 
 def _json_safe(value: Any) -> Any:
     if value is None or isinstance(value, (str, bool, int)):
@@ -134,13 +174,189 @@ def iter_inventory(
             yield row
 
 
+def _artifact_binding(path: Path) -> dict[str, Any]:
+    if not path.is_file() or path.is_symlink():
+        raise RuntimeError(
+            f"policy artifact must be a regular non-symlink file: {path}"
+        )
+    return {"bytes": path.stat().st_size, "sha256": sha256_file(path)}
+
+
+def _load_json_object(path: Path) -> dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text())
+    except Exception as error:
+        raise RuntimeError(f"policy artifact is not valid JSON: {path}") from error
+    if not isinstance(payload, dict):
+        raise RuntimeError(f"policy artifact must contain a JSON object: {path}")
+    return payload
+
+
+def _validate_frozen_policy(
+    policy_path: Path | None,
+    damaged_objects_path: Path | None,
+    damaged_sites_path: Path | None,
+) -> dict[str, Any]:
+    if (
+        policy_path is None
+        or damaged_objects_path is None
+        or damaged_sites_path is None
+    ):
+        raise RuntimeError(
+            "frozen audit requires explicit exclusion policy, damaged-object ledger, "
+            "and damaged-site ledger"
+        )
+    policy_binding = _artifact_binding(policy_path)
+    object_binding = _artifact_binding(damaged_objects_path)
+    site_binding = _artifact_binding(damaged_sites_path)
+    policy = _load_json_object(policy_path)
+    objects = _load_json_object(damaged_objects_path)
+    sites = _load_json_object(damaged_sites_path)
+
+    expected_objects = {
+        (
+            site,
+            channel,
+            column,
+            _DAMAGED_PREFIX + filename,
+        )
+        for site, channel, column, filename in KNOWN_DAMAGED_OBJECTS
+    }
+    try:
+        observed_objects = {
+            (
+                item["site"],
+                item["channel"],
+                item["url_column"],
+                item["uri"],
+            )
+            for item in objects["objects"]
+        }
+        object_common_valid = all(
+            item["source"] == "source_7"
+            and item["batch"] == "20210727_Run3"
+            and item["plate"] == "CP3-SC1-18"
+            and item["well"] == "I22"
+            and item["site_key"]
+            == f"source_7__20210727_Run3__CP3-SC1-18__I22__{item['site']}"
+            and item["bytes"] == _DAMAGED_BYTES
+            and item["etag"] == _DAMAGED_ETAG
+            and item["sha256"] == _DAMAGED_SHA256
+            and "all-zero" in item["sha256_basis"]
+            and item["damage_class"] == "public_object_all_zero_not_valid_tiff"
+            and item["action"] == "exclude_entire_site_from_full_jump_compression"
+            and isinstance(item["evidence"], list)
+            and item["evidence"]
+            for item in objects["objects"]
+        )
+    except Exception as error:
+        raise RuntimeError("damaged-object ledger schema malformed") from error
+    if (
+        objects.get("format_version") != "full-jump-known-damaged-objects-v1"
+        or objects.get("object_count") != 4
+        or objects.get("site_count") != 2
+        or objects.get("unknown_decode_failure_action") != "fatal"
+        or len(objects.get("objects", [])) != 4
+        or observed_objects != expected_objects
+        or not object_common_valid
+    ):
+        raise RuntimeError("damaged-object ledger content drift")
+
+    try:
+        observed_sites = {item["site_key"] for item in sites["sites"]}
+        sites_valid = all(
+            item["source"] == "source_7"
+            and item["batch"] == "20210727_Run3"
+            and item["plate"] == "CP3-SC1-18"
+            and item["well"] == "I22"
+            and item["site"] in (2, 3)
+            and item["action"] == "exclude_entire_site_from_full_jump_compression"
+            and item["damaged_object_uris"]
+            == [
+                entry["uri"]
+                for entry in objects["objects"]
+                if entry["site"] == item["site"]
+            ]
+            for item in sites["sites"]
+        )
+    except Exception as error:
+        raise RuntimeError("damaged-site ledger schema malformed") from error
+    if (
+        sites.get("format_version") != "full-jump-known-damaged-sites-v1"
+        or sites.get("derived_from") != "known_damaged_objects_v1.json"
+        or sites.get("derived_from_sha256") != object_binding["sha256"]
+        or sites.get("object_count") != 4
+        or sites.get("site_count") != 2
+        or len(sites.get("sites", [])) != 2
+        or observed_sites != KNOWN_DAMAGED_SITE_KEYS
+        or not sites_valid
+    ):
+        raise RuntimeError("damaged-site ledger content drift")
+
+    try:
+        damaged_policy = policy["known_damaged_objects"]
+        policy_object_binding = damaged_policy["object_ledger"]
+        policy_site_binding = damaged_policy["site_ledger"]
+        source_15 = policy["source_15"]
+        unknown = policy["unknown_decode_failures"]
+        red_gray = policy["red_gray_release_policy"]
+    except Exception as error:
+        raise RuntimeError("production exclusion policy schema malformed") from error
+    if (
+        policy.get("format_version") != "full-jump-production-exclusion-policy-v1"
+        or policy.get("audit_behavior") != "validate_only_never_filter"
+        or source_15 != {"action": "exclude_all_rows", "status": "resolved"}
+        or damaged_policy.get("action") != "exclude_entire_affected_site"
+        or damaged_policy.get("status") != "resolved"
+        or unknown != {"action": "fatal", "status": "resolved"}
+        or {
+            "bytes": policy_object_binding.get("bytes"),
+            "sha256": policy_object_binding.get("sha256"),
+        }
+        != object_binding
+        or {
+            "bytes": policy_site_binding.get("bytes"),
+            "sha256": policy_site_binding.get("sha256"),
+        }
+        != site_binding
+    ):
+        raise RuntimeError("production exclusion policy content/binding drift")
+    if (
+        red_gray.get("status") != "resolved"
+        or red_gray.get("release_identity_blocked") is not False
+        or red_gray.get("action")
+        not in {"exclude_red_include_gray", "exclude_red_and_gray"}
+    ):
+        raise RuntimeError(
+            "red/gray release policy unresolved; frozen identity blocked"
+        )
+    return {
+        "policy": policy_binding,
+        "damaged_objects": object_binding,
+        "damaged_sites": site_binding,
+        "red_gray_action": red_gray["action"],
+        "known_damaged_site_keys": sorted(KNOWN_DAMAGED_SITE_KEYS),
+    }
+
+
 def audit_inventory(
-    path: Path, report_path: Path | None = None, *, kind: str = "raw"
+    path: Path,
+    report_path: Path | None = None,
+    *,
+    kind: str = "raw",
+    exclusion_policy: Path | None = None,
+    damaged_objects: Path | None = None,
+    damaged_sites: Path | None = None,
 ) -> dict[str, Any]:
     if kind not in {"raw", "candidate", "frozen"}:
         raise ValueError("audit kind must be raw, candidate, or frozen")
     if not path.is_file() or path.is_symlink():
         raise FileNotFoundError(path)
+    frozen_policy = None
+    if kind == "frozen":
+        frozen_policy = _validate_frozen_policy(
+            exclusion_policy, damaged_objects, damaged_sites
+        )
     description, columns = schema(path)
     count_expected = row_count(path)
     if kind == "candidate" and not 1 <= count_expected <= MAX_CANDIDATE_ROWS:
@@ -156,6 +372,8 @@ def audit_inventory(
     anomalies: list[dict[str, Any]] = []
     anomaly_count = 0
     counts: Counter[str] = Counter()
+    frozen_source_15_rows = 0
+    frozen_damaged_site_rows = 0
     processed = 0
     if not missing_columns:
         for raw in iter_inventory(path, columns):
@@ -170,7 +388,11 @@ def audit_inventory(
                     ).encode()
                     + b"\n"
                 )
-                counts[str(raw["Metadata_Source"])] += 1
+                source = str(raw["Metadata_Source"])
+                counts[source] += 1
+                if kind == "frozen":
+                    frozen_source_15_rows += int(source == "source_15")
+                    frozen_damaged_site_rows += int(key in KNOWN_DAMAGED_SITE_KEYS)
             except Exception as error:
                 anomaly_count += 1
                 if len(anomalies) < 1000:
@@ -206,8 +428,14 @@ def audit_inventory(
         "anomaly_count": anomaly_count,
         "anomalies": anomalies,
         "release_identity_frozen": kind == "frozen",
-        "policy_note": "Raw audit and bounded candidate selection are distinct; QC policy is external.",
+        "policy_note": "Raw audit and bounded candidate selection are distinct; frozen audits validate but never filter exclusions.",
     }
+    if kind == "frozen":
+        summary["frozen_exclusion_policy"] = {
+            **frozen_policy,
+            "source_15_rows_present": frozen_source_15_rows,
+            "known_damaged_site_rows_present": frozen_damaged_site_rows,
+        }
     summary["inventory_digest"] = inventory_digest_from_report(summary)
     if report_path is not None:
         report_path.parent.mkdir(parents=True, exist_ok=True)
@@ -217,6 +445,8 @@ def audit_inventory(
         or missing_columns
         or extra_url_columns
         or anomaly_count
+        or (kind == "frozen" and frozen_source_15_rows)
+        or (kind == "frozen" and frozen_damaged_site_rows)
     ):
         raise RuntimeError(f"inventory audit failed; report={report_path}")
     return summary

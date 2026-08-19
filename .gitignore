@@ -41,6 +41,8 @@ result
 # Project-specific data
 images/
 metadata/*
+!metadata/full_jump_compression/
+!metadata/full_jump_compression/*.json
 !metadata/motive_splits.parquet
 !metadata/jump_lite_v1_site_manifest.parquet
 !metadata/jump_lite_v1_well_manifest.parquet

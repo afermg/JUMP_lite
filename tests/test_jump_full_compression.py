@@ -90,6 +90,38 @@ class FullJumpCompressionTests(unittest.TestCase):
         pl.DataFrame(rows, schema_overrides=overrides).write_parquet(path)
         return path
 
+    def _frozen_policy_artifacts(self, *, resolved: bool):
+        metadata = Path(__file__).parents[1] / "metadata/full_jump_compression"
+        policy = json.loads(
+            (metadata / "production_exclusion_policy_v1.json").read_text()
+        )
+        if resolved:
+            policy["red_gray_release_policy"] = {
+                "action": "exclude_red_include_gray",
+                "status": "resolved",
+                "release_identity_blocked": False,
+            }
+        policy_path = self.root / (
+            "resolved-policy.json" if resolved else "policy.json"
+        )
+        policy_path.write_text(json.dumps(policy, indent=2, sort_keys=True) + "\n")
+        return (
+            policy_path,
+            metadata / "known_damaged_objects_v1.json",
+            metadata / "known_damaged_sites_v1.json",
+        )
+
+    def _frozen_audit(self, manifest, *, resolved=True, **changes):
+        policy, objects, sites = self._frozen_policy_artifacts(resolved=resolved)
+        arguments = {
+            "kind": "frozen",
+            "exclusion_policy": policy,
+            "damaged_objects": objects,
+            "damaged_sites": sites,
+        }
+        arguments.update(changes)
+        return audit_inventory(manifest, self.root / "frozen-audit.json", **arguments)
+
     def _config(self, rows=None, candidate="test-candidate"):
         manifest = self._manifest(rows or [self._row(), self._row("source_15", 2)])
         report = self.root / f"{candidate}-audit.json"
@@ -128,6 +160,68 @@ class FullJumpCompressionTests(unittest.TestCase):
             value["acknowledgement_source"] = "explicit-cli"
         (config.state_root / "control.json").write_text(json.dumps(value))
         return value
+
+    def test_candidate_source_15_remains_allowed(self):
+        manifest = self._manifest([self._row("source_15")])
+        result = audit_inventory(manifest, kind="candidate")
+        self.assertEqual(result["source_counts"], {"source_15": 1})
+        self.assertNotIn("frozen_exclusion_policy", result)
+
+    def test_frozen_audit_requires_policy_artifacts_and_resolved_qc(self):
+        manifest = self._manifest([self._row()])
+        with self.assertRaisesRegex(RuntimeError, "requires explicit"):
+            audit_inventory(manifest, kind="frozen")
+        with self.assertRaisesRegex(RuntimeError, "red/gray release policy unresolved"):
+            self._frozen_audit(manifest, resolved=False)
+
+    def test_frozen_audit_rejects_source_15_and_known_damaged_sites(self):
+        source_15 = self._manifest([self._row("source_15")], "source15.parquet")
+        with self.assertRaisesRegex(RuntimeError, "inventory audit failed"):
+            self._frozen_audit(source_15)
+        report = json.loads((self.root / "frozen-audit.json").read_text())
+        self.assertEqual(report["frozen_exclusion_policy"]["source_15_rows_present"], 1)
+
+        damaged = self._row("source_7", 2)
+        damaged.update(
+            Metadata_Batch="20210727_Run3",
+            Metadata_Plate="CP3-SC1-18",
+            Metadata_Well="I22",
+        )
+        damaged_manifest = self._manifest([damaged], "damaged.parquet")
+        with self.assertRaisesRegex(RuntimeError, "inventory audit failed"):
+            self._frozen_audit(damaged_manifest)
+        report = json.loads((self.root / "frozen-audit.json").read_text())
+        self.assertEqual(
+            report["frozen_exclusion_policy"]["known_damaged_site_rows_present"], 1
+        )
+
+    def test_frozen_audit_accepts_resolved_policy_and_healthy_five_channel_row(self):
+        manifest = self._manifest([self._row("source_1")])
+        result = self._frozen_audit(manifest)
+        frozen = result["frozen_exclusion_policy"]
+        self.assertTrue(result["release_identity_frozen"])
+        self.assertEqual(frozen["source_15_rows_present"], 0)
+        self.assertEqual(frozen["known_damaged_site_rows_present"], 0)
+        self.assertEqual(frozen["red_gray_action"], "exclude_red_include_gray")
+        self.assertEqual(len(frozen["policy"]["sha256"]), 64)
+        self.assertEqual(len(frozen["damaged_objects"]["sha256"]), 64)
+
+    def test_frozen_audit_rejects_ledger_hash_drift(self):
+        manifest = self._manifest([self._row()])
+        policy, objects, sites = self._frozen_policy_artifacts(resolved=True)
+        changed = self.root / "changed-objects.json"
+        shutil.copyfile(objects, changed)
+        payload = json.loads(changed.read_text())
+        payload["objects"][0]["evidence"].append("unreviewed drift")
+        changed.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+        with self.assertRaisesRegex(RuntimeError, "drift"):
+            audit_inventory(
+                manifest,
+                kind="frozen",
+                exclusion_policy=policy,
+                damaged_objects=changed,
+                damaged_sites=sites,
+            )
 
     def test_audit_binds_all_columns_and_manifest_identity(self):
         config, audit = self._config()
@@ -282,54 +376,62 @@ class FullJumpCompressionTests(unittest.TestCase):
         )
 
     def test_adoption_audits_actual_frozen_identity_outputs_and_producer(self):
-        config, _ = self._config()
+        config, _ = self._config(rows=[self._row(), self._row(site=2)])
         self._control(config)
         run_candidate(config, True)
         frozen_audit_path = self.root / "frozen.json"
-        frozen = audit_inventory(config.manifest, frozen_audit_path, kind="frozen")
-        result = validate_adoption_seam(
-            config, config.manifest, frozen_audit_path, frozen["inventory_digest"]
+        policy, objects, sites = self._frozen_policy_artifacts(resolved=True)
+        frozen = audit_inventory(
+            config.manifest,
+            frozen_audit_path,
+            kind="frozen",
+            exclusion_policy=policy,
+            damaged_objects=objects,
+            damaged_sites=sites,
         )
+
+        def adopt(digest=frozen["inventory_digest"]):
+            return validate_adoption_seam(
+                config,
+                config.manifest,
+                frozen_audit_path,
+                digest,
+                policy,
+                objects,
+                sites,
+            )
+
+        result = adopt()
         self.assertEqual(result["validated_receipts"], 2)
         self.assertFalse(result["promotion_performed"])
         extra = config.output_root / "receipts" / "unexpected.json"
         extra.write_text("{}")
         with self.assertRaises(RuntimeError):
-            validate_adoption_seam(
-                config, config.manifest, frozen_audit_path, frozen["inventory_digest"]
-            )
+            adopt()
         extra.unlink()
         with self.assertRaises(RuntimeError):
-            validate_adoption_seam(config, config.manifest, frozen_audit_path, "0" * 64)
+            adopt("0" * 64)
         site = "source_1__batch__plate__A01__1"
         receipt_path = config.output_root / "receipts" / f"{site}.json"
         receipt = json.loads(receipt_path.read_text())
         receipt["sources"][0]["etag"] = "0" * 32
         receipt_path.write_text(json.dumps(receipt))
         with self.assertRaises(RuntimeError):
-            validate_adoption_seam(
-                config, config.manifest, frozen_audit_path, frozen["inventory_digest"]
-            )
+            adopt()
         run_candidate(config, True)
         hq_root = config.output_root / "codecs/jpegxl_lossy_hq.zarr"
         extra_site = hq_root / "unexpected-site"
         extra_site.mkdir()
         with self.assertRaises(RuntimeError):
-            validate_adoption_seam(
-                config, config.manifest, frozen_audit_path, frozen["inventory_digest"]
-            )
+            adopt()
         extra_site.rmdir()
         shutil.rmtree(hq_root / site)
         with self.assertRaises(RuntimeError):
-            validate_adoption_seam(
-                config, config.manifest, frozen_audit_path, frozen["inventory_digest"]
-            )
+            adopt()
         run_candidate(config, True)
         (hq_root / site / ".zattrs").unlink()
         with self.assertRaises(Exception):
-            validate_adoption_seam(
-                config, config.manifest, frozen_audit_path, frozen["inventory_digest"]
-            )
+            adopt()
 
     def test_symlink_escape_and_live_literal_path_rejected(self):
         config, audit = self._config(rows=[self._row()])

@@ -922,9 +922,18 @@ def validate_adoption_seam(
     frozen_manifest: Path,
     frozen_audit: Path,
     frozen_inventory_digest: str,
+    exclusion_policy: Path,
+    damaged_objects: Path,
+    damaged_sites: Path,
 ) -> dict[str, Any]:
     _, candidate_rows_original, producer = _prepare(config)
-    audit = audit_inventory(frozen_manifest, kind="frozen")
+    audit = audit_inventory(
+        frozen_manifest,
+        kind="frozen",
+        exclusion_policy=exclusion_policy,
+        damaged_objects=damaged_objects,
+        damaged_sites=damaged_sites,
+    )
     recorded = load_audit(
         frozen_audit, frozen_manifest, frozen_inventory_digest, kind="frozen"
     )

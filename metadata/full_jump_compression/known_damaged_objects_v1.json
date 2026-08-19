@@ -1,0 +1,97 @@
+{
+  "format_version": "full-jump-known-damaged-objects-v1",
+  "object_count": 4,
+  "objects": [
+    {
+      "action": "exclude_entire_site_from_full_jump_compression",
+      "batch": "20210727_Run3",
+      "bytes": 2768896,
+      "channel": "ER",
+      "damage_class": "public_object_all_zero_not_valid_tiff",
+      "etag": "d4ffe90e54a5af4e2009e5984da69f03",
+      "evidence": [
+        "cpg_upload/rebuild_zstd_from_originals.py: explicit URI/size/ETag allowlist",
+        "cpg_upload/README.md: documented zero-filled source_7 inputs",
+        "https://github.com/jump-cellpainting/datasets/issues/177"
+      ],
+      "plate": "CP3-SC1-18",
+      "sha256": "5943e9d0a21bc6cc913afecb6e36f2e53d57813d5cd486557a855905293cfe0f",
+      "sha256_basis": "SHA-256 of the documented 2,768,896 all-zero object bytes; this is content identity, not an S3 checksum claim.",
+      "site": 2,
+      "site_key": "source_7__20210727_Run3__CP3-SC1-18__I22__2",
+      "source": "source_7",
+      "uri": "s3://cellpainting-gallery/cpg0016-jump/source_7/images/20210727_Run3/images/CP3-SC1-18/CP3-SC1-18_I22_T0001F003L01A03Z01C04.tif",
+      "url_column": "URL_OrigER",
+      "well": "I22"
+    },
+    {
+      "action": "exclude_entire_site_from_full_jump_compression",
+      "batch": "20210727_Run3",
+      "bytes": 2768896,
+      "channel": "DNA",
+      "damage_class": "public_object_all_zero_not_valid_tiff",
+      "etag": "d4ffe90e54a5af4e2009e5984da69f03",
+      "evidence": [
+        "cpg_upload/rebuild_zstd_from_originals.py: explicit URI/size/ETag allowlist",
+        "cpg_upload/README.md: documented zero-filled source_7 inputs",
+        "https://github.com/jump-cellpainting/datasets/issues/177"
+      ],
+      "plate": "CP3-SC1-18",
+      "sha256": "5943e9d0a21bc6cc913afecb6e36f2e53d57813d5cd486557a855905293cfe0f",
+      "sha256_basis": "SHA-256 of the documented 2,768,896 all-zero object bytes; this is content identity, not an S3 checksum claim.",
+      "site": 3,
+      "site_key": "source_7__20210727_Run3__CP3-SC1-18__I22__3",
+      "source": "source_7",
+      "uri": "s3://cellpainting-gallery/cpg0016-jump/source_7/images/20210727_Run3/images/CP3-SC1-18/CP3-SC1-18_I22_T0001F004L01A01Z01C01.tif",
+      "url_column": "URL_OrigDNA",
+      "well": "I22"
+    },
+    {
+      "action": "exclude_entire_site_from_full_jump_compression",
+      "batch": "20210727_Run3",
+      "bytes": 2768896,
+      "channel": "Mito",
+      "damage_class": "public_object_all_zero_not_valid_tiff",
+      "etag": "d4ffe90e54a5af4e2009e5984da69f03",
+      "evidence": [
+        "cpg_upload/rebuild_zstd_from_originals.py: explicit URI/size/ETag allowlist",
+        "cpg_upload/README.md: documented zero-filled source_7 inputs",
+        "https://github.com/jump-cellpainting/datasets/issues/177"
+      ],
+      "plate": "CP3-SC1-18",
+      "sha256": "5943e9d0a21bc6cc913afecb6e36f2e53d57813d5cd486557a855905293cfe0f",
+      "sha256_basis": "SHA-256 of the documented 2,768,896 all-zero object bytes; this is content identity, not an S3 checksum claim.",
+      "site": 3,
+      "site_key": "source_7__20210727_Run3__CP3-SC1-18__I22__3",
+      "source": "source_7",
+      "uri": "s3://cellpainting-gallery/cpg0016-jump/source_7/images/20210727_Run3/images/CP3-SC1-18/CP3-SC1-18_I22_T0001F004L01A01Z01C02.tif",
+      "url_column": "URL_OrigMito",
+      "well": "I22"
+    },
+    {
+      "action": "exclude_entire_site_from_full_jump_compression",
+      "batch": "20210727_Run3",
+      "bytes": 2768896,
+      "channel": "RNA",
+      "damage_class": "public_object_all_zero_not_valid_tiff",
+      "etag": "d4ffe90e54a5af4e2009e5984da69f03",
+      "evidence": [
+        "cpg_upload/rebuild_zstd_from_originals.py: explicit URI/size/ETag allowlist",
+        "cpg_upload/README.md: documented zero-filled source_7 inputs",
+        "https://github.com/jump-cellpainting/datasets/issues/177"
+      ],
+      "plate": "CP3-SC1-18",
+      "sha256": "5943e9d0a21bc6cc913afecb6e36f2e53d57813d5cd486557a855905293cfe0f",
+      "sha256_basis": "SHA-256 of the documented 2,768,896 all-zero object bytes; this is content identity, not an S3 checksum claim.",
+      "site": 3,
+      "site_key": "source_7__20210727_Run3__CP3-SC1-18__I22__3",
+      "source": "source_7",
+      "uri": "s3://cellpainting-gallery/cpg0016-jump/source_7/images/20210727_Run3/images/CP3-SC1-18/CP3-SC1-18_I22_T0001F004L01A02Z01C03.tif",
+      "url_column": "URL_OrigRNA",
+      "well": "I22"
+    }
+  ],
+  "scope": "full_jump_compression_production_inventory",
+  "site_count": 2,
+  "unknown_decode_failure_action": "fatal"
+}
