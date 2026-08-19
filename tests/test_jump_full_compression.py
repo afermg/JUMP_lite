@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import fcntl
+import hashlib
 import io
 import json
 import os
@@ -16,7 +17,9 @@ from unittest import mock
 import numpy as np
 from PIL import Image
 import polars as pl
+import pyarrow.parquet as pq
 
+from jump_full_compression import inventory as inventory_module
 from jump_full_compression.governor import (
     GovernorPaths,
     collect_metrics,
@@ -113,6 +116,45 @@ class FullJumpCompressionTests(unittest.TestCase):
             metadata / "qc_plate_classification_v1.json",
         )
 
+    def _manifest_build_report(self, manifest, policy, objects, sites, qc_plates):
+        def binding(path):
+            content = path.read_bytes()
+            return {
+                "bytes": len(content),
+                "sha256": hashlib.sha256(content).hexdigest(),
+            }
+
+        parquet = pq.ParquetFile(manifest)
+        report = {
+            "format_version": "full-jump-production-manifest-build-v1",
+            "build_success": True,
+            "release_identity_frozen": False,
+            "policy_action": json.loads(policy.read_text())["red_gray_release_policy"][
+                "action"
+            ],
+            "inputs": {
+                "exclusion_policy": binding(policy),
+                "damaged_objects": binding(objects),
+                "damaged_sites": binding(sites),
+                "qc_plates": binding(qc_plates),
+            },
+            "counts": {"final_rows": parquet.metadata.num_rows},
+            "output": {
+                **binding(manifest),
+                "rows": parquet.metadata.num_rows,
+                "columns": parquet.schema_arrow.names,
+                "schema": str(parquet.schema_arrow),
+                "strict_identity_order": True,
+                "unique_identities": True,
+            },
+        }
+        report["build_digest"] = hashlib.sha256(
+            json.dumps(report, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+        path = self.root / "manifest-build-report.json"
+        path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+        return path
+
     def _frozen_audit(
         self,
         manifest,
@@ -124,12 +166,16 @@ class FullJumpCompressionTests(unittest.TestCase):
         policy, objects, sites, qc_plates = self._frozen_policy_artifacts(
             resolved=resolved, action=action
         )
+        build_report = self._manifest_build_report(
+            manifest, policy, objects, sites, qc_plates
+        )
         arguments = {
             "kind": "frozen",
             "exclusion_policy": policy,
             "damaged_objects": objects,
             "damaged_sites": sites,
             "qc_plates": qc_plates,
+            "build_report": build_report,
         }
         arguments.update(changes)
         return audit_inventory(manifest, self.root / "frozen-audit.json", **arguments)
@@ -241,6 +287,66 @@ class FullJumpCompressionTests(unittest.TestCase):
                 report_path,
                 manifest,
                 legacy_frozen["inventory_digest"],
+                kind="frozen",
+            )
+
+    def test_frozen_audit_requires_matching_builder_completion_marker(self):
+        manifest = self._manifest([self._row()])
+        policy, objects, sites, qc_plates = self._frozen_policy_artifacts(resolved=True)
+        arguments = {
+            "kind": "frozen",
+            "exclusion_policy": policy,
+            "damaged_objects": objects,
+            "damaged_sites": sites,
+            "qc_plates": qc_plates,
+        }
+        with self.assertRaisesRegex(RuntimeError, "manifest build report"):
+            audit_inventory(manifest, **arguments)
+        build_report = self._manifest_build_report(
+            manifest, policy, objects, sites, qc_plates
+        )
+        payload = json.loads(build_report.read_text())
+        payload["output"]["sha256"] = "0" * 64
+        payload["build_digest"] = hashlib.sha256(
+            json.dumps(
+                {k: v for k, v in payload.items() if k != "build_digest"},
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode()
+        ).hexdigest()
+        build_report.write_text(json.dumps(payload))
+        with self.assertRaisesRegex(RuntimeError, "identity/completion drift"):
+            audit_inventory(manifest, build_report=build_report, **arguments)
+        build_report.unlink()
+        with self.assertRaisesRegex(RuntimeError, "regular non-symlink"):
+            audit_inventory(manifest, build_report=build_report, **arguments)
+
+    def test_frozen_audit_manifest_replacement_cannot_mix_bytes_and_binding(self):
+        manifest = self._manifest([self._row()], "replace-target.parquet")
+        red = self._row("source_3", Metadata_Batch="CP59", Metadata_Plate="BR5867a3")
+        replacement = self._manifest([red], "red-replacement.parquet")
+        original_validate = inventory_module._validate_frozen_policy
+
+        def replace_after_capture(*args, **kwargs):
+            result = original_validate(*args, **kwargs)
+            os.replace(replacement, manifest)
+            return result
+
+        with mock.patch(
+            "jump_full_compression.inventory._validate_frozen_policy",
+            side_effect=replace_after_capture,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "inventory audit failed"):
+                self._frozen_audit(manifest)
+        report = json.loads((self.root / "frozen-audit.json").read_text())
+        self.assertFalse(report["audit_success"])
+        self.assertFalse(report["manifest_path_stable_through_audit"])
+        self.assertEqual(report["frozen_exclusion_policy"]["red_plate_rows_present"], 0)
+        with self.assertRaisesRegex(RuntimeError, "identity drift"):
+            load_audit(
+                self.root / "frozen-audit.json",
+                manifest,
+                report["inventory_digest"],
                 kind="frozen",
             )
 
@@ -542,6 +648,9 @@ class FullJumpCompressionTests(unittest.TestCase):
         run_candidate(config, True)
         frozen_audit_path = self.root / "frozen.json"
         policy, objects, sites, qc_plates = self._frozen_policy_artifacts(resolved=True)
+        build_report = self._manifest_build_report(
+            config.manifest, policy, objects, sites, qc_plates
+        )
         frozen = audit_inventory(
             config.manifest,
             frozen_audit_path,
@@ -550,6 +659,7 @@ class FullJumpCompressionTests(unittest.TestCase):
             damaged_objects=objects,
             damaged_sites=sites,
             qc_plates=qc_plates,
+            build_report=build_report,
         )
 
         def adopt(digest=frozen["inventory_digest"]):
@@ -562,6 +672,7 @@ class FullJumpCompressionTests(unittest.TestCase):
                 objects,
                 sites,
                 qc_plates,
+                build_report,
             )
 
         result = adopt()

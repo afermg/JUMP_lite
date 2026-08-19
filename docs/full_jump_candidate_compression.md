@@ -76,8 +76,11 @@ an explicit `audit_success` field; failed reports remain useful diagnostics but
 set `release_identity_frozen=false`, and audit loading rejects them. Legacy v2
 raw/candidate reports without that field remain loadable only when their exact
 row count, empty anomaly fields, non-frozen marker, digest, and file identity
-all pass; legacy frozen reports are never accepted. Frozen audits require the
-explicit policy and all three independently pinned classification ledgers:
+all pass; legacy frozen reports are never accepted. Every audit reads schema,
+row count, rows, and hashes from one captured Parquet byte snapshot and rejects
+a manifest path changed during the audit. Frozen audits require the explicit
+policy, all three independently pinned classification ledgers, and the
+content-bound successful builder completion report:
 
 ```bash
 python -m jump_full_compression audit --kind frozen \
@@ -85,7 +88,8 @@ python -m jump_full_compression audit --kind frozen \
   --exclusion-policy metadata/full_jump_compression/production_exclusion_policy_v1.json \
   --damaged-objects metadata/full_jump_compression/known_damaged_objects_v1.json \
   --damaged-sites metadata/full_jump_compression/known_damaged_sites_v1.json \
-  --qc-plates metadata/full_jump_compression/qc_plate_classification_v1.json
+  --qc-plates metadata/full_jump_compression/qc_plate_classification_v1.json \
+  --build-report /absolute/full-jump-production-manifest-build.json
 ```
 
 The QC ledger is generated offline by
@@ -118,8 +122,11 @@ Building the complete manifest is deliberately split into three reviewed steps:
    completion marker. The report explicitly keeps
    `release_identity_frozen=false`.
 3. **Freeze separately.** Run `jump_full_compression audit --kind frozen` with
-   the checked-in policy and three ledgers. Only a successful frozen-audit
-   report may set `release_identity_frozen=true`; the builder never does so.
+   the checked-in policy, three ledgers, and builder completion report. The
+   audit validates the report digest, manifest bytes/schema/rows/order claims,
+   policy action, and ledger bindings against its own captured manifest bytes.
+   Only a successful frozen-audit report may set
+   `release_identity_frozen=true`; the builder never does so.
 
 Example offline build (all paths must be absolute):
 
@@ -141,17 +148,21 @@ PYTHONPATH=src python prep/build_full_jump_manifest.py \
 The builder overrides all native thread-pool environment variables to one,
 caps PyArrow CPU and I/O pools at one, and imports no Python DuckDB. Before
 materializing the preliminary table it sums Parquet uncompressed column-chunk
-bytes and requires available Linux/cgroup memory of at least 64 GiB or six times
-that payload, whichever is larger; the build report records this preflight.
+bytes and requires effective available memory of at least 64 GiB or six times
+that payload, whichever is larger. Effective availability is the minimum of
+Linux `MemAvailable` and every finite cgroup-v2 ancestor's remaining allowance;
+the build report records this preflight.
 Gray CSVs may contain non-URL load-data columns, but the builder selects exactly
 the five identity and five `URL_Orig*` columns and rejects missing channels or
 unsupported URL channels.
 
-Output and report are not an atomic pair. The output is published first without
-overwrite, and the report is the completion marker. Ordinary report-publication
-failures remove the just-published output, but a process or host crash between
-the two publications can leave a fail-closed orphan output. A path with output
-but no report must never be adopted or overwritten; explicitly quarantine or
+Output and report are not an atomic pair. An exclusive directory build lock
+serializes cooperating builders. The output is published first without
+overwrite, and the report is the completion marker. Report-publication failures
+remove the output only if it is still the inode hard-linked by that builder;
+foreign paths are never unlinked. A process or host crash between publications
+can still leave a fail-closed orphan output. A path with output but no valid
+report must never be frozen, adopted, or overwritten; explicitly quarantine or
 remove that orphan after review before rerunning. The builder otherwise refuses
 existing outputs and removes unpublished temporary files after failures.
 
@@ -250,8 +261,9 @@ producer/config identity. The earliest bad prefix is removed and rebuilt.
 `validate-adoption` is validation-only. It requires a complete original bounded
 candidate: complete checkpoint, exact row/receipt set, exact site directories
 in both codecs, and checkpoint-bound receipt hashes. It also requires the same
-explicit `--exclusion-policy`, `--damaged-objects`, `--damaged-sites`, and
-`--qc-plates` artifacts as a frozen audit. It freshly audits the frozen manifest
+explicit `--exclusion-policy`, `--damaged-objects`, `--damaged-sites`,
+`--qc-plates`, and `--build-report` artifacts as a frozen audit. It freshly
+audits the frozen manifest
 and checks each original row is unchanged and present. It never moves, promotes,
 publishes, or uploads data.
 

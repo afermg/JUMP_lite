@@ -13,6 +13,7 @@ from pathlib import Path
 import stat
 from typing import Any, Iterator, Mapping
 
+import pyarrow as pa
 import pyarrow.parquet as pq
 
 from .model import (
@@ -21,7 +22,6 @@ from .model import (
     MAX_CANDIDATE_ROWS,
     channels_for_source,
     digest_json,
-    sha256_file,
     site_key,
 )
 
@@ -131,15 +131,10 @@ def _canonical_row(row: Mapping[str, Any], columns: tuple[str, ...]) -> dict[str
 
 
 def manifest_stat(path: Path) -> dict[str, Any]:
-    stat = path.stat()
-    return {
-        "path": str(path.absolute()),
-        "bytes": stat.st_size,
-        "mtime_ns": stat.st_mtime_ns,
-        "device": stat.st_dev,
-        "inode": stat.st_ino,
-        "sha256": sha256_file(path),
-    }
+    """Capture the current manifest path for post-audit identity validation."""
+    content, observation = _capture_regular_bytes(path, "manifest")
+    del content
+    return observation
 
 
 def inventory_digest_from_report(report: Mapping[str, Any]) -> str:
@@ -148,8 +143,14 @@ def inventory_digest_from_report(report: Mapping[str, Any]) -> str:
     return digest_json({key: report[key] for key in sorted(set(report) - excluded)})
 
 
-def schema(path: Path) -> tuple[list[dict[str, Any]], tuple[str, ...]]:
-    parquet = pq.ParquetFile(path)
+def _parquet(source: Path | bytes) -> pq.ParquetFile:
+    return pq.ParquetFile(
+        pa.BufferReader(source) if isinstance(source, bytes) else source
+    )
+
+
+def schema(path: Path | bytes) -> tuple[list[dict[str, Any]], tuple[str, ...]]:
+    parquet = _parquet(path)
     arrow_schema = parquet.schema_arrow
     description = [
         {
@@ -163,8 +164,8 @@ def schema(path: Path) -> tuple[list[dict[str, Any]], tuple[str, ...]]:
     return description, tuple(arrow_schema.names)
 
 
-def row_count(path: Path) -> int:
-    return int(pq.ParquetFile(path).metadata.num_rows)
+def row_count(path: Path | bytes) -> int:
+    return int(_parquet(path).metadata.num_rows)
 
 
 def _physical_order_key(row: Mapping[str, Any]) -> tuple[Any, ...]:
@@ -174,10 +175,10 @@ def _physical_order_key(row: Mapping[str, Any]) -> tuple[Any, ...]:
 
 
 def iter_inventory(
-    path: Path, columns: tuple[str, ...] | None = None, batch_size: int = 1024
+    path: Path | bytes, columns: tuple[str, ...] | None = None, batch_size: int = 1024
 ) -> Iterator[dict[str, Any]]:
     """Stream a physically identity-ordered Parquet without sorting or threads."""
-    parquet = pq.ParquetFile(path)
+    parquet = _parquet(path)
     columns = columns or tuple(parquet.schema_arrow.names)
     previous: tuple[Any, ...] | None = None
     for batch in parquet.iter_batches(
@@ -201,48 +202,64 @@ def iter_inventory(
             yield row
 
 
-def _capture_json_artifact(path: Path) -> tuple[dict[str, Any], dict[str, Any]]:
+def _stat_identity(value: os.stat_result) -> tuple[int, int, int, int, int]:
+    return (
+        value.st_dev,
+        value.st_ino,
+        value.st_size,
+        value.st_mtime_ns,
+        value.st_ctime_ns,
+    )
+
+
+def _capture_regular_bytes(path: Path, label: str) -> tuple[bytes, dict[str, Any]]:
+    """Capture one stable regular-file snapshot without following the leaf link."""
     flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
     try:
         descriptor = os.open(path, flags)
     except OSError as error:
         raise RuntimeError(
-            f"policy artifact must be a regular non-symlink file: {path}"
+            f"{label} must be a regular non-symlink file: {path}"
         ) from error
     try:
         before = os.fstat(descriptor)
         if not stat.S_ISREG(before.st_mode):
-            raise RuntimeError(f"policy artifact is not a regular file: {path}")
-        chunks = []
+            raise RuntimeError(f"{label} is not a regular file: {path}")
+        chunks: list[bytes] = []
+        digest = hashlib.sha256()
         while block := os.read(descriptor, 1024 * 1024):
             chunks.append(block)
+            digest.update(block)
         after = os.fstat(descriptor)
     finally:
         os.close(descriptor)
     try:
         current = os.stat(path, follow_symlinks=False)
     except OSError as error:
-        raise RuntimeError(f"policy artifact changed during capture: {path}") from error
-
-    def identity(value: os.stat_result) -> tuple[int, int, int, int, int]:
-        return (
-            value.st_dev,
-            value.st_ino,
-            value.st_size,
-            value.st_mtime_ns,
-            value.st_ctime_ns,
-        )
-
+        raise RuntimeError(f"{label} changed during capture: {path}") from error
     if (
         stat.S_ISLNK(current.st_mode)
         or not stat.S_ISREG(current.st_mode)
-        or identity(before) != identity(after)
-        or identity(after) != identity(current)
+        or _stat_identity(before) != _stat_identity(after)
+        or _stat_identity(after) != _stat_identity(current)
     ):
-        raise RuntimeError(f"policy artifact changed during capture: {path}")
+        raise RuntimeError(f"{label} changed during capture: {path}")
     content = b"".join(chunks)
     if len(content) != before.st_size:
-        raise RuntimeError(f"policy artifact byte-count drift: {path}")
+        raise RuntimeError(f"{label} byte-count drift: {path}")
+    return content, {
+        "path": str(path.absolute()),
+        "bytes": len(content),
+        "mtime_ns": before.st_mtime_ns,
+        "ctime_ns": before.st_ctime_ns,
+        "device": before.st_dev,
+        "inode": before.st_ino,
+        "sha256": digest.hexdigest(),
+    }
+
+
+def _capture_json_artifact(path: Path) -> tuple[dict[str, Any], dict[str, Any]]:
+    content, observation = _capture_regular_bytes(path, "policy artifact")
     try:
         payload = json.loads(content)
     except Exception as error:
@@ -250,9 +267,25 @@ def _capture_json_artifact(path: Path) -> tuple[dict[str, Any], dict[str, Any]]:
     if not isinstance(payload, dict):
         raise RuntimeError(f"policy artifact must contain a JSON object: {path}")
     return {
-        "bytes": len(content),
-        "sha256": hashlib.sha256(content).hexdigest(),
+        "bytes": observation["bytes"],
+        "sha256": observation["sha256"],
     }, payload
+
+
+def _path_matches_observation(path: Path, observation: Mapping[str, Any]) -> bool:
+    try:
+        current = os.stat(path, follow_symlinks=False)
+    except OSError:
+        return False
+    return (
+        stat.S_ISREG(current.st_mode)
+        and not stat.S_ISLNK(current.st_mode)
+        and current.st_dev == observation["device"]
+        and current.st_ino == observation["inode"]
+        and current.st_size == observation["bytes"]
+        and current.st_mtime_ns == observation["mtime_ns"]
+        and current.st_ctime_ns == observation["ctime_ns"]
+    )
 
 
 def _validate_frozen_policy(
@@ -490,6 +523,62 @@ def _validate_frozen_policy(
     }
 
 
+def _validate_manifest_build_report(
+    path: Path | None,
+    manifest: Mapping[str, Any],
+    row_total: int,
+    columns: tuple[str, ...],
+    schema_string: str,
+    frozen_policy: Mapping[str, Any],
+) -> dict[str, Any]:
+    if path is None:
+        raise RuntimeError("frozen audit requires an explicit manifest build report")
+    binding, report = _capture_json_artifact(path)
+    if report.get("format_version") != "full-jump-production-manifest-build-v1":
+        raise RuntimeError("manifest build report format drift")
+    claimed_digest = report.get("build_digest")
+    unsigned = {key: value for key, value in report.items() if key != "build_digest"}
+    computed_digest = hashlib.sha256(
+        json.dumps(unsigned, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    try:
+        inputs = report["inputs"]
+        output = report["output"]
+        counts = report["counts"]
+        if not all(isinstance(value, dict) for value in (inputs, output, counts)):
+            raise TypeError("build report sections must be objects")
+    except Exception as error:
+        raise RuntimeError("manifest build report fields malformed") from error
+    expected_output = {
+        "bytes": manifest["bytes"],
+        "sha256": manifest["sha256"],
+        "rows": row_total,
+        "columns": list(columns),
+        "schema": schema_string,
+        "strict_identity_order": True,
+        "unique_identities": True,
+    }
+    if (
+        not isinstance(claimed_digest, str)
+        or claimed_digest != computed_digest
+        or report.get("build_success") is not True
+        or report.get("release_identity_frozen") is not False
+        or report.get("policy_action") != frozen_policy["red_gray_action"]
+        or output != expected_output
+        or counts.get("final_rows") != row_total
+        or inputs.get("exclusion_policy") != frozen_policy["policy"]
+        or inputs.get("damaged_objects") != frozen_policy["damaged_objects"]
+        or inputs.get("damaged_sites") != frozen_policy["damaged_sites"]
+        or inputs.get("qc_plates") != frozen_policy["qc_plates"]
+    ):
+        raise RuntimeError("manifest build report identity/completion drift")
+    return {
+        "artifact": binding,
+        "build_digest": computed_digest,
+        "format_version": report["format_version"],
+    }
+
+
 def audit_inventory(
     path: Path,
     report_path: Path | None = None,
@@ -499,11 +588,11 @@ def audit_inventory(
     damaged_objects: Path | None = None,
     damaged_sites: Path | None = None,
     qc_plates: Path | None = None,
+    build_report: Path | None = None,
 ) -> dict[str, Any]:
     if kind not in {"raw", "candidate", "frozen"}:
         raise ValueError("audit kind must be raw, candidate, or frozen")
-    if not path.is_file() or path.is_symlink():
-        raise FileNotFoundError(path)
+    manifest_bytes, observation = _capture_regular_bytes(path, "manifest")
     frozen_policy = None
     frozen_red_plates: set[tuple[str, str, str]] = set()
     frozen_gray_plates: set[tuple[str, str, str]] = set()
@@ -513,8 +602,19 @@ def audit_inventory(
         )
         frozen_red_plates = frozen_policy.pop("red_plate_keys")
         frozen_gray_plates = frozen_policy.pop("gray_plate_keys")
-    description, columns = schema(path)
-    count_expected = row_count(path)
+    description, columns = schema(manifest_bytes)
+    manifest_schema_string = str(_parquet(manifest_bytes).schema_arrow)
+    count_expected = row_count(manifest_bytes)
+    frozen_build = None
+    if kind == "frozen":
+        frozen_build = _validate_manifest_build_report(
+            build_report,
+            {"bytes": observation["bytes"], "sha256": observation["sha256"]},
+            count_expected,
+            columns,
+            manifest_schema_string,
+            frozen_policy,
+        )
     if kind == "candidate" and not 1 <= count_expected <= MAX_CANDIDATE_ROWS:
         raise RuntimeError(
             f"candidate manifest must contain 1..{MAX_CANDIDATE_ROWS} rows, got {count_expected}"
@@ -534,7 +634,7 @@ def audit_inventory(
     frozen_gray_plate_rows = 0
     processed = 0
     if not missing_columns:
-        for raw in iter_inventory(path, columns):
+        for raw in iter_inventory(manifest_bytes, columns):
             processed += 1
             try:
                 normalized = _canonical_row(raw, columns)
@@ -571,8 +671,10 @@ def audit_inventory(
                             ],
                         }
                     )
+    path_stable = _path_matches_observation(path, observation)
     audit_success = not (
-        processed != count_expected
+        not path_stable
+        or processed != count_expected
         or missing_columns
         or extra_url_columns
         or anomaly_count
@@ -585,7 +687,6 @@ def audit_inventory(
             and frozen_gray_plate_rows
         )
     )
-    observation = manifest_stat(path)
     summary = {
         "format_version": "full-jump-inventory-audit-v2",
         "audit_kind": kind,
@@ -608,6 +709,7 @@ def audit_inventory(
         "anomalies": anomalies,
         "audit_success": audit_success,
         "release_identity_frozen": kind == "frozen" and audit_success,
+        "manifest_path_stable_through_audit": path_stable,
         "policy_note": "Raw audit and bounded candidate selection are distinct; frozen audits validate but never filter exclusions.",
     }
     if kind == "frozen":
@@ -617,6 +719,7 @@ def audit_inventory(
             "known_damaged_site_rows_present": frozen_damaged_site_rows,
             "red_plate_rows_present": frozen_red_plate_rows,
             "gray_plate_rows_present": frozen_gray_plate_rows,
+            "manifest_build_report": frozen_build,
         }
     summary["inventory_digest"] = inventory_digest_from_report(summary)
     if report_path is not None:
@@ -631,7 +734,7 @@ def load_audit(
     path: Path, manifest: Path, expected_digest: str, *, kind: str
 ) -> dict[str, Any]:
     payload = json.loads(path.read_text())
-    actual = manifest_stat(manifest)
+    actual_bytes, actual = _capture_regular_bytes(manifest, "manifest")
     if (
         payload.get("format_version") != "full-jump-inventory-audit-v2"
         or payload.get("audit_kind") != kind
@@ -662,7 +765,7 @@ def load_audit(
     elif audit_success is not True:
         legacy_success = (
             "audit_success" not in payload
-            and row_count(manifest) == payload.get("site_count")
+            and row_count(actual_bytes) == payload.get("site_count")
             and payload.get("missing_columns") == []
             and payload.get("unsupported_url_columns") == []
             and payload.get("anomalies") == []

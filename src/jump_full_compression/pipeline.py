@@ -930,6 +930,7 @@ def validate_adoption_seam(
     damaged_objects: Path,
     damaged_sites: Path,
     qc_plates: Path,
+    build_report: Path,
 ) -> dict[str, Any]:
     _, candidate_rows_original, producer = _prepare(config)
     audit = audit_inventory(
@@ -939,6 +940,7 @@ def validate_adoption_seam(
         damaged_objects=damaged_objects,
         damaged_sites=damaged_sites,
         qc_plates=qc_plates,
+        build_report=build_report,
     )
     recorded = load_audit(
         frozen_audit, frozen_manifest, frozen_inventory_digest, kind="frozen"

@@ -75,6 +75,11 @@ def parser():
         type=Path,
         help="required for frozen audits; pinned red/gray plate ledger JSON",
     )
+    audit.add_argument(
+        "--build-report",
+        type=Path,
+        help="required for frozen audits; manifest builder completion report",
+    )
     run = commands.add_parser("run")
     _add_config_arguments(run)
     run.add_argument("--apply", action="store_true")
@@ -103,6 +108,7 @@ def parser():
         "damaged-objects",
         "damaged-sites",
         "qc-plates",
+        "build-report",
     ):
         adopt.add_argument(f"--{name}", type=Path, required=True)
     adopt.add_argument("--frozen-inventory-digest", required=True)
@@ -125,6 +131,7 @@ def main(argv=None):
                     damaged_objects=args.damaged_objects,
                     damaged_sites=args.damaged_sites,
                     qc_plates=args.qc_plates,
+                    build_report=args.build_report,
                 ),
                 indent=2,
             )
@@ -173,6 +180,7 @@ def main(argv=None):
                     args.damaged_objects,
                     args.damaged_sites,
                     args.qc_plates,
+                    args.build_report,
                 ),
                 indent=2,
             )

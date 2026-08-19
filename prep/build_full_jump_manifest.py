@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import fcntl
 import gc
 import gzip
 import hashlib
@@ -274,19 +275,34 @@ def _host_available_memory() -> int:
         raise RuntimeError("cannot determine Linux MemAvailable") from error
 
 
-def _cgroup_available_memory() -> int | None:
+def _cgroup_available_memory(
+    proc_cgroup: Path = Path("/proc/self/cgroup"),
+    cgroup_root: Path = Path("/sys/fs/cgroup"),
+) -> int | None:
+    """Return the most restrictive finite headroom over all cgroup-v2 ancestors."""
     try:
         relative = next(
             line.split("::", 1)[1]
-            for line in Path("/proc/self/cgroup").read_text().splitlines()
+            for line in proc_cgroup.read_text().splitlines()
             if line.startswith("0::")
         )
-        root = Path("/sys/fs/cgroup") / relative.lstrip("/")
-        maximum = (root / "memory.max").read_text().strip()
-        current = int((root / "memory.current").read_text().strip())
-        if maximum == "max":
-            return None
-        return max(0, int(maximum) - current)
+        leaf = cgroup_root / relative.lstrip("/")
+        available: list[int] = []
+        current_path = leaf
+        while True:
+            maximum_path = current_path / "memory.max"
+            current_memory_path = current_path / "memory.current"
+            if maximum_path.exists() and current_memory_path.exists():
+                maximum = maximum_path.read_text().strip()
+                current = int(current_memory_path.read_text().strip())
+                if maximum != "max":
+                    available.append(max(0, int(maximum) - current))
+            if current_path == cgroup_root:
+                break
+            if cgroup_root not in current_path.parents:
+                raise RuntimeError("cgroup path escapes cgroup-v2 root")
+            current_path = current_path.parent
+        return min(available) if available else None
     except (FileNotFoundError, StopIteration):
         return None
     except Exception as error:
@@ -423,6 +439,21 @@ def _filter_preliminary(
     }
 
 
+def _unlink_if_same_inode(path: Path, source: Path) -> None:
+    """Remove path only when it is still this process's hard-linked artifact."""
+    try:
+        destination_stat = os.stat(path, follow_symlinks=False)
+        source_stat = os.stat(source, follow_symlinks=False)
+    except FileNotFoundError:
+        return
+    if (
+        stat.S_ISREG(destination_stat.st_mode)
+        and destination_stat.st_dev == source_stat.st_dev
+        and destination_stat.st_ino == source_stat.st_ino
+    ):
+        path.unlink()
+
+
 def validate_sorted_unique(table: pa.Table) -> None:
     previous: tuple[Any, ...] | None = None
     for key in _row_batches(table):
@@ -435,6 +466,47 @@ def validate_sorted_unique(table: pa.Table) -> None:
 
 
 def build_manifest(args: argparse.Namespace) -> dict[str, Any]:
+    """Serialize builders sharing the publication directory, then build."""
+    explicit_paths = (
+        args.preliminary,
+        args.datasets_checkout,
+        args.exclusion_policy,
+        args.damaged_objects,
+        args.damaged_sites,
+        args.qc_plates,
+        args.gray_receipt,
+        args.output,
+        args.report,
+    )
+    if any(not path.is_absolute() for path in explicit_paths):
+        raise RuntimeError("all input and output paths must be absolute")
+    output = args.output.resolve()
+    report_path = args.report.resolve()
+    if output.parent != report_path.parent:
+        raise RuntimeError("output and report must share an existing parent directory")
+    if not output.parent.is_dir() or output.parent.is_symlink():
+        raise RuntimeError("output parent must be an existing non-symlink directory")
+    lock_path = output.parent / ".full-jump-manifest-build.lock"
+    flags = (
+        os.O_RDWR
+        | os.O_CREAT
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    try:
+        descriptor = os.open(lock_path, flags, 0o600)
+    except OSError as error:
+        raise RuntimeError(f"cannot safely open build lock: {lock_path}") from error
+    try:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            raise RuntimeError("build lock is not a regular file")
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        return _build_manifest_locked(args)
+    finally:
+        os.close(descriptor)
+
+
+def _build_manifest_locked(args: argparse.Namespace) -> dict[str, Any]:
     pa.set_cpu_count(1)
     pa.set_io_thread_count(1)
     explicit_paths = (
@@ -653,8 +725,8 @@ def build_manifest(args: argparse.Namespace) -> dict[str, Any]:
             output_published = True
             os.link(report_temporary, report_path)
         except Exception:
-            if output_published and not report_path.exists():
-                output.unlink(missing_ok=True)
+            if output_published:
+                _unlink_if_same_inode(output, temporary)
             raise
         temporary.unlink()
         report_temporary.unlink()

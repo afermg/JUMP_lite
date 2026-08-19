@@ -357,6 +357,21 @@ class FullJumpManifestBuilderTests(unittest.TestCase):
         self.assertFalse(args.output.exists())
         self.assertFalse(args.report.exists())
 
+    def test_cgroup_memory_uses_most_restrictive_finite_ancestor(self):
+        cgroup_root = self.root / "cgroup"
+        leaf = cgroup_root / "user.slice" / "job.scope"
+        leaf.mkdir(parents=True)
+        proc = self.root / "self.cgroup"
+        proc.write_text("0::/user.slice/job.scope\n")
+        for path, maximum, current in (
+            (cgroup_root, "max", "1"),
+            (cgroup_root / "user.slice", "1000", "100"),
+            (leaf, "5000", "200"),
+        ):
+            (path / "memory.max").write_text(maximum)
+            (path / "memory.current").write_text(current)
+        self.assertEqual(builder._cgroup_available_memory(proc, cgroup_root), 900)
+
     def test_first_pyarrow_import_sees_overridden_thread_environment(self):
         names = list(builder.THREAD_ENV)
         code = (
@@ -427,6 +442,28 @@ import prep.build_full_jump_manifest
                 builder.build_manifest(publication)
         self.assertFalse(publication.output.exists())
         self.assertFalse(publication.report.exists())
+        self.assertEqual(list(self.root.glob(".*.building-*")), [])
+
+    def test_foreign_report_race_removes_only_builder_output_inode(self):
+        publication = self._args("foreign-publication")
+        real_link = os.link
+        calls = 0
+
+        def foreign_report_then_fail(source, destination):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                Path(destination).write_text('{"foreign": true}\n')
+                raise FileExistsError("concurrent foreign report")
+            return real_link(source, destination)
+
+        with mock.patch.object(
+            builder.os, "link", side_effect=foreign_report_then_fail
+        ):
+            with self.assertRaisesRegex(FileExistsError, "foreign report"):
+                builder.build_manifest(publication)
+        self.assertFalse(publication.output.exists())
+        self.assertEqual(json.loads(publication.report.read_text()), {"foreign": True})
         self.assertEqual(list(self.root.glob(".*.building-*")), [])
 
 
