@@ -70,28 +70,22 @@ _CANONICAL_DAMAGED_SITE_LEDGER = {
     "bytes": 1_434,
     "sha256": "b5ab319a6a7b910ef82423243ec3dadd731deb89eab614f632f8d29e60dfe15d",
 }
+_CANONICAL_QC_PLATE_LEDGER = {
+    "bytes": 18_229,
+    "sha256": "57552bafb6a0065f2de45facc09c7cddc06074924da80b00943c4b8edc804b8f",
+}
 _CANONICAL_OBJECT_LEDGER_PATH = (
     "metadata/full_jump_compression/known_damaged_objects_v1.json"
 )
 _CANONICAL_SITE_LEDGER_PATH = (
     "metadata/full_jump_compression/known_damaged_sites_v1.json"
 )
-_UNRESOLVED_RED_GRAY = {
-    "action": None,
-    "release_identity_blocked": True,
-    "status": "unresolved",
-}
-_RESOLVED_RED_GRAY = (
-    {
-        "action": "exclude_red_include_gray",
-        "release_identity_blocked": False,
-        "status": "resolved",
-    },
-    {
-        "action": "exclude_red_and_gray",
-        "release_identity_blocked": False,
-        "status": "resolved",
-    },
+_CANONICAL_QC_PLATE_LEDGER_PATH = (
+    "metadata/full_jump_compression/qc_plate_classification_v1.json"
+)
+_QC_UPSTREAM_COMMIT = "016e865fa0691244e0860943e41c7d6a88ed2580"
+_QC_PLATE_CSV_SHA256 = (
+    "541ada1f64816166509a4e2328316d2a6662ba67e257b7ae134cbec9d7079319"
 )
 
 
@@ -227,22 +221,26 @@ def _validate_frozen_policy(
     policy_path: Path | None,
     damaged_objects_path: Path | None,
     damaged_sites_path: Path | None,
+    qc_plates_path: Path | None,
 ) -> dict[str, Any]:
     if (
         policy_path is None
         or damaged_objects_path is None
         or damaged_sites_path is None
+        or qc_plates_path is None
     ):
         raise RuntimeError(
             "frozen audit requires explicit exclusion policy, damaged-object ledger, "
-            "and damaged-site ledger"
+            "damaged-site ledger, and QC plate-classification ledger"
         )
     policy_binding = _artifact_binding(policy_path)
     object_binding = _artifact_binding(damaged_objects_path)
     site_binding = _artifact_binding(damaged_sites_path)
+    qc_binding = _artifact_binding(qc_plates_path)
     policy = _load_json_object(policy_path)
     objects = _load_json_object(damaged_objects_path)
     sites = _load_json_object(damaged_sites_path)
+    qc_plates = _load_json_object(qc_plates_path)
 
     # These independent pins bind every canonical ledger byte, including JSON
     # key sets, list order, scope, evidence strings, paths, and all values.
@@ -251,6 +249,8 @@ def _validate_frozen_policy(
         or site_binding != _CANONICAL_DAMAGED_SITE_LEDGER
     ):
         raise RuntimeError("canonical damaged-ledger binding drift")
+    if qc_binding != _CANONICAL_QC_PLATE_LEDGER:
+        raise RuntimeError("canonical QC plate-ledger binding drift")
 
     expected_objects = {
         (
@@ -343,6 +343,39 @@ def _validate_frozen_policy(
         raise RuntimeError("damaged-site ledger content drift")
 
     try:
+        red_plates = {
+            (item["source"], item["batch"], item["plate"])
+            for item in qc_plates["red_plates"]
+        }
+        gray_plates = {
+            (item["source"], item["batch"], item["plate"])
+            for item in qc_plates["gray_plates"]
+        }
+    except Exception as error:
+        raise RuntimeError("QC plate-classification ledger schema malformed") from error
+    if (
+        qc_plates.get("format_version") != "full-jump-qc-plate-classification-v1"
+        or qc_plates.get("classification_only") is not True
+        or qc_plates.get("red_plate_count") != 169
+        or qc_plates.get("gray_plate_count") != 6
+        or len(qc_plates.get("red_plates", [])) != 169
+        or len(qc_plates.get("gray_plates", [])) != 6
+        or len(red_plates) != 169
+        or len(gray_plates) != 6
+        or red_plates & gray_plates
+        or qc_plates.get("upstream")
+        != {
+            "commit": _QC_UPSTREAM_COMMIT,
+            "plate_csv_path": "metadata/plate.csv.gz",
+            "plate_csv_sha256": _QC_PLATE_CSV_SHA256,
+            "repository": "jump-cellpainting/datasets",
+            "row_count": 2525,
+        }
+        or qc_plates.get("rules", {}).get("source") != "prep/build_jl_index.sql"
+    ):
+        raise RuntimeError("QC plate-classification ledger content drift")
+
+    try:
         red_gray = policy["red_gray_release_policy"]
     except Exception as error:
         raise RuntimeError("production exclusion policy schema malformed") from error
@@ -367,18 +400,59 @@ def _validate_frozen_policy(
     }
     if policy != expected_policy:
         raise RuntimeError("production exclusion policy content/binding drift")
-    if red_gray == _UNRESOLVED_RED_GRAY:
+    expected_classification = {
+        **_CANONICAL_QC_PLATE_LEDGER,
+        "path": _CANONICAL_QC_PLATE_LEDGER_PATH,
+    }
+    if red_gray.get("classification_ledger") != expected_classification:
+        raise RuntimeError("production exclusion policy QC binding drift")
+    unresolved = {
+        "action": None,
+        "classification_ledger": expected_classification,
+        "release_identity_blocked": True,
+        "status": "unresolved",
+    }
+    if red_gray == unresolved:
         raise RuntimeError(
             "red/gray release policy unresolved; frozen identity blocked"
         )
-    if red_gray not in _RESOLVED_RED_GRAY:
+    valid_resolved = {
+        (
+            "exclude_red_include_gray",
+            False,
+            "resolved",
+        ),
+        (
+            "exclude_red_and_gray",
+            False,
+            "resolved",
+        ),
+    }
+    declaration = (
+        red_gray.get("action"),
+        red_gray.get("release_identity_blocked"),
+        red_gray.get("status"),
+    )
+    if (
+        set(red_gray)
+        != {
+            "action",
+            "classification_ledger",
+            "release_identity_blocked",
+            "status",
+        }
+        or declaration not in valid_resolved
+    ):
         raise RuntimeError("production exclusion policy red/gray content drift")
     return {
         "policy": policy_binding,
         "damaged_objects": object_binding,
         "damaged_sites": site_binding,
+        "qc_plates": qc_binding,
         "red_gray_action": red_gray["action"],
         "known_damaged_site_keys": sorted(KNOWN_DAMAGED_SITE_KEYS),
+        "red_plate_keys": red_plates,
+        "gray_plate_keys": gray_plates,
     }
 
 
@@ -390,16 +464,21 @@ def audit_inventory(
     exclusion_policy: Path | None = None,
     damaged_objects: Path | None = None,
     damaged_sites: Path | None = None,
+    qc_plates: Path | None = None,
 ) -> dict[str, Any]:
     if kind not in {"raw", "candidate", "frozen"}:
         raise ValueError("audit kind must be raw, candidate, or frozen")
     if not path.is_file() or path.is_symlink():
         raise FileNotFoundError(path)
     frozen_policy = None
+    frozen_red_plates: set[tuple[str, str, str]] = set()
+    frozen_gray_plates: set[tuple[str, str, str]] = set()
     if kind == "frozen":
         frozen_policy = _validate_frozen_policy(
-            exclusion_policy, damaged_objects, damaged_sites
+            exclusion_policy, damaged_objects, damaged_sites, qc_plates
         )
+        frozen_red_plates = frozen_policy.pop("red_plate_keys")
+        frozen_gray_plates = frozen_policy.pop("gray_plate_keys")
     description, columns = schema(path)
     count_expected = row_count(path)
     if kind == "candidate" and not 1 <= count_expected <= MAX_CANDIDATE_ROWS:
@@ -417,6 +496,8 @@ def audit_inventory(
     counts: Counter[str] = Counter()
     frozen_source_15_rows = 0
     frozen_damaged_site_rows = 0
+    frozen_red_plate_rows = 0
+    frozen_gray_plate_rows = 0
     processed = 0
     if not missing_columns:
         for raw in iter_inventory(path, columns):
@@ -434,8 +515,15 @@ def audit_inventory(
                 source = str(raw["Metadata_Source"])
                 counts[source] += 1
                 if kind == "frozen":
+                    plate_key = (
+                        source,
+                        str(raw["Metadata_Batch"]),
+                        str(raw["Metadata_Plate"]),
+                    )
                     frozen_source_15_rows += int(source == "source_15")
                     frozen_damaged_site_rows += int(key in KNOWN_DAMAGED_SITE_KEYS)
+                    frozen_red_plate_rows += int(plate_key in frozen_red_plates)
+                    frozen_gray_plate_rows += int(plate_key in frozen_gray_plates)
             except Exception as error:
                 anomaly_count += 1
                 if len(anomalies) < 1000:
@@ -456,6 +544,12 @@ def audit_inventory(
         or anomaly_count
         or (kind == "frozen" and frozen_source_15_rows)
         or (kind == "frozen" and frozen_damaged_site_rows)
+        or (kind == "frozen" and frozen_red_plate_rows)
+        or (
+            kind == "frozen"
+            and frozen_policy["red_gray_action"] == "exclude_red_and_gray"
+            and frozen_gray_plate_rows
+        )
     )
     observation = manifest_stat(path)
     summary = {
@@ -487,6 +581,8 @@ def audit_inventory(
             **frozen_policy,
             "source_15_rows_present": frozen_source_15_rows,
             "known_damaged_site_rows_present": frozen_damaged_site_rows,
+            "red_plate_rows_present": frozen_red_plate_rows,
+            "gray_plate_rows_present": frozen_gray_plate_rows,
         }
     summary["inventory_digest"] = inventory_digest_from_report(summary)
     if report_path is not None:
@@ -513,10 +609,6 @@ def load_audit(
         content = payload["manifest"]
     except Exception as error:
         raise RuntimeError("audit report fields malformed") from error
-    if payload.get("audit_success") is not True:
-        raise RuntimeError("audit report records an unsuccessful audit")
-    if kind == "frozen" and payload.get("release_identity_frozen") is not True:
-        raise RuntimeError("frozen audit report does not freeze release identity")
     if (
         payload.get("inventory_digest") != expected_digest
         or recomputed != expected_digest
@@ -524,6 +616,27 @@ def load_audit(
         or content != {"bytes": actual["bytes"], "sha256": actual["sha256"]}
     ):
         raise RuntimeError("audit/manifest identity drift")
+    audit_success = payload.get("audit_success")
+    if kind == "frozen":
+        if (
+            audit_success is not True
+            or payload.get("release_identity_frozen") is not True
+        ):
+            raise RuntimeError(
+                "frozen audit report does not record a successful freeze"
+            )
+    elif audit_success is not True:
+        legacy_success = (
+            "audit_success" not in payload
+            and row_count(manifest) == payload.get("site_count")
+            and payload.get("missing_columns") == []
+            and payload.get("unsupported_url_columns") == []
+            and payload.get("anomalies") == []
+            and payload.get("anomaly_count") == 0
+            and payload.get("release_identity_frozen") is False
+        )
+        if not legacy_success:
+            raise RuntimeError("audit report records an unsuccessful audit")
     return payload
 
 

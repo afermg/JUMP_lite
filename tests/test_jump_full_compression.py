@@ -90,17 +90,19 @@ class FullJumpCompressionTests(unittest.TestCase):
         pl.DataFrame(rows, schema_overrides=overrides).write_parquet(path)
         return path
 
-    def _frozen_policy_artifacts(self, *, resolved: bool):
+    def _frozen_policy_artifacts(
+        self, *, resolved: bool, action="exclude_red_include_gray"
+    ):
         metadata = Path(__file__).parents[1] / "metadata/full_jump_compression"
         policy = json.loads(
             (metadata / "production_exclusion_policy_v1.json").read_text()
         )
         if resolved:
-            policy["red_gray_release_policy"] = {
-                "action": "exclude_red_include_gray",
-                "status": "resolved",
-                "release_identity_blocked": False,
-            }
+            policy["red_gray_release_policy"].update(
+                action=action,
+                status="resolved",
+                release_identity_blocked=False,
+            )
         policy_path = self.root / (
             "resolved-policy.json" if resolved else "policy.json"
         )
@@ -109,15 +111,26 @@ class FullJumpCompressionTests(unittest.TestCase):
             policy_path,
             metadata / "known_damaged_objects_v1.json",
             metadata / "known_damaged_sites_v1.json",
+            metadata / "qc_plate_classification_v1.json",
         )
 
-    def _frozen_audit(self, manifest, *, resolved=True, **changes):
-        policy, objects, sites = self._frozen_policy_artifacts(resolved=resolved)
+    def _frozen_audit(
+        self,
+        manifest,
+        *,
+        resolved=True,
+        action="exclude_red_include_gray",
+        **changes,
+    ):
+        policy, objects, sites, qc_plates = self._frozen_policy_artifacts(
+            resolved=resolved, action=action
+        )
         arguments = {
             "kind": "frozen",
             "exclusion_policy": policy,
             "damaged_objects": objects,
             "damaged_sites": sites,
+            "qc_plates": qc_plates,
         }
         arguments.update(changes)
         return audit_inventory(manifest, self.root / "frozen-audit.json", **arguments)
@@ -183,7 +196,7 @@ class FullJumpCompressionTests(unittest.TestCase):
         self.assertEqual(report["frozen_exclusion_policy"]["source_15_rows_present"], 1)
         self.assertFalse(report["audit_success"])
         self.assertFalse(report["release_identity_frozen"])
-        with self.assertRaisesRegex(RuntimeError, "unsuccessful audit"):
+        with self.assertRaisesRegex(RuntimeError, "successful freeze"):
             load_audit(
                 report_path,
                 source_15,
@@ -213,12 +226,76 @@ class FullJumpCompressionTests(unittest.TestCase):
         self.assertEqual(frozen["source_15_rows_present"], 0)
         self.assertEqual(frozen["known_damaged_site_rows_present"], 0)
         self.assertEqual(frozen["red_gray_action"], "exclude_red_include_gray")
+        self.assertEqual(frozen["red_plate_rows_present"], 0)
+        self.assertEqual(frozen["gray_plate_rows_present"], 0)
         self.assertEqual(len(frozen["policy"]["sha256"]), 64)
         self.assertEqual(len(frozen["damaged_objects"]["sha256"]), 64)
+        self.assertEqual(len(frozen["qc_plates"]["sha256"]), 64)
+
+        report_path = self.root / "frozen-audit.json"
+        legacy_frozen = json.loads(report_path.read_text())
+        legacy_frozen.pop("audit_success")
+        legacy_frozen["inventory_digest"] = inventory_digest_from_report(legacy_frozen)
+        report_path.write_text(json.dumps(legacy_frozen, sort_keys=True))
+        with self.assertRaisesRegex(RuntimeError, "successful freeze"):
+            load_audit(
+                report_path,
+                manifest,
+                legacy_frozen["inventory_digest"],
+                kind="frozen",
+            )
+
+    def test_frozen_audit_enforces_pinned_red_gray_action(self):
+        metadata = Path(__file__).parents[1] / "metadata/full_jump_compression"
+        classification = json.loads(
+            (metadata / "qc_plate_classification_v1.json").read_text()
+        )
+        red = next(
+            item
+            for item in classification["red_plates"]
+            if item["source"] != "source_15"
+        )
+        red_manifest = self._manifest(
+            [
+                self._row(
+                    red["source"],
+                    Metadata_Batch=red["batch"],
+                    Metadata_Plate=red["plate"],
+                )
+            ],
+            "red.parquet",
+        )
+        with self.assertRaisesRegex(RuntimeError, "inventory audit failed"):
+            self._frozen_audit(red_manifest)
+        failed = json.loads((self.root / "frozen-audit.json").read_text())
+        self.assertEqual(failed["frozen_exclusion_policy"]["red_plate_rows_present"], 1)
+
+        gray = classification["gray_plates"][0]
+        gray_manifest = self._manifest(
+            [
+                self._row(
+                    gray["source"],
+                    Metadata_Batch=gray["batch"],
+                    Metadata_Plate=gray["plate"],
+                )
+            ],
+            "gray.parquet",
+        )
+        included = self._frozen_audit(gray_manifest)
+        self.assertTrue(included["audit_success"])
+        self.assertEqual(
+            included["frozen_exclusion_policy"]["gray_plate_rows_present"], 1
+        )
+        with self.assertRaisesRegex(RuntimeError, "inventory audit failed"):
+            self._frozen_audit(gray_manifest, action="exclude_red_and_gray")
+        failed = json.loads((self.root / "frozen-audit.json").read_text())
+        self.assertEqual(
+            failed["frozen_exclusion_policy"]["gray_plate_rows_present"], 1
+        )
 
     def test_frozen_audit_rejects_coordinated_policy_and_ledger_drift(self):
         manifest = self._manifest([self._row()])
-        policy, objects, sites = self._frozen_policy_artifacts(resolved=True)
+        policy, objects, sites, qc_plates = self._frozen_policy_artifacts(resolved=True)
         changed_objects = self.root / "changed-objects.json"
         object_payload = json.loads(objects.read_text())
         object_payload["scope"] = "coherently_changed_scope"
@@ -258,6 +335,33 @@ class FullJumpCompressionTests(unittest.TestCase):
                 exclusion_policy=changed_policy,
                 damaged_objects=changed_objects,
                 damaged_sites=changed_sites,
+                qc_plates=qc_plates,
+            )
+
+        changed_qc = self.root / "changed-qc.json"
+        qc_payload = json.loads(qc_plates.read_text())
+        qc_payload["rules"]["gray"] = "coherently changed gray rule"
+        changed_qc.write_text(json.dumps(qc_payload, indent=2, sort_keys=True) + "\n")
+        qc_policy_payload = json.loads(policy.read_text())
+        qc_policy_payload["red_gray_release_policy"]["classification_ledger"] = {
+            "path": "coherently/changed-qc.json",
+            "bytes": changed_qc.stat().st_size,
+            "sha256": sha256_file(changed_qc),
+        }
+        changed_qc_policy = self.root / "changed-qc-policy.json"
+        changed_qc_policy.write_text(
+            json.dumps(qc_policy_payload, indent=2, sort_keys=True) + "\n"
+        )
+        with self.assertRaisesRegex(
+            RuntimeError, "canonical QC plate-ledger binding drift"
+        ):
+            audit_inventory(
+                manifest,
+                kind="frozen",
+                exclusion_policy=changed_qc_policy,
+                damaged_objects=objects,
+                damaged_sites=sites,
+                qc_plates=changed_qc,
             )
 
     def test_audit_binds_all_columns_and_manifest_identity(self):
@@ -297,6 +401,27 @@ class FullJumpCompressionTests(unittest.TestCase):
                 audit["inventory_digest"],
                 kind="candidate",
             )
+
+    def test_legacy_v2_candidate_audit_loads_without_byte_or_digest_change(self):
+        config, _ = self._config(rows=[self._row()])
+        payload = json.loads(config.audit_report.read_text())
+        self.assertEqual(payload["format_version"], "full-jump-inventory-audit-v2")
+        payload.pop("audit_success")
+        payload["inventory_digest"] = inventory_digest_from_report(payload)
+        config.audit_report.write_text(
+            json.dumps(payload, indent=2, sort_keys=True) + "\n"
+        )
+        before_bytes = config.audit_report.read_bytes()
+        before_sha256 = sha256_file(config.audit_report)
+        loaded = load_audit(
+            config.audit_report,
+            config.manifest,
+            payload["inventory_digest"],
+            kind="candidate",
+        )
+        self.assertEqual(loaded["inventory_digest"], payload["inventory_digest"])
+        self.assertEqual(config.audit_report.read_bytes(), before_bytes)
+        self.assertEqual(sha256_file(config.audit_report), before_sha256)
 
     def test_audit_rejects_physically_unsorted_manifest(self):
         manifest = self._manifest([self._row(site=2), self._row(site=1)])
@@ -417,7 +542,7 @@ class FullJumpCompressionTests(unittest.TestCase):
         self._control(config)
         run_candidate(config, True)
         frozen_audit_path = self.root / "frozen.json"
-        policy, objects, sites = self._frozen_policy_artifacts(resolved=True)
+        policy, objects, sites, qc_plates = self._frozen_policy_artifacts(resolved=True)
         frozen = audit_inventory(
             config.manifest,
             frozen_audit_path,
@@ -425,6 +550,7 @@ class FullJumpCompressionTests(unittest.TestCase):
             exclusion_policy=policy,
             damaged_objects=objects,
             damaged_sites=sites,
+            qc_plates=qc_plates,
         )
 
         def adopt(digest=frozen["inventory_digest"]):
@@ -436,6 +562,7 @@ class FullJumpCompressionTests(unittest.TestCase):
                 policy,
                 objects,
                 sites,
+                qc_plates,
             )
 
         result = adopt()

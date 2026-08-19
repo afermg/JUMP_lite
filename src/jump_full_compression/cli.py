@@ -70,6 +70,11 @@ def parser():
         type=Path,
         help="required for frozen audits; derived damaged-site ledger JSON",
     )
+    audit.add_argument(
+        "--qc-plates",
+        type=Path,
+        help="required for frozen audits; pinned red/gray plate ledger JSON",
+    )
     run = commands.add_parser("run")
     _add_config_arguments(run)
     run.add_argument("--apply", action="store_true")
@@ -97,6 +102,7 @@ def parser():
         "exclusion-policy",
         "damaged-objects",
         "damaged-sites",
+        "qc-plates",
     ):
         adopt.add_argument(f"--{name}", type=Path, required=True)
     adopt.add_argument("--frozen-inventory-digest", required=True)
@@ -118,6 +124,7 @@ def main(argv=None):
                     exclusion_policy=args.exclusion_policy,
                     damaged_objects=args.damaged_objects,
                     damaged_sites=args.damaged_sites,
+                    qc_plates=args.qc_plates,
                 ),
                 indent=2,
             )
@@ -165,6 +172,7 @@ def main(argv=None):
                     args.exclusion_policy,
                     args.damaged_objects,
                     args.damaged_sites,
+                    args.qc_plates,
                 ),
                 indent=2,
             )

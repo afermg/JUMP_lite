@@ -71,21 +71,31 @@ preserved under `metadata/full_jump_compression/`; unknown decode failures
 remain fatal. Historical candidate behavior is unchanged, including the
 completed four-channel `source_15` canary.
 
-A frozen audit validates but never filters these exclusions. Every report binds
+A frozen audit validates but never filters these exclusions. New reports bind
 an explicit `audit_success` field; failed reports remain useful diagnostics but
-set `release_identity_frozen=false`, and audit loading rejects them. Frozen
-audits require the explicit policy and both independently pinned ledgers:
+set `release_identity_frozen=false`, and audit loading rejects them. Legacy v2
+raw/candidate reports without that field remain loadable only when their exact
+row count, empty anomaly fields, non-frozen marker, digest, and file identity
+all pass; legacy frozen reports are never accepted. Frozen audits require the
+explicit policy and all three independently pinned classification ledgers:
 
 ```bash
 python -m jump_full_compression audit --kind frozen \
   --input /absolute/frozen.parquet --report /absolute/frozen-audit.json \
   --exclusion-policy metadata/full_jump_compression/production_exclusion_policy_v1.json \
   --damaged-objects metadata/full_jump_compression/known_damaged_objects_v1.json \
-  --damaged-sites metadata/full_jump_compression/known_damaged_sites_v1.json
+  --damaged-sites metadata/full_jump_compression/known_damaged_sites_v1.json \
+  --qc-plates metadata/full_jump_compression/qc_plate_classification_v1.json
 ```
 
-The checked-in policy intentionally leaves red/gray handling unresolved, so it
-must fail frozen auditing until that field is explicitly resolved and reviewed.
+The QC ledger is generated offline by
+`prep/generate_full_jump_qc_ledger.py` from `jump-cellpainting/datasets` commit
+`016e865` and binds the exact 169 red and six gray source/batch/plate identities.
+It records classification only, not the release action. The checked-in policy
+intentionally leaves red/gray handling unresolved, so it must fail frozen
+auditing until that field is explicitly resolved and reviewed. A resolved
+`exclude_red_include_gray` policy rejects red rows; `exclude_red_and_gray`
+rejects both classifications.
 Production remains blocked on that red/gray decision, a commit-pinned complete
 inventory, and the final CPG namespace.
 
@@ -183,9 +193,11 @@ producer/config identity. The earliest bad prefix is removed and rebuilt.
 
 `validate-adoption` is validation-only. It requires a complete original bounded
 candidate: complete checkpoint, exact row/receipt set, exact site directories
-in both codecs, and checkpoint-bound receipt hashes. It freshly audits the
-frozen manifest and checks each original row is unchanged and present. It never
-moves, promotes, publishes, or uploads data.
+in both codecs, and checkpoint-bound receipt hashes. It also requires the same
+explicit `--exclusion-policy`, `--damaged-objects`, `--damaged-sites`, and
+`--qc-plates` artifacts as a frozen audit. It freshly audits the frozen manifest
+and checks each original row is unchanged and present. It never moves, promotes,
+publishes, or uploads data.
 
 ## Governor boundary
 
