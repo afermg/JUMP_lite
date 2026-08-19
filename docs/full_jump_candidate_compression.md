@@ -98,6 +98,50 @@ are included. Frozen auditing rejects every red row and permits gray rows.
 Production remains blocked on a commit-pinned complete ordered inventory and the
 final CPG namespace.
 
+### Offline production-manifest build
+
+Building the complete manifest is deliberately split into three reviewed steps:
+
+1. **Stage the six gray load-data CSVs.** This is the only network-fetch step.
+   Fetch each canonical public URI outside the builder, retain it as a regular
+   non-symlink file, and write a `full-jump-gray-input-receipt-v1` JSON object
+   with exactly six entries. Each entry contains `source`, `batch`, `plate`, the
+   canonical `public_uri`, absolute local `path`, `bytes`, and `sha256`. Review
+   those bytes and the receipt before proceeding.
+2. **Build offline.** `prep/build_full_jump_manifest.py` makes no network calls.
+   It binds the exact preliminary Parquet, pinned datasets checkout and all
+   policy ledgers; proves the preliminary plate universe; excludes all
+   `source_15` rows and both damaged sites; adds only the six receipted gray
+   CSVs; and atomically writes a unique, strictly identity-sorted Parquet plus a
+   content-bound build report. The report explicitly keeps
+   `release_identity_frozen=false`.
+3. **Freeze separately.** Run `jump_full_compression audit --kind frozen` with
+   the checked-in policy and three ledgers. Only a successful frozen-audit
+   report may set `release_identity_frozen=true`; the builder never does so.
+
+Example offline build (all paths must be absolute):
+
+```bash
+PYTHONPATH=src python prep/build_full_jump_manifest.py \
+  --preliminary /work/datasets/jump_lite/misc/jump_index.parquet \
+  --preliminary-sha256 cb31bb16bee36d126e45a9588d80b9e8cef5e16f468a9b7b2738f0b618152a44 \
+  --preliminary-bytes 145201434 \
+  --datasets-checkout /absolute/pinned/datasets-checkout \
+  --exclusion-policy /absolute/metadata/full_jump_compression/production_exclusion_policy_v1.json \
+  --damaged-objects /absolute/metadata/full_jump_compression/known_damaged_objects_v1.json \
+  --damaged-sites /absolute/metadata/full_jump_compression/known_damaged_sites_v1.json \
+  --qc-plates /absolute/metadata/full_jump_compression/qc_plate_classification_v1.json \
+  --gray-receipt /absolute/staging/gray-input-receipt.json \
+  --output /absolute/identity/full-jump-production-manifest.parquet \
+  --report /absolute/identity/full-jump-production-manifest-build.json
+```
+
+The builder caps PyArrow CPU and I/O pools at one, imports no Python DuckDB,
+refuses existing outputs, and removes unpublished temporary files after any
+failure. Gray CSVs may contain non-URL load-data columns, but the builder
+selects exactly the five identity and five `URL_Orig*` columns and rejects
+missing channels or unsupported URL channels.
+
 ## Reviewed launch sequence
 
 No step below should be run from this mutable worktree. First create and review
