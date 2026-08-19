@@ -54,8 +54,30 @@ from .model import (
 )
 
 numcodecs.register_codec(Jpegxl)
+ZARR_THREADING_MAX_WORKERS = 4
+ZARR_ASYNC_CONCURRENCY = 4
+zarr.config.set(
+    {
+        "threading.max_workers": ZARR_THREADING_MAX_WORKERS,
+        "async.concurrency": ZARR_ASYNC_CONCURRENCY,
+    }
+)
 STOP = threading.Event()
 _THREAD = threading.local()
+
+
+def _zarr_runtime_limits() -> dict[str, int]:
+    limits = {
+        "threading_max_workers": zarr.config.get("threading.max_workers"),
+        "async_concurrency": zarr.config.get("async.concurrency"),
+    }
+    expected = {
+        "threading_max_workers": ZARR_THREADING_MAX_WORKERS,
+        "async_concurrency": ZARR_ASYNC_CONCURRENCY,
+    }
+    if limits != expected:
+        raise RuntimeError(f"Zarr runtime limits drifted: {limits} != {expected}")
+    return limits
 
 
 def now() -> str:
@@ -289,6 +311,7 @@ def software_identity(*, require_clean: bool) -> dict[str, Any]:
         "imagecodecs": imagecodecs.__version__,
         "libjxl": libjxl,
         "zarr": zarr.__version__,
+        "zarr_runtime_limits": _zarr_runtime_limits(),
         "thread_env": {name: os.environ.get(name) for name in THREAD_ENV},
     }
 

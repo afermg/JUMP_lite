@@ -18,6 +18,7 @@ import numpy as np
 from PIL import Image
 import polars as pl
 import pyarrow.parquet as pq
+import zarr
 
 from jump_full_compression import inventory as inventory_module
 from jump_full_compression.governor import (
@@ -856,11 +857,89 @@ print(json.dumps({'tasks': runtime_task_count(), 'status': result['status'],
             with self.assertRaisesRegex(RuntimeError, "observed=25"):
                 run_candidate(live, False)
 
-    def test_software_identity_binds_resolved_interpreter_executable(self):
+    def test_software_identity_binds_interpreter_and_zarr_runtime_limits(self):
         identity = software_identity(require_clean=False)
         interpreter = Path(sys.executable).resolve(strict=True)
         self.assertEqual(identity["python_executable"], str(interpreter))
         self.assertEqual(identity["python_executable_sha256"], sha256_file(interpreter))
+        self.assertEqual(
+            identity["zarr_runtime_limits"],
+            {"threading_max_workers": 4, "async_concurrency": 4},
+        )
+        with (
+            zarr.config.set({"async.concurrency": 5}),
+            self.assertRaisesRegex(RuntimeError, "Zarr runtime limits drifted"),
+        ):
+            software_identity(require_clean=False)
+
+    def test_repeated_concurrent_zarr_io_stays_within_task_ceiling(self):
+        script = r"""
+import json
+from pathlib import Path
+import sys
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
+
+import numpy as np
+import zarr
+from jump_full_compression.model import runtime_task_count
+from jump_full_compression.pipeline import _write_staged, validate_site
+
+root = Path(sys.argv[1])
+samples = [runtime_task_count()]
+stop = threading.Event()
+
+def sample_tasks():
+    while not stop.is_set():
+        samples.append(runtime_task_count())
+        time.sleep(0.001)
+
+def write_and_read(index):
+    stack = np.arange(5 * 8 * 9, dtype=np.uint16).reshape(5, 8, 9) + index
+    staging = root / f"site-{index}"
+    site = f"site-{index}"
+    for codec in ("jpegxl_lossy_hq", "jpegxl_lossy_mq"):
+        path = _write_staged(stack, staging, site, codec)
+        validate_site(path, stack.shape, codec)
+    return runtime_task_count()
+
+sampler = threading.Thread(target=sample_tasks, daemon=True)
+sampler.start()
+with ThreadPoolExecutor(max_workers=4) as pool:
+    for batch in range(6):
+        samples.extend(pool.map(write_and_read, range(batch * 4, batch * 4 + 4)))
+        samples.append(runtime_task_count())
+stop.set()
+sampler.join()
+print(json.dumps({
+    "max_tasks": max(samples),
+    "samples": len(samples),
+    "zarr_runtime_limits": {
+        "threading_max_workers": zarr.config.get("threading.max_workers"),
+        "async_concurrency": zarr.config.get("async.concurrency"),
+    },
+}))
+"""
+        environment = os.environ.copy()
+        environment["PYTHONPATH"] = str(Path("src").absolute())
+        for name in THREAD_ENV:
+            environment[name] = "1"
+        result = subprocess.run(
+            [sys.executable, "-c", script, str(self.root / "zarr-task-regression")],
+            cwd=Path.cwd(),
+            env=environment,
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        payload = json.loads(result.stdout.strip().splitlines()[-1])
+        self.assertGreater(payload["samples"], 24)
+        self.assertLessEqual(payload["max_tasks"], 24)
+        self.assertEqual(
+            payload["zarr_runtime_limits"],
+            {"threading_max_workers": 4, "async_concurrency": 4},
+        )
 
     def test_software_identity_rejects_non_file_interpreter(self):
         with (

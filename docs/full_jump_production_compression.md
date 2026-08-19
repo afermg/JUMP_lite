@@ -34,7 +34,8 @@ hardcodes `--max-tranches 1`. Every `production-run` invocation requires exactly
 authorization marker is implemented. There is intentionally no continuous mode or
 authorization marker. Do not edit the unit to bypass this gate. At the start of the
 tranche, the runner snapshots the governor's `desired_workers` allocation, checks the
-24-task runtime budget, and creates one persistent worker pool. It reuses that pool
+24-task runtime budget, caps the process-global Zarr threading pool and async
+concurrency at four each, and creates one persistent worker pool. It reuses that pool
 for every sub-batch and checks the observed task count after each batch. Pause and
 stop decisions are still checked between batches, but governor worker-allocation
 changes take effect only in the next tranche/invocation; a second pool is never
@@ -79,8 +80,9 @@ PYTHON=/work/users/amunoz/projects/JUMP_lite/.venv/bin/python
 Use that same `DEPLOY_ROOT`, `PYTHON`, `PYTHONPATH`, `GIT_EXECUTABLE`, empty
 `CUDA_VISIBLE_DEVICES`, and ten literal thread values for dry-run, apply, validation,
 and the installed units. `producer.json` binds the clean Git tree, resolved Git
-executable and hash, resolved interpreter and hash, dependency versions, and thread
-environment; any mismatch makes later production operations fail closed.
+executable and hash, resolved interpreter and hash, dependency versions, thread
+environment, and exact Zarr pool/concurrency limits; any mismatch makes later
+production operations fail closed.
 
 All commands require the complete explicit production identity argument set shown by
 `$PYTHON -m jump_full_compression production-bootstrap --help`.

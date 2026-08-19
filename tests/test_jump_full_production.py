@@ -117,6 +117,10 @@ class ProductionRunnerTests(unittest.TestCase):
                     "tracked_tree_clean": True,
                     "python_executable": "/frozen/python",
                     "python_executable_sha256": "2" * 64,
+                    "zarr_runtime_limits": {
+                        "threading_max_workers": 4,
+                        "async_concurrency": 4,
+                    },
                 },
             ),
         ):
@@ -502,6 +506,10 @@ class ProductionRunnerTests(unittest.TestCase):
         for field, changed_value in (
             ("python_executable", "/different/python"),
             ("python_executable_sha256", "3" * 64),
+            (
+                "zarr_runtime_limits",
+                {"threading_max_workers": 4, "async_concurrency": 5},
+            ),
         ):
             changed = dict(stored["software"])
             changed[field] = changed_value
