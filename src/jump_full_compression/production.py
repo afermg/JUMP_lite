@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import re
+import resource
 import shutil
 import stat
 import threading
@@ -55,6 +56,11 @@ STATE_FORMAT = "full-jump-compression-state-v2"
 PRODUCER_FORMAT = "full-jump-production-producer-v1"
 ZERO_CHAIN = "0" * 64
 HEARTBEAT_SECONDS = 30
+CONTINUOUS_AUTH_FORMAT = "full-jump-production-continuous-authorization-v1"
+AUTHORIZED_FIRST_TRANCHE_DIGEST = (
+    "8431770a92782eaeab5e7e41f430aec53d67ab58909aa1bac8ec1d8889654a77"
+)
+IDLE_TERMINAL_STATES = {"session-complete", "complete", "stopped", "paused"}
 
 
 def _no_fault(_point: str) -> None:
@@ -229,6 +235,7 @@ def _validate_structure(config: ProductionConfig) -> None:
             "checkpoint.json",
             "compression.json",
             "control.json",
+            "continuous-authorization.json",
             "governor_snapshots",
             ".lock",
         },
@@ -776,10 +783,27 @@ def verify_tranche(config: ProductionConfig, tranche: int) -> dict[str, Any]:
         return _verify_tranche(config, snapshot, tranche, producer_sha)
 
 
+def _resource_telemetry() -> dict[str, Any]:
+    task_count = len(list(Path("/proc/self/task").iterdir()))
+    page_size = os.sysconf("SC_PAGE_SIZE")
+    rss_bytes = int(Path("/proc/self/statm").read_text().split()[1]) * page_size
+    max_rss_bytes = max(
+        rss_bytes, resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024
+    )
+    return {
+        "current_tasks": task_count,
+        "rss_bytes": rss_bytes,
+        "max_rss_bytes": max_rss_bytes,
+        "affinity": sorted(os.sched_getaffinity(0)),
+    }
+
+
 class Heartbeat:
     def __init__(self, config: ProductionConfig, fields: dict[str, Any]):
         self.config = config
         self.fields = fields
+        self.peak_tasks = 0
+        self.terminal = False
         self.lock = threading.Lock()
         self.stop = threading.Event()
         self.thread = threading.Thread(
@@ -789,6 +813,9 @@ class Heartbeat:
     def write(self, **changes: Any) -> None:
         with self.lock:
             self.fields.update(changes)
+            telemetry = _resource_telemetry()
+            self.peak_tasks = max(self.peak_tasks, telemetry["current_tasks"])
+            self.terminal = self.fields.get("state") in IDLE_TERMINAL_STATES | {"error"}
             atomic_json(
                 self.config.state_root / "compression.json",
                 {
@@ -797,6 +824,8 @@ class Heartbeat:
                     "config_sha256": self.config.digest,
                     "heartbeat_unix": time.time(),
                     **self.fields,
+                    **telemetry,
+                    "peak_tasks": self.peak_tasks,
                 },
             )
 
@@ -809,10 +838,13 @@ class Heartbeat:
         self.thread.start()
         return self
 
-    def __exit__(self, *_args):
+    def __exit__(self, exc_type, *_args):
         self.stop.set()
         self.thread.join(timeout=HEARTBEAT_SECONDS + 5)
-        self.write()
+        if not self.terminal:
+            self.write(
+                state="error" if exc_type else self.fields.get("state", "running")
+            )
 
 
 def _lock(config: ProductionConfig):
@@ -888,6 +920,7 @@ def _bootstrap_with_snapshot(
             "governor_evaluation_required": True,
         },
     )
+    telemetry = _resource_telemetry()
     atomic_json(
         config.state_root / "compression.json",
         {
@@ -900,6 +933,8 @@ def _bootstrap_with_snapshot(
             "sites": config.site_count,
             "cumulative_errors": 0,
             "heartbeat_unix": time.time(),
+            **telemetry,
+            "peak_tasks": telemetry["current_tasks"],
         },
     )
     _validate_structure(config)
@@ -957,25 +992,200 @@ def _acknowledge_with_snapshot(
     return {**result, "status": "acknowledged-paused"}
 
 
-def run_production(
-    config: ProductionConfig, max_tranches: int, apply: bool
+def _continuous_authorization_path(config: ProductionConfig) -> Path:
+    return config.state_root / "continuous-authorization.json"
+
+
+def _atomic_json_create(path: Path, value: dict[str, Any]) -> None:
+    temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+    try:
+        with temporary.open("x") as handle:
+            json.dump(value, handle, sort_keys=True, indent=2)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        try:
+            os.link(temporary, path)
+        except FileExistsError as error:
+            raise RuntimeError("continuous authorization already exists") from error
+        fsync_dir(path.parent)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def authorize_continuous(
+    config: ProductionConfig,
+    acceptance_receipt: Path,
+    acceptance_receipt_sha256: str,
+    apply: bool,
 ) -> dict[str, Any]:
-    if max_tranches != 1:
-        raise ValueError(
-            "--max-tranches must equal 1 until a reviewed authorization marker exists"
-        )
+    if (
+        not acceptance_receipt.is_file()
+        or acceptance_receipt.is_symlink()
+        or sha256_file(acceptance_receipt) != acceptance_receipt_sha256
+    ):
+        raise RuntimeError("one-tranche acceptance receipt binding drift")
     with ManifestSnapshot(config.manifest) as snapshot:
-        return _run_with_snapshot(config, snapshot, max_tranches, apply)
+        _validate_identity(config, snapshot)
+        with _lock(config):
+            return _authorize_continuous_locked(
+                config,
+                snapshot,
+                acceptance_receipt,
+                acceptance_receipt_sha256,
+                apply,
+            )
+
+
+def _authorize_continuous_locked(
+    config: ProductionConfig,
+    snapshot: ManifestSnapshot,
+    acceptance_receipt: Path,
+    acceptance_receipt_sha256: str,
+    apply: bool,
+) -> dict[str, Any]:
+    marker = _continuous_authorization_path(config)
+    if marker.exists() or marker.is_symlink():
+        raise RuntimeError("continuous authorization already exists")
+    if (
+        not acceptance_receipt.is_file()
+        or acceptance_receipt.is_symlink()
+        or sha256_file(acceptance_receipt) != acceptance_receipt_sha256
+    ):
+        raise RuntimeError("one-tranche acceptance receipt binding drift")
+    _, producer_sha = _load_producer(config)
+    checkpoint = _load_checkpoint(config)
+    _validate_progress_structure(config, checkpoint)
+    _validate_chain(config, checkpoint)
+    if (
+        checkpoint["next_index"] != config.tranche_size
+        or checkpoint["completed_tranches"] != 1
+        or checkpoint["cumulative_errors"] != 0
+        or checkpoint["complete"]
+        or checkpoint["chain_head"] != AUTHORIZED_FIRST_TRANCHE_DIGEST
+    ):
+        raise RuntimeError("checkpoint is not the accepted one-tranche gate")
+    verified = _verify_tranche(config, snapshot, 0, producer_sha)
+    if verified["tranche_digest"] != AUTHORIZED_FIRST_TRANCHE_DIGEST:
+        raise RuntimeError("accepted first-tranche digest drift")
+    value = {
+        "format_version": CONTINUOUS_AUTH_FORMAT,
+        "production_id": config.production_id,
+        "config_sha256": config.digest,
+        "inventory_digest": config.inventory_digest,
+        "producer_sha256": producer_sha,
+        "authorized_next_index": config.tranche_size,
+        "authorized_completed_tranches": 1,
+        "authorized_chain_head": AUTHORIZED_FIRST_TRANCHE_DIGEST,
+        "tranche": 0,
+        "tranche_digest": AUTHORIZED_FIRST_TRANCHE_DIGEST,
+        "acceptance_receipt": str(acceptance_receipt.resolve()),
+        "acceptance_receipt_sha256": acceptance_receipt_sha256,
+        "authorized_at": now(),
+    }
+    result = {"status": "would-authorize-continuous", **value}
+    if not apply:
+        return result
+    # Pause first: a crash may leave no marker, but can never leave a new marker
+    # paired with the pre-authorization unpaused control.
+    atomic_json(
+        config.state_root / "control.json",
+        {
+            "format_version": "full-jump-compression-control-v2",
+            "candidate_id": config.production_id,
+            "config_sha256": config.digest,
+            "paused": True,
+            "desired_workers": INITIAL_WORKERS,
+            "max_workers": MAX_WORKERS,
+            "consecutive_healthy_windows": 0,
+            "compression_cpus": list(COMPRESSION_CPUS),
+            "acknowledged_error_count": 0,
+            "acknowledgement_source": "zero",
+            "reasons": ["continuous authorization requires governor evaluation"],
+            "observed_at_unix": time.time(),
+            "feature_processes_mutated": False,
+            "governor_evaluation_required": True,
+        },
+    )
+    _atomic_json_create(marker, value)
+    return {**result, "status": "authorized-continuous"}
+
+
+def _validate_continuous_authorization(
+    config: ProductionConfig, checkpoint: dict[str, Any], producer_sha: str
+) -> dict[str, Any]:
+    path = _continuous_authorization_path(config)
+    if not path.is_file() or path.is_symlink():
+        raise RuntimeError("continuous authorization missing")
+    value = json.loads(path.read_text())
+    required = {
+        "format_version",
+        "production_id",
+        "config_sha256",
+        "inventory_digest",
+        "producer_sha256",
+        "authorized_next_index",
+        "authorized_completed_tranches",
+        "authorized_chain_head",
+        "tranche",
+        "tranche_digest",
+        "acceptance_receipt",
+        "acceptance_receipt_sha256",
+        "authorized_at",
+    }
+    if (
+        set(value) != required
+        or value.get("format_version") != CONTINUOUS_AUTH_FORMAT
+        or value.get("production_id") != config.production_id
+        or value.get("config_sha256") != config.digest
+        or value.get("inventory_digest") != config.inventory_digest
+        or value.get("producer_sha256") != producer_sha
+        or value.get("authorized_next_index") != config.tranche_size
+        or value.get("authorized_completed_tranches") != 1
+        or value.get("authorized_chain_head") != AUTHORIZED_FIRST_TRANCHE_DIGEST
+        or value.get("tranche") != 0
+        or value.get("tranche_digest") != AUTHORIZED_FIRST_TRANCHE_DIGEST
+        or checkpoint["next_index"] < value.get("authorized_next_index", -1)
+        or checkpoint["completed_tranches"] < 1
+    ):
+        raise RuntimeError("continuous authorization identity/checkpoint drift")
+    receipt = Path(value["acceptance_receipt"])
+    if (
+        receipt.is_symlink()
+        or not receipt.is_file()
+        or sha256_file(receipt) != value["acceptance_receipt_sha256"]
+    ):
+        raise RuntimeError("continuous acceptance receipt drift")
+    first = _load_record(config, 0)
+    if first["tranche_digest"] != AUTHORIZED_FIRST_TRANCHE_DIGEST:
+        raise RuntimeError("continuous authorized chain ancestor drift")
+    return value
+
+
+def run_production(
+    config: ProductionConfig,
+    max_tranches: int | None,
+    apply: bool,
+    *,
+    continuous: bool = False,
+) -> dict[str, Any]:
+    if continuous == (max_tranches is not None):
+        raise ValueError("select exactly one of --continuous or --max-tranches")
+    if not continuous and max_tranches != 1:
+        raise ValueError("bounded --max-tranches must equal 1")
+    with ManifestSnapshot(config.manifest) as snapshot:
+        return _run_with_snapshot(config, snapshot, max_tranches, apply, continuous)
 
 
 def _run_with_snapshot(
     config: ProductionConfig,
     snapshot: ManifestSnapshot,
-    max_tranches: int,
+    max_tranches: int | None,
     apply: bool,
+    continuous: bool = False,
 ) -> dict[str, Any]:
     _validate_identity(config, snapshot)
-    if not apply:
+    if not apply and not continuous:
         return {
             "status": "would-run",
             "max_tranches": max_tranches,
@@ -991,6 +1201,14 @@ def _run_with_snapshot(
         if checkpoint.get("producer_sha256") != producer_sha:
             raise RuntimeError("checkpoint producer binding drift")
         _validate_chain(config, checkpoint)
+        if continuous:
+            _validate_continuous_authorization(config, checkpoint, producer_sha)
+            if not apply:
+                return {
+                    "status": "would-run-continuous",
+                    "config_sha256": config.digest,
+                    "next_index": checkpoint["next_index"],
+                }
         if checkpoint["completed_tranches"]:
             _verify_tranche(
                 config,
@@ -1037,7 +1255,15 @@ def _run_with_snapshot(
             atomic_json(_checkpoint_path(config), checkpoint)
             committed = 1
         control = _production_control(config, checkpoint["cumulative_errors"])
+        heartbeat_fields = {
+            "state": "running",
+            "next_index": checkpoint["next_index"],
+            "processed": checkpoint["next_index"],
+            "sites": config.site_count,
+            "cumulative_errors": checkpoint["cumulative_errors"],
+        }
         if control.get("paused") is not False:
+            Heartbeat(config, heartbeat_fields).write(state="paused")
             return {
                 "status": "paused",
                 "reason": control.get("reason", control.get("reasons")),
@@ -1052,10 +1278,26 @@ def _run_with_snapshot(
             "cumulative_errors": checkpoint["cumulative_errors"],
         }
         with Heartbeat(config, heartbeat_fields) as heartbeat:
-            while (
-                checkpoint["next_index"] < config.site_count
-                and committed < max_tranches
+            while checkpoint["next_index"] < config.site_count and (
+                continuous or committed < (max_tranches or 0)
             ):
+                if STOP.is_set():
+                    heartbeat.write(state="stopped")
+                    return {
+                        "status": "stopped",
+                        "next_index": checkpoint["next_index"],
+                        "committed_tranches": committed,
+                    }
+                between_control = _production_control(
+                    config, checkpoint["cumulative_errors"]
+                )
+                if between_control.get("paused") is not False:
+                    heartbeat.write(state="paused")
+                    return {
+                        "status": "paused",
+                        "next_index": checkpoint["next_index"],
+                        "committed_tranches": committed,
+                    }
                 tranche = checkpoint["completed_tranches"]
                 rows = list(islice(iterator, config.tranche_size))
                 expected = min(
@@ -1073,9 +1315,9 @@ def _run_with_snapshot(
                         config, checkpoint["cumulative_errors"]
                     )
                     if allocation.get("paused") is not False:
-                        heartbeat.write(state="paused-partial")
+                        heartbeat.write(state="paused")
                         return {
-                            "status": "paused-partial",
+                            "status": "paused",
                             "next_index": checkpoint["next_index"],
                             "committed_tranches": committed,
                         }
@@ -1084,9 +1326,9 @@ def _run_with_snapshot(
                     with ThreadPoolExecutor(max_workers=workers) as pool:
                         while cursor < len(rows):
                             if STOP.is_set():
-                                heartbeat.write(state="stopped-partial")
+                                heartbeat.write(state="stopped")
                                 return {
-                                    "status": "stopped-partial",
+                                    "status": "stopped",
                                     "next_index": checkpoint["next_index"],
                                     "committed_tranches": committed,
                                 }
@@ -1094,9 +1336,9 @@ def _run_with_snapshot(
                                 config, checkpoint["cumulative_errors"]
                             )
                             if control.get("paused") is not False:
-                                heartbeat.write(state="paused-partial")
+                                heartbeat.write(state="paused")
                                 return {
-                                    "status": "paused-partial",
+                                    "status": "paused",
                                     "next_index": checkpoint["next_index"],
                                     "committed_tranches": committed,
                                 }
@@ -1111,6 +1353,7 @@ def _run_with_snapshot(
                             )
                             cursor += len(batch)
                             _production_task_check(config, 0)
+                            heartbeat.write()
                     FAULT_HOOK("before_tranche_validation")
                     expected_hashes = [result["receipt_sha256"] for result in results]
                     receipt_hashes = []
@@ -1185,8 +1428,14 @@ def _run_with_snapshot(
                         state="error", cumulative_errors=checkpoint["cumulative_errors"]
                     )
                     raise
+            terminal = "complete" if checkpoint["complete"] else "session-complete"
+            heartbeat.write(
+                state=terminal,
+                next_index=checkpoint["next_index"],
+                processed=checkpoint["next_index"],
+            )
             return {
-                "status": "complete" if checkpoint["complete"] else "session-complete",
+                "status": terminal,
                 "next_index": checkpoint["next_index"],
                 "committed_tranches": committed,
                 "completed_tranches": checkpoint["completed_tranches"],
@@ -1242,7 +1491,12 @@ def production_status(config: ProductionConfig) -> dict[str, Any]:
             "production_id": config.production_id,
             "config_sha256": config.digest,
         }
-        for name in ("checkpoint.json", "compression.json", "control.json"):
+        for name in (
+            "checkpoint.json",
+            "compression.json",
+            "control.json",
+            "continuous-authorization.json",
+        ):
             path = config.state_root / name
             result[name] = json.loads(path.read_text()) if path.is_file() else None
         return result

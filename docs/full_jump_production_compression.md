@@ -26,23 +26,26 @@ in the next uncommitted tranche; committed drift is fatal.
 `production-finalize-validation` exhaustively validates every site, receipt, chunk,
 and tranche, and is permitted only after the checkpoint is complete.
 
-## One-tranche launch gate
+## One-tranche gate and continuous authorization
 
-Bootstrap starts paused and requires a governor pass. The installed-template command
-hardcodes `--max-tranches 1`. Every `production-run` invocation requires exactly
-`--max-tranches 1`; larger, zero, or negative values fail until a future reviewed
-authorization marker is implemented. There is intentionally no continuous mode or
-authorization marker. Do not edit the unit to bypass this gate. At the start of the
-tranche, the runner snapshots the governor's `desired_workers` allocation, checks the
-24-task runtime budget, caps the process-global Zarr threading pool and async
-concurrency at four each, and creates one persistent worker pool. It reuses that pool
-for every sub-batch and checks the observed task count after each batch. Pause and
-stop decisions are still checked between batches, but governor worker-allocation
-changes take effect only in the next tranche/invocation; a second pool is never
-budgeted in the same invocation. After the first live tranche, stop and independently
-review resource telemetry, all 256 receipts/sites, the tranche chain, feature
-progress, and restart behavior. A future continuous mode requires a separate reviewed
-implementation.
+Bootstrap starts paused and requires a governor pass. The original unit remains an
+unaltered one-tranche gate using exactly `--max-tranches 1`; all other finite values
+fail. After tranche 0, independently review all 256 receipts/sites, the chain, feature
+progress, restart behavior, and resource telemetry, then create a durable independent
+acceptance receipt. `production-authorize-continuous` requires that receipt and its
+SHA-256, the exact accepted tranche-0 digest, an error-free checkpoint at index 256,
+a full tranche verification, and the current producer identity. It atomically creates
+a non-overwritable authorization marker and republishes control paused.
+
+Only the separate `jump-full-production-continuous.service` uses `--continuous`.
+Continuous execution fails closed without the authenticated marker and proves the
+checkpoint is not behind its authorized chain head. At every tranche boundary it
+snapshots the governor's `desired_workers`; allocation changes therefore take effect
+for the next tranche. Each tranche uses one persistent worker pool, Zarr's global
+thread and async limits remain four, and the 24-task runtime check is sampled after
+every sub-batch. Pause and stop are honored between sub-batches and tranches. Terminal
+telemetry distinguishes `session-complete`, final `complete`, `stopped`, `paused`, and
+`error` and includes current/peak tasks, RSS/max RSS, and CPU affinity.
 
 The service is constrained to CPUs 64-80, `Nice=19`, CPU/IO weight 1, `TasksMax=256`,
 one codec thread, no GPU, and the literal production-id output/state writable roots.
@@ -91,8 +94,15 @@ All commands require the complete explicit production identity argument set show
    exact environment and deployment above for both commands.
 2. Run the production governor with apply and verify fresh unpaused control.
 3. Start `jump-full-production-compress.service`; it can commit at most one tranche.
-4. Run `production-verify-tranche --tranche 0` and independent review.
-5. Do not continue automatically. Continuous execution is impossible by design.
+4. Run `production-verify-tranche --tranche 0`, complete independent review, and write
+   the independent one-tranche acceptance receipt.
+5. Run `production-authorize-continuous` with the receipt path and SHA-256, review the
+   dry result, then apply exactly once.
+6. Run the governor with apply from the newly paused control and confirm it unpauses.
+7. Start `jump-full-production-continuous.service`, and only then enable the separate
+   three-hour governor timer.
+
+Continuous output remains quarantined. Do not publish or upload CPG artifacts.
 
 Each live run and validation recomputes the clean checkout, interpreter, dependency,
 and executable identity and requires exact equality with `producer.json`. Manifest

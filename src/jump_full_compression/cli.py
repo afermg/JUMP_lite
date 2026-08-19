@@ -16,6 +16,7 @@ from .pipeline import (
 )
 from .production import (
     acknowledge_production_errors,
+    authorize_continuous,
     bootstrap_production,
     finalize_validation,
     production_status,
@@ -183,8 +184,15 @@ def parser():
     production_bootstrap.add_argument("--apply", action="store_true")
     production_run = commands.add_parser("production-run")
     _add_production_arguments(production_run)
-    production_run.add_argument("--max-tranches", type=int, required=True)
+    run_mode = production_run.add_mutually_exclusive_group(required=True)
+    run_mode.add_argument("--max-tranches", type=int)
+    run_mode.add_argument("--continuous", action="store_true")
     production_run.add_argument("--apply", action="store_true")
+    production_authorize = commands.add_parser("production-authorize-continuous")
+    _add_production_arguments(production_authorize)
+    production_authorize.add_argument("--acceptance-receipt", type=Path, required=True)
+    production_authorize.add_argument("--acceptance-receipt-sha256", required=True)
+    production_authorize.add_argument("--apply", action="store_true")
     production_ack = commands.add_parser("production-acknowledge-errors")
     _add_production_arguments(production_ack)
     production_ack.add_argument("--expected-count", type=int, required=True)
@@ -279,7 +287,25 @@ def main(argv=None):
         install_signal_handlers()
         print(
             json.dumps(
-                run_production(_production_config(args), args.max_tranches, args.apply),
+                run_production(
+                    _production_config(args),
+                    args.max_tranches,
+                    args.apply,
+                    continuous=args.continuous,
+                ),
+                indent=2,
+            )
+        )
+        return 0
+    if args.command == "production-authorize-continuous":
+        print(
+            json.dumps(
+                authorize_continuous(
+                    _production_config(args),
+                    args.acceptance_receipt,
+                    args.acceptance_receipt_sha256,
+                    args.apply,
+                ),
                 indent=2,
             )
         )

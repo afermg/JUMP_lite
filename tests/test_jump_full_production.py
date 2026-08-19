@@ -27,6 +27,7 @@ from jump_full_compression.production import (
     _source_observation_valid,
     _validate_identity,
     acknowledge_production_errors,
+    authorize_continuous,
     bootstrap_production,
     finalize_validation,
     run_production,
@@ -279,7 +280,7 @@ class ProductionRunnerTests(unittest.TestCase):
             ),
         ):
             result = run_production(config, 1, True)
-        self.assertEqual(result["status"], "stopped-partial")
+        self.assertEqual(result["status"], "stopped")
         checkpoint = json.loads((config.state_root / "checkpoint.json").read_text())
         self.assertEqual(checkpoint["next_index"], 0)
         self.assertFalse((config.output_root / "tranches/00000000.json").exists())
@@ -434,6 +435,9 @@ class ProductionRunnerTests(unittest.TestCase):
         self.assertFalse((config.output_root / "tranches/00000000.json").exists())
         checkpoint = json.loads((config.state_root / "checkpoint.json").read_text())
         self.assertEqual(checkpoint["next_index"], 0)
+        telemetry = json.loads((config.state_root / "compression.json").read_text())
+        self.assertEqual(telemetry["state"], "error")
+        self.assertGreaterEqual(telemetry["peak_tasks"], telemetry["current_tasks"])
 
     def test_live_source_observation_requires_version_and_last_modified(self):
         uri = "s3://cellpainting-gallery/object.tif"
@@ -529,12 +533,172 @@ class ProductionRunnerTests(unittest.TestCase):
             _, digest = _load_producer(live_config)
         self.assertEqual(digest, sha256_file(config.output_root / "producer.json"))
 
-    def test_one_tranche_gate_and_no_continuous_mode(self):
+    def test_continuous_systemd_unit_is_separate_and_marker_gated(self):
+        base = Path("ops/systemd")
+        bounded = (base / "jump-full-production-compress.service").read_text()
+        continuous = (base / "jump-full-production-continuous.service").read_text()
+        self.assertIn("--max-tranches 1", bounded)
+        self.assertNotIn("--continuous", bounded)
+        self.assertIn("--continuous", continuous)
+        self.assertNotIn("--max-tranches", continuous)
+        self.assertIn("continuous-authorization.json", continuous)
+        self.assertIn("Restart=no", continuous)
+        for contract in (
+            "CPUAffinity=64-80",
+            "Nice=19",
+            "CPUWeight=1",
+            "IOWeight=1",
+            "TasksMax=256",
+            "ProtectSystem=strict",
+        ):
+            self.assertIn(contract, bounded)
+            self.assertIn(contract, continuous)
+
+    def test_one_tranche_gate_requires_exactly_one(self):
         config = self._config(1)
         for value in (0, -1, 2, 100):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 run_production(config, value, False)
-        self.assertFalse(hasattr(config, "continuous"))
+        with self.assertRaises(ValueError):
+            run_production(config, 1, False, continuous=True)
+
+    def test_continuous_authorization_and_multi_tranche_terminal_telemetry(self):
+        config = self._config(513)
+        self._bootstrap(config)
+        with self._identity_patch():
+            first = run_production(config, 1, True)
+        self.assertEqual(first["status"], "session-complete")
+        state = json.loads((config.state_root / "compression.json").read_text())
+        self.assertEqual(state["state"], "session-complete")
+        self.assertEqual(state["processed"], 256)
+        for field in (
+            "current_tasks",
+            "peak_tasks",
+            "rss_bytes",
+            "max_rss_bytes",
+            "affinity",
+        ):
+            self.assertIn(field, state)
+        digest = json.loads(
+            (config.output_root / "tranches/00000000.json").read_text()
+        )["tranche_digest"]
+        acceptance = self.root / "acceptance.json"
+        acceptance.write_text('{"decision":"GO"}\n')
+        with (
+            self._identity_patch(),
+            mock.patch(
+                "jump_full_compression.production.AUTHORIZED_FIRST_TRANCHE_DIGEST",
+                digest,
+            ),
+        ):
+            preview = authorize_continuous(
+                config, acceptance, sha256_file(acceptance), False
+            )
+            self.assertEqual(preview["status"], "would-authorize-continuous")
+            authorize_continuous(config, acceptance, sha256_file(acceptance), True)
+            with self.assertRaisesRegex(RuntimeError, "already exists"):
+                authorize_continuous(config, acceptance, sha256_file(acceptance), True)
+            self._unpause(config)
+            result = run_production(config, None, True, continuous=True)
+        self.assertEqual(result["status"], "complete")
+        self.assertEqual(result["completed_tranches"], 3)
+        state = json.loads((config.state_root / "compression.json").read_text())
+        self.assertEqual(state["state"], "complete")
+        self.assertEqual(state["processed"], 513)
+
+    def test_continuous_missing_marker_and_tampered_acceptance_fail_closed(self):
+        config = self._config(257)
+        self._bootstrap(config)
+        with self._identity_patch():
+            run_production(config, 1, True)
+            with self.assertRaisesRegex(RuntimeError, "authorization missing"):
+                run_production(config, None, False, continuous=True)
+        digest = json.loads(
+            (config.output_root / "tranches/00000000.json").read_text()
+        )["tranche_digest"]
+        acceptance = self.root / "acceptance.json"
+        acceptance.write_text('{"decision":"GO"}\n')
+        with (
+            self._identity_patch(),
+            mock.patch(
+                "jump_full_compression.production.AUTHORIZED_FIRST_TRANCHE_DIGEST",
+                digest,
+            ),
+        ):
+            authorize_continuous(config, acceptance, sha256_file(acceptance), True)
+            acceptance.write_text('{"decision":"NO"}\n')
+            self._unpause(config)
+            with self.assertRaisesRegex(RuntimeError, "acceptance receipt drift"):
+                run_production(config, None, True, continuous=True)
+
+    def test_continuous_pause_between_tranches_is_terminal(self):
+        config = self._config(513)
+        self._bootstrap(config)
+        with self._identity_patch():
+            run_production(config, 1, True)
+        digest = json.loads(
+            (config.output_root / "tranches/00000000.json").read_text()
+        )["tranche_digest"]
+        acceptance = self.root / "acceptance.json"
+        acceptance.write_text('{"decision":"GO"}\n')
+
+        def pause_after_record(point):
+            if point == "after_tranche_record":
+                control_path = config.state_root / "control.json"
+                control = json.loads(control_path.read_text())
+                control["paused"] = True
+                control_path.write_text(json.dumps(control))
+
+        with (
+            self._identity_patch(),
+            mock.patch(
+                "jump_full_compression.production.AUTHORIZED_FIRST_TRANCHE_DIGEST",
+                digest,
+            ),
+        ):
+            authorize_continuous(config, acceptance, sha256_file(acceptance), True)
+            self._unpause(config)
+            with mock.patch(
+                "jump_full_compression.production.FAULT_HOOK", pause_after_record
+            ):
+                result = run_production(config, None, True, continuous=True)
+        self.assertEqual(result["status"], "paused")
+        state = json.loads((config.state_root / "compression.json").read_text())
+        self.assertEqual(state["state"], "paused")
+        self.assertEqual(state["processed"], state["next_index"])
+
+    def test_continuous_stop_between_tranches_is_terminal(self):
+        config = self._config(513)
+        self._bootstrap(config)
+        with self._identity_patch():
+            run_production(config, 1, True)
+        digest = json.loads(
+            (config.output_root / "tranches/00000000.json").read_text()
+        )["tranche_digest"]
+        acceptance = self.root / "acceptance.json"
+        acceptance.write_text('{"decision":"GO"}\n')
+
+        def stop_after_record(point):
+            if point == "after_tranche_record":
+                STOP.set()
+
+        with (
+            self._identity_patch(),
+            mock.patch(
+                "jump_full_compression.production.AUTHORIZED_FIRST_TRANCHE_DIGEST",
+                digest,
+            ),
+        ):
+            authorize_continuous(config, acceptance, sha256_file(acceptance), True)
+            self._unpause(config)
+            with mock.patch(
+                "jump_full_compression.production.FAULT_HOOK", stop_after_record
+            ):
+                result = run_production(config, None, True, continuous=True)
+        self.assertEqual(result["status"], "stopped")
+        state = json.loads((config.state_root / "compression.json").read_text())
+        self.assertEqual(state["state"], "stopped")
+        self.assertEqual(state["processed"], state["next_index"])
 
 
 if __name__ == "__main__":

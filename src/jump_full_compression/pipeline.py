@@ -885,6 +885,8 @@ def run_candidate(config: CandidateConfig, apply: bool) -> dict[str, Any]:
                     config,
                     state="paused",
                     next_index=index,
+                    processed=index,
+                    sites=len(rows),
                     cumulative_errors=cumulative_errors,
                     control_reason=control.get("reason") or control.get("reasons"),
                 )

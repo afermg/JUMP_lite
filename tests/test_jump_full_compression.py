@@ -1087,6 +1087,28 @@ print(json.dumps({
             "feature_processes_mutated": False,
         }
 
+    def test_governor_stale_authenticated_idle_accepted_but_running_rejected(self):
+        idle = self._metrics()
+        idle["compression"].update(
+            state="session-complete",
+            heartbeat_unix=idle["observed_at_unix"] - 3600,
+            processed=256,
+            next_index=256,
+            sites=1000,
+        )
+        accepted = decide(idle, self._governor_control(idle))
+        self.assertFalse(accepted["paused"])
+        running = json.loads(json.dumps(idle))
+        running["compression"]["state"] = "running"
+        rejected = decide(running, self._governor_control(running))
+        self.assertTrue(rejected["paused"])
+        self.assertIn("compression heartbeat stale", rejected["reasons"])
+        incoherent = json.loads(json.dumps(idle))
+        incoherent["compression"]["processed"] = 255
+        rejected = decide(incoherent, self._governor_control(incoherent))
+        self.assertTrue(rejected["paused"])
+        self.assertIn("compression idle terminal state incoherent", rejected["reasons"])
+
     def test_governor_multiwindow_independent_progress_and_error_ack(self):
         m1 = self._metrics()
         c1 = decide(m1, self._governor_control(m1))

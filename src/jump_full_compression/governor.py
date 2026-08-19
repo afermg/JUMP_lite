@@ -367,16 +367,26 @@ def decide(
             "candidate_id"
         ) or metrics.get("config_sha256") != compression.get("config_sha256"):
             failures.append("compression identity drift")
-        if not 0 <= now_ts - float(compression["heartbeat_unix"]) <= 300:
-            failures.append("compression heartbeat stale")
+        state = compression.get("state")
         errors = int(compression["cumulative_errors"])
         acknowledged = int(effective_previous.get("acknowledged_error_count", 0))
+        idle = state in {"session-complete", "complete", "stopped", "paused"}
+        coherent_idle = (
+            idle
+            and int(compression["processed"]) == int(compression["next_index"])
+            and 0 <= int(compression["next_index"]) <= int(compression["sites"])
+            and errors == acknowledged
+        )
+        if (
+            not 0 <= now_ts - float(compression["heartbeat_unix"]) <= 300
+            and not coherent_idle
+        ):
+            failures.append("compression heartbeat stale")
+        if idle and not coherent_idle:
+            failures.append("compression idle terminal state incoherent")
         if errors != acknowledged:
             failures.append("compression error acknowledgement mismatch")
-        if previous_metrics is not None and compression.get("state") not in {
-            "complete",
-            "paused",
-        }:
+        if previous_metrics is not None and not idle:
             old = (previous_metrics or {}).get("compression", {})
             if int(compression.get("processed", -1)) <= int(old.get("processed", -1)):
                 failures.append("compression progress stagnated")
