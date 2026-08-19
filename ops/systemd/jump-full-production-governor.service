@@ -1,0 +1,19 @@
+[Unit]
+Description=Full-JUMP production compression resource governor
+ConditionPathExists=/work/datasets/jump_lite/full_jump_compression_state/v1.0/production.env
+
+[Service]
+Type=oneshot
+EnvironmentFile=/work/datasets/jump_lite/full_jump_compression_state/v1.0/production.env
+Environment=OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 BLIS_NUM_THREADS=1 VECLIB_MAXIMUM_THREADS=1 NUMEXPR_NUM_THREADS=1 TBB_NUM_THREADS=1 ARROW_NUM_THREADS=1 POLARS_MAX_THREADS=1 RAYON_NUM_THREADS=1
+Environment=CUDA_VISIBLE_DEVICES=
+ExecStart=/run/current-system/sw/bin/env PYTHONPATH=${DEPLOY_ROOT}/src /work/users/amunoz/projects/JUMP_lite/.venv/bin/python -m jump_full_compression governor --apply --candidate-id ${PRODUCTION_ID} --config-sha256 ${CONFIG_SHA256} --feature-root ${FEATURE_ROOT} --canonical-root ${CANONICAL_ROOT} --state-root ${STATE_ROOT} --output-filesystem /work/datasets
+CPUAffinity=64-80
+Nice=19
+CPUWeight=1
+IOWeight=1
+TasksMax=256
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/work/datasets/jump_lite/full_jump_compression_state

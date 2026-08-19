@@ -25,7 +25,12 @@ IDENTITY_COLUMNS = (
 LIVE_CANDIDATE_PARENT = Path(
     "/work/datasets/jump_lite/images/compressed/.jump_full_candidate"
 )
+LIVE_PRODUCTION_PARENT = Path(
+    "/work/datasets/jump_lite/images/compressed/.jump_full_production"
+)
 LIVE_STATE_PARENT = Path("/work/datasets/jump_lite/full_jump_compression_state/v1.0")
+PRODUCTION_ID = "full-jump-hq-mq-v1"
+PRODUCTION_TRANCHE_SIZE = 256
 COMPRESSION_CPUS = tuple(range(64, 81))
 INITIAL_WORKERS = 4
 MAX_WORKERS = 16
@@ -206,4 +211,106 @@ class CandidateConfig:
         payload = asdict(self)
         for key in ("manifest", "audit_report", "output_root", "state_root"):
             payload[key] = str(Path(payload[key]).absolute())
+        return digest_json(payload)
+
+
+@dataclass(frozen=True)
+class ProductionConfig:
+    production_id: str
+    manifest: Path
+    audit_report: Path
+    build_report: Path
+    exclusion_policy: Path
+    damaged_objects: Path
+    damaged_sites: Path
+    qc_plates: Path
+    output_root: Path
+    state_root: Path
+    inventory_digest: str
+    manifest_sha256: str
+    manifest_size: int
+    audit_sha256: str
+    build_report_sha256: str
+    exclusion_policy_sha256: str
+    damaged_objects_sha256: str
+    damaged_sites_sha256: str
+    qc_plates_sha256: str
+    site_count: int
+    tranche_size: int = PRODUCTION_TRANCHE_SIZE
+    max_workers: int = MAX_WORKERS
+    test_mode: bool = False
+
+    @property
+    def candidate_id(self) -> str:
+        """Compatibility identity consumed by the existing governor contract."""
+        return self.production_id
+
+    def validate(self) -> None:
+        if self.production_id != (
+            "test-production" if self.test_mode else PRODUCTION_ID
+        ):
+            raise ValueError("production-id contract drift")
+        digests = (
+            self.inventory_digest,
+            self.manifest_sha256,
+            self.audit_sha256,
+            self.build_report_sha256,
+            self.exclusion_policy_sha256,
+            self.damaged_objects_sha256,
+            self.damaged_sites_sha256,
+            self.qc_plates_sha256,
+        )
+        if any(
+            len(value) != 64 or any(c not in "0123456789abcdef" for c in value)
+            for value in digests
+        ):
+            raise ValueError("production identity digests must be lowercase SHA-256")
+        if (
+            self.manifest_size < 1
+            or self.site_count < 1
+            or self.tranche_size != PRODUCTION_TRANCHE_SIZE
+            or self.max_workers != MAX_WORKERS
+        ):
+            raise ValueError("production size/tranche/worker contract drift")
+        for path in (
+            self.manifest,
+            self.audit_report,
+            self.build_report,
+            self.exclusion_policy,
+            self.damaged_objects,
+            self.damaged_sites,
+            self.qc_plates,
+        ):
+            if not path.is_file() or path.is_symlink():
+                raise ValueError(f"production identity file invalid: {path}")
+        if self.test_mode:
+            output_boundary, state_boundary = (
+                self.output_root.parent,
+                self.state_root.parent,
+            )
+        else:
+            expected_output = LIVE_PRODUCTION_PARENT / self.production_id
+            expected_state = LIVE_STATE_PARENT / self.production_id
+            if self.output_root.absolute() != expected_output.absolute():
+                raise ValueError("live production output path drift")
+            if self.state_root.absolute() != expected_state.absolute():
+                raise ValueError("live production state path drift")
+            for boundary in (LIVE_PRODUCTION_PARENT, LIVE_STATE_PARENT):
+                if boundary.is_symlink() or (
+                    boundary.exists() and boundary.resolve() != boundary.absolute()
+                ):
+                    raise ValueError("live production parent redirect rejected")
+            output_boundary, state_boundary = LIVE_PRODUCTION_PARENT, LIVE_STATE_PARENT
+        assert_no_symlinks(self.output_root, output_boundary)
+        assert_no_symlinks(self.state_root, state_boundary)
+
+    @property
+    def digest(self) -> str:
+        payload = asdict(self)
+        for key, value in tuple(payload.items()):
+            if isinstance(value, Path):
+                payload[key] = str(value.absolute())
+        payload["codecs"] = CODECS
+        payload["compression_cpus"] = COMPRESSION_CPUS
+        payload["max_runtime_tasks"] = MAX_RUNTIME_TASKS
         return digest_json(payload)

@@ -6,13 +6,21 @@ import json
 from pathlib import Path
 from .governor import GovernorPaths, run_governor
 from .inventory import audit_inventory
-from .model import CandidateConfig, assert_runtime_task_ceiling
+from .model import CandidateConfig, ProductionConfig, assert_runtime_task_ceiling
 from .pipeline import (
     acknowledge_errors,
     bootstrap_candidate,
     install_signal_handlers,
     run_candidate,
     validate_adoption_seam,
+)
+from .production import (
+    acknowledge_production_errors,
+    bootstrap_production,
+    finalize_validation,
+    production_status,
+    run_production,
+    verify_tranche,
 )
 
 DEFAULT_FEATURE = Path(
@@ -35,6 +43,62 @@ def _config(args) -> CandidateConfig:
         16,
         args.test_mode,
     )
+
+
+def _production_config(args) -> ProductionConfig:
+    return ProductionConfig(
+        args.production_id,
+        args.manifest,
+        args.audit_report,
+        args.build_report,
+        args.exclusion_policy,
+        args.damaged_objects,
+        args.damaged_sites,
+        args.qc_plates,
+        args.output_root,
+        args.state_root,
+        args.inventory_digest,
+        args.manifest_sha256,
+        args.manifest_size,
+        args.audit_sha256,
+        args.build_report_sha256,
+        args.exclusion_policy_sha256,
+        args.damaged_objects_sha256,
+        args.damaged_sites_sha256,
+        args.qc_plates_sha256,
+        args.site_count,
+        test_mode=args.test_mode,
+    )
+
+
+def _add_production_arguments(command) -> None:
+    for name in (
+        "manifest",
+        "audit-report",
+        "build-report",
+        "exclusion-policy",
+        "damaged-objects",
+        "damaged-sites",
+        "qc-plates",
+        "output-root",
+        "state-root",
+    ):
+        command.add_argument(f"--{name}", type=Path, required=True)
+    command.add_argument("--production-id", required=True)
+    command.add_argument("--inventory-digest", required=True)
+    for name in (
+        "manifest-sha256",
+        "audit-sha256",
+        "build-report-sha256",
+        "exclusion-policy-sha256",
+        "damaged-objects-sha256",
+        "damaged-sites-sha256",
+        "qc-plates-sha256",
+    ):
+        command.add_argument(f"--{name}", required=True)
+    command.add_argument("--manifest-size", type=int, required=True)
+    command.add_argument("--site-count", type=int, required=True)
+    command.add_argument("--test-mode", action="store_true", help=argparse.SUPPRESS)
 
 
 def _add_config_arguments(command) -> None:
@@ -114,6 +178,24 @@ def parser():
     adopt.add_argument("--frozen-inventory-digest", required=True)
     status = commands.add_parser("status")
     status.add_argument("--state-root", type=Path, required=True)
+    production_bootstrap = commands.add_parser("production-bootstrap")
+    _add_production_arguments(production_bootstrap)
+    production_bootstrap.add_argument("--apply", action="store_true")
+    production_run = commands.add_parser("production-run")
+    _add_production_arguments(production_run)
+    production_run.add_argument("--max-tranches", type=int, required=True)
+    production_run.add_argument("--apply", action="store_true")
+    production_ack = commands.add_parser("production-acknowledge-errors")
+    _add_production_arguments(production_ack)
+    production_ack.add_argument("--expected-count", type=int, required=True)
+    production_ack.add_argument("--apply", action="store_true")
+    production_verify = commands.add_parser("production-verify-tranche")
+    _add_production_arguments(production_verify)
+    production_verify.add_argument("--tranche", type=int, required=True)
+    production_finalize = commands.add_parser("production-finalize-validation")
+    _add_production_arguments(production_finalize)
+    production_status_parser = commands.add_parser("production-status")
+    _add_production_arguments(production_status_parser)
     return root
 
 
@@ -185,6 +267,43 @@ def main(argv=None):
                 indent=2,
             )
         )
+        return 0
+    if args.command == "production-bootstrap":
+        print(
+            json.dumps(
+                bootstrap_production(_production_config(args), args.apply), indent=2
+            )
+        )
+        return 0
+    if args.command == "production-run":
+        install_signal_handlers()
+        print(
+            json.dumps(
+                run_production(_production_config(args), args.max_tranches, args.apply),
+                indent=2,
+            )
+        )
+        return 0
+    if args.command == "production-acknowledge-errors":
+        print(
+            json.dumps(
+                acknowledge_production_errors(
+                    _production_config(args), args.expected_count, args.apply
+                ),
+                indent=2,
+            )
+        )
+        return 0
+    if args.command == "production-verify-tranche":
+        print(
+            json.dumps(verify_tranche(_production_config(args), args.tranche), indent=2)
+        )
+        return 0
+    if args.command == "production-finalize-validation":
+        print(json.dumps(finalize_validation(_production_config(args)), indent=2))
+        return 0
+    if args.command == "production-status":
+        print(json.dumps(production_status(_production_config(args)), indent=2))
         return 0
     if args.command == "status":
         result = {}

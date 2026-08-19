@@ -81,7 +81,12 @@ def _s3_client():
 
 
 def read_source(
-    uri: str, attempts: int = 5, *, allow_file: bool = False, sleep=time.sleep
+    uri: str,
+    attempts: int = 5,
+    *,
+    allow_file: bool = False,
+    extended_observation: bool = False,
+    sleep=time.sleep,
 ) -> tuple[bytes, dict[str, Any]]:
     parsed = urlparse(uri)
     if parsed.scheme == "file" and allow_file:
@@ -107,11 +112,20 @@ def read_source(
             size = int(response.get("ContentLength", len(payload)))
             if len(payload) != size:
                 raise OSError(f"truncated source: {len(payload)} != {size}")
-            return payload, {
+            observation = {
                 "uri": uri,
                 "size": size,
                 "etag": str(response.get("ETag", "")).strip('"'),
             }
+            if extended_observation:
+                if response.get("VersionId") is not None:
+                    observation["version_id"] = str(response["VersionId"])
+                if response.get("LastModified") is not None:
+                    value = response["LastModified"]
+                    observation["last_modified"] = (
+                        value.isoformat() if hasattr(value, "isoformat") else str(value)
+                    )
+            return payload, observation
         except Exception as error:
             last = error
             if attempt < attempts:
@@ -121,11 +135,15 @@ def read_source(
 
 
 def decode_stack(
-    row: dict[str, Any], test_mode: bool
+    row: dict[str, Any], test_mode: bool, *, extended_observation: bool = False
 ) -> tuple[np.ndarray, list[dict[str, Any]]]:
     images, observations = [], []
     for uri in row["urls"]:
-        payload, observation = read_source(uri, allow_file=test_mode)
+        payload, observation = read_source(
+            uri,
+            allow_file=test_mode,
+            extended_observation=extended_observation,
+        )
         with Image.open(io.BytesIO(payload)) as image:
             array = np.asarray(image)
         if array.ndim != 2 or array.dtype != np.uint16:

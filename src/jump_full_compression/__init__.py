@@ -1,11 +1,11 @@
-"""Candidate-only full-JUMP JPEG XL compression tools."""
+"""Guarded candidate and quarantined production full-JUMP compression tools."""
 
 from __future__ import annotations
 
 import os
 
 # These must be set before CLI imports PyArrow, NumPy, imagecodecs, or
-# Polars-adjacent dependencies. Candidate runtime fixes every cap to one.
+# Polars-adjacent dependencies. Every runtime fixes each cap to one.
 _THREAD_CAPS = (
     "OMP_NUM_THREADS",
     "OPENBLAS_NUM_THREADS",
