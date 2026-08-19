@@ -62,6 +62,37 @@ _DAMAGED_PREFIX = (
 _DAMAGED_BYTES = 2_768_896
 _DAMAGED_ETAG = "d4ffe90e54a5af4e2009e5984da69f03"
 _DAMAGED_SHA256 = "5943e9d0a21bc6cc913afecb6e36f2e53d57813d5cd486557a855905293cfe0f"
+_CANONICAL_DAMAGED_OBJECT_LEDGER = {
+    "bytes": 4_561,
+    "sha256": "5666af0c025a0fd97381ab831c49de7bbadf45747c5a97a0e19930a4c469857d",
+}
+_CANONICAL_DAMAGED_SITE_LEDGER = {
+    "bytes": 1_434,
+    "sha256": "b5ab319a6a7b910ef82423243ec3dadd731deb89eab614f632f8d29e60dfe15d",
+}
+_CANONICAL_OBJECT_LEDGER_PATH = (
+    "metadata/full_jump_compression/known_damaged_objects_v1.json"
+)
+_CANONICAL_SITE_LEDGER_PATH = (
+    "metadata/full_jump_compression/known_damaged_sites_v1.json"
+)
+_UNRESOLVED_RED_GRAY = {
+    "action": None,
+    "release_identity_blocked": True,
+    "status": "unresolved",
+}
+_RESOLVED_RED_GRAY = (
+    {
+        "action": "exclude_red_include_gray",
+        "release_identity_blocked": False,
+        "status": "resolved",
+    },
+    {
+        "action": "exclude_red_and_gray",
+        "release_identity_blocked": False,
+        "status": "resolved",
+    },
+)
 
 
 def _json_safe(value: Any) -> Any:
@@ -213,6 +244,14 @@ def _validate_frozen_policy(
     objects = _load_json_object(damaged_objects_path)
     sites = _load_json_object(damaged_sites_path)
 
+    # These independent pins bind every canonical ledger byte, including JSON
+    # key sets, list order, scope, evidence strings, paths, and all values.
+    if (
+        object_binding != _CANONICAL_DAMAGED_OBJECT_LEDGER
+        or site_binding != _CANONICAL_DAMAGED_SITE_LEDGER
+    ):
+        raise RuntimeError("canonical damaged-ledger binding drift")
+
     expected_objects = {
         (
             site,
@@ -252,7 +291,17 @@ def _validate_frozen_policy(
     except Exception as error:
         raise RuntimeError("damaged-object ledger schema malformed") from error
     if (
-        objects.get("format_version") != "full-jump-known-damaged-objects-v1"
+        set(objects)
+        != {
+            "format_version",
+            "object_count",
+            "objects",
+            "scope",
+            "site_count",
+            "unknown_decode_failure_action",
+        }
+        or objects.get("format_version") != "full-jump-known-damaged-objects-v1"
+        or objects.get("scope") != "full_jump_compression_production_inventory"
         or objects.get("object_count") != 4
         or objects.get("site_count") != 2
         or objects.get("unknown_decode_failure_action") != "fatal"
@@ -294,42 +343,36 @@ def _validate_frozen_policy(
         raise RuntimeError("damaged-site ledger content drift")
 
     try:
-        damaged_policy = policy["known_damaged_objects"]
-        policy_object_binding = damaged_policy["object_ledger"]
-        policy_site_binding = damaged_policy["site_ledger"]
-        source_15 = policy["source_15"]
-        unknown = policy["unknown_decode_failures"]
         red_gray = policy["red_gray_release_policy"]
     except Exception as error:
         raise RuntimeError("production exclusion policy schema malformed") from error
-    if (
-        policy.get("format_version") != "full-jump-production-exclusion-policy-v1"
-        or policy.get("audit_behavior") != "validate_only_never_filter"
-        or source_15 != {"action": "exclude_all_rows", "status": "resolved"}
-        or damaged_policy.get("action") != "exclude_entire_affected_site"
-        or damaged_policy.get("status") != "resolved"
-        or unknown != {"action": "fatal", "status": "resolved"}
-        or {
-            "bytes": policy_object_binding.get("bytes"),
-            "sha256": policy_object_binding.get("sha256"),
-        }
-        != object_binding
-        or {
-            "bytes": policy_site_binding.get("bytes"),
-            "sha256": policy_site_binding.get("sha256"),
-        }
-        != site_binding
-    ):
+    expected_policy = {
+        "audit_behavior": "validate_only_never_filter",
+        "format_version": "full-jump-production-exclusion-policy-v1",
+        "known_damaged_objects": {
+            "action": "exclude_entire_affected_site",
+            "object_ledger": {
+                **_CANONICAL_DAMAGED_OBJECT_LEDGER,
+                "path": _CANONICAL_OBJECT_LEDGER_PATH,
+            },
+            "site_ledger": {
+                **_CANONICAL_DAMAGED_SITE_LEDGER,
+                "path": _CANONICAL_SITE_LEDGER_PATH,
+            },
+            "status": "resolved",
+        },
+        "red_gray_release_policy": red_gray,
+        "source_15": {"action": "exclude_all_rows", "status": "resolved"},
+        "unknown_decode_failures": {"action": "fatal", "status": "resolved"},
+    }
+    if policy != expected_policy:
         raise RuntimeError("production exclusion policy content/binding drift")
-    if (
-        red_gray.get("status") != "resolved"
-        or red_gray.get("release_identity_blocked") is not False
-        or red_gray.get("action")
-        not in {"exclude_red_include_gray", "exclude_red_and_gray"}
-    ):
+    if red_gray == _UNRESOLVED_RED_GRAY:
         raise RuntimeError(
             "red/gray release policy unresolved; frozen identity blocked"
         )
+    if red_gray not in _RESOLVED_RED_GRAY:
+        raise RuntimeError("production exclusion policy red/gray content drift")
     return {
         "policy": policy_binding,
         "damaged_objects": object_binding,
@@ -406,6 +449,14 @@ def audit_inventory(
                             ],
                         }
                     )
+    audit_success = not (
+        processed != count_expected
+        or missing_columns
+        or extra_url_columns
+        or anomaly_count
+        or (kind == "frozen" and frozen_source_15_rows)
+        or (kind == "frozen" and frozen_damaged_site_rows)
+    )
     observation = manifest_stat(path)
     summary = {
         "format_version": "full-jump-inventory-audit-v2",
@@ -427,7 +478,8 @@ def audit_inventory(
         "unsupported_url_columns": extra_url_columns,
         "anomaly_count": anomaly_count,
         "anomalies": anomalies,
-        "release_identity_frozen": kind == "frozen",
+        "audit_success": audit_success,
+        "release_identity_frozen": kind == "frozen" and audit_success,
         "policy_note": "Raw audit and bounded candidate selection are distinct; frozen audits validate but never filter exclusions.",
     }
     if kind == "frozen":
@@ -440,14 +492,7 @@ def audit_inventory(
     if report_path is not None:
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
-    if (
-        processed != count_expected
-        or missing_columns
-        or extra_url_columns
-        or anomaly_count
-        or (kind == "frozen" and frozen_source_15_rows)
-        or (kind == "frozen" and frozen_damaged_site_rows)
-    ):
+    if not audit_success:
         raise RuntimeError(f"inventory audit failed; report={report_path}")
     return summary
 
@@ -468,6 +513,10 @@ def load_audit(
         content = payload["manifest"]
     except Exception as error:
         raise RuntimeError("audit report fields malformed") from error
+    if payload.get("audit_success") is not True:
+        raise RuntimeError("audit report records an unsuccessful audit")
+    if kind == "frozen" and payload.get("release_identity_frozen") is not True:
+        raise RuntimeError("frozen audit report does not freeze release identity")
     if (
         payload.get("inventory_digest") != expected_digest
         or recomputed != expected_digest

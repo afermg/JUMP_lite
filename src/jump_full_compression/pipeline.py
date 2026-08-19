@@ -206,7 +206,11 @@ def software_identity(*, require_clean: bool) -> dict[str, Any]:
     if git_path is None:
         discovered = shutil.which("git")
         git_path = Path(discovered) if discovered else None
-    if git_path is None or not git_path.is_absolute() or not os.access(git_path, os.X_OK):
+    if (
+        git_path is None
+        or not git_path.is_absolute()
+        or not os.access(git_path, os.X_OK)
+    ):
         raise RuntimeError("an absolute executable GIT_EXECUTABLE is required")
     if require_clean and configured_git is None:
         raise RuntimeError("live apply requires explicit GIT_EXECUTABLE provenance")

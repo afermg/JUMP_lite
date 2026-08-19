@@ -71,8 +71,10 @@ preserved under `metadata/full_jump_compression/`; unknown decode failures
 remain fatal. Historical candidate behavior is unchanged, including the
 completed four-channel `source_15` canary.
 
-A frozen audit validates but never filters these exclusions. It requires the
-explicit policy and both bound ledgers:
+A frozen audit validates but never filters these exclusions. Every report binds
+an explicit `audit_success` field; failed reports remain useful diagnostics but
+set `release_identity_frozen=false`, and audit loading rejects them. Frozen
+audits require the explicit policy and both independently pinned ledgers:
 
 ```bash
 python -m jump_full_compression audit --kind frozen \

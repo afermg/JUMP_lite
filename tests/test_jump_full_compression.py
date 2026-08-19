@@ -178,8 +178,18 @@ class FullJumpCompressionTests(unittest.TestCase):
         source_15 = self._manifest([self._row("source_15")], "source15.parquet")
         with self.assertRaisesRegex(RuntimeError, "inventory audit failed"):
             self._frozen_audit(source_15)
-        report = json.loads((self.root / "frozen-audit.json").read_text())
+        report_path = self.root / "frozen-audit.json"
+        report = json.loads(report_path.read_text())
         self.assertEqual(report["frozen_exclusion_policy"]["source_15_rows_present"], 1)
+        self.assertFalse(report["audit_success"])
+        self.assertFalse(report["release_identity_frozen"])
+        with self.assertRaisesRegex(RuntimeError, "unsuccessful audit"):
+            load_audit(
+                report_path,
+                source_15,
+                report["inventory_digest"],
+                kind="frozen",
+            )
 
         damaged = self._row("source_7", 2)
         damaged.update(
@@ -206,21 +216,48 @@ class FullJumpCompressionTests(unittest.TestCase):
         self.assertEqual(len(frozen["policy"]["sha256"]), 64)
         self.assertEqual(len(frozen["damaged_objects"]["sha256"]), 64)
 
-    def test_frozen_audit_rejects_ledger_hash_drift(self):
+    def test_frozen_audit_rejects_coordinated_policy_and_ledger_drift(self):
         manifest = self._manifest([self._row()])
         policy, objects, sites = self._frozen_policy_artifacts(resolved=True)
-        changed = self.root / "changed-objects.json"
-        shutil.copyfile(objects, changed)
-        payload = json.loads(changed.read_text())
-        payload["objects"][0]["evidence"].append("unreviewed drift")
-        changed.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
-        with self.assertRaisesRegex(RuntimeError, "drift"):
+        changed_objects = self.root / "changed-objects.json"
+        object_payload = json.loads(objects.read_text())
+        object_payload["scope"] = "coherently_changed_scope"
+        object_payload["objects"][0]["evidence"][0] = "coherently changed evidence"
+        changed_objects.write_text(
+            json.dumps(object_payload, indent=2, sort_keys=True) + "\n"
+        )
+
+        changed_sites = self.root / "changed-sites.json"
+        site_payload = json.loads(sites.read_text())
+        site_payload["derived_from_sha256"] = sha256_file(changed_objects)
+        changed_sites.write_text(
+            json.dumps(site_payload, indent=2, sort_keys=True) + "\n"
+        )
+
+        changed_policy = self.root / "changed-policy.json"
+        policy_payload = json.loads(policy.read_text())
+        policy_payload["known_damaged_objects"]["object_ledger"] = {
+            "path": "coherently/changed-objects.json",
+            "bytes": changed_objects.stat().st_size,
+            "sha256": sha256_file(changed_objects),
+        }
+        policy_payload["known_damaged_objects"]["site_ledger"] = {
+            "path": "coherently/changed-sites.json",
+            "bytes": changed_sites.stat().st_size,
+            "sha256": sha256_file(changed_sites),
+        }
+        changed_policy.write_text(
+            json.dumps(policy_payload, indent=2, sort_keys=True) + "\n"
+        )
+        with self.assertRaisesRegex(
+            RuntimeError, "canonical damaged-ledger binding drift"
+        ):
             audit_inventory(
                 manifest,
                 kind="frozen",
-                exclusion_policy=policy,
-                damaged_objects=changed,
-                damaged_sites=sites,
+                exclusion_policy=changed_policy,
+                damaged_objects=changed_objects,
+                damaged_sites=changed_sites,
             )
 
     def test_audit_binds_all_columns_and_manifest_identity(self):
@@ -604,7 +641,11 @@ print(json.dumps({'tasks': runtime_task_count(), 'status': result['status'],
             with (
                 mock.patch.dict(
                     os.environ,
-                    {"GIT_EXECUTABLE": str(Path(shutil.which("git") or "git").resolve())},
+                    {
+                        "GIT_EXECUTABLE": str(
+                            Path(shutil.which("git") or "git").resolve()
+                        )
+                    },
                 ),
                 mock.patch(
                     "jump_full_compression.pipeline.subprocess.check_output",
