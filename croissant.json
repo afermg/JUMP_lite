@@ -1,0 +1,1107 @@
+{
+  "@context": {
+    "@language": "en",
+    "@vocab": "https://schema.org/",
+    "citeAs": "cr:citeAs",
+    "column": "cr:column",
+    "conformsTo": "dct:conformsTo",
+    "cr": "http://mlcommons.org/croissant/",
+    "rai": "http://mlcommons.org/croissant/RAI/",
+    "data": {
+      "@id": "cr:data",
+      "@type": "@json"
+    },
+    "dataType": {
+      "@id": "cr:dataType",
+      "@type": "@vocab"
+    },
+    "dct": "http://purl.org/dc/terms/",
+    "examples": {
+      "@id": "cr:examples",
+      "@type": "@json"
+    },
+    "equivalentProperty": "cr:equivalentProperty",
+    "extract": "cr:extract",
+    "field": "cr:field",
+    "fileProperty": "cr:fileProperty",
+    "fileObject": "cr:fileObject",
+    "fileSet": "cr:fileSet",
+    "format": "cr:format",
+    "includes": "cr:includes",
+    "isLiveDataset": "cr:isLiveDataset",
+    "jsonPath": "cr:jsonPath",
+    "key": "cr:key",
+    "md5": "cr:md5",
+    "parentField": "cr:parentField",
+    "path": "cr:path",
+    "recordSet": "cr:recordSet",
+    "references": "cr:references",
+    "regex": "cr:regex",
+    "repeated": "cr:repeated",
+    "replace": "cr:replace",
+    "samplingRate": "cr:samplingRate",
+    "sc": "https://schema.org/",
+    "separator": "cr:separator",
+    "source": "cr:source",
+    "subField": "cr:subField",
+    "transform": "cr:transform"
+  },
+  "@type": "sc:Dataset",
+  "name": "JUMP-Lite",
+  "description": "A compact, analysis-ready subset of the JUMP Cell Painting dataset with compressed five-channel microscopy images, per-site deep-learning embeddings, Cellpose instance masks, links to original TIFFs, perturbation metadata, and curated RefChemDB annotations.",
+  "conformsTo": "http://mlcommons.org/croissant/1.0",
+  "version": "1.0",
+  "url": "https://github.com/afermg/JUMP_lite",
+  "sameAs": [
+    "https://doi.org/10.5281/zenodo.18705140",
+    "https://registry.opendata.aws/cellpainting-gallery/"
+  ],
+  "license": "https://creativecommons.org/publicdomain/zero/1.0/",
+  "citeAs": "Muñoz AF, Fredin Haslum J, Shen R, Carpenter AE, Singh S. (2026). JUMP-lite: Compact, reproducible benchmarking of cell representations. arXiv:2608.07632. https://doi.org/10.48550/arXiv.2608.07632",
+  "creator": [
+    {
+      "@type": "sc:Person",
+      "name": "Alejandro F. Muñoz"
+    },
+    {
+      "@type": "sc:Person",
+      "name": "Johannes Fredin Haslum"
+    },
+    {
+      "@type": "sc:Person",
+      "name": "Rui Shen"
+    },
+    {
+      "@type": "sc:Person",
+      "name": "Anne E. Carpenter"
+    },
+    {
+      "@type": "sc:Person",
+      "name": "Shantanu Singh"
+    }
+  ],
+  "publisher": {
+    "@type": "sc:Organization",
+    "name": "Broad Institute of MIT and Harvard"
+  },
+  "keywords": [
+    "Cell Painting",
+    "microscopy",
+    "morphological profiling",
+    "image compression",
+    "deep learning",
+    "drug discovery",
+    "CRISPR",
+    "ORF",
+    "JUMP Cell Painting Consortium"
+  ],
+  "distribution": [
+    {
+      "@type": "cr:FileObject",
+      "@id": "site-index",
+      "name": "jump_lite_site_index.parquet",
+      "description": "One record per selected microscopy site, including links to the five original JUMP TIFF images.",
+      "contentUrl": "https://cellpainting-gallery.s3.amazonaws.com/cpg0016-jump/source_all/workspace/publication_data/2026_jump_lite/metadata/v1.0/jump_lite_site_index.parquet",
+      "contentSize": "6914554 B",
+      "encodingFormat": "application/x-parquet",
+      "sha256": "ec0e8a87ee66d640025617c360165d20d16a35bde655e7f78854a69651e87eec"
+    },
+    {
+      "@type": "cr:FileObject",
+      "@id": "image-index",
+      "name": "jump_lite_image_index.parquet",
+      "description": "Tidy channel-level index of the five original JUMP TIFF images for every selected site.",
+      "contentUrl": "https://cellpainting-gallery.s3.amazonaws.com/cpg0016-jump/source_all/workspace/publication_data/2026_jump_lite/metadata/v1.0/jump_lite_image_index.parquet",
+      "contentSize": "8863539 B",
+      "encodingFormat": "application/x-parquet",
+      "sha256": "35f8428885306bb80e8509fc2c1cca0eae3393ab00bdbfd9ecff311ffac3fe71"
+    },
+    {
+      "@type": "cr:FileObject",
+      "@id": "perturbation-metadata",
+      "name": "jump_lite_perturbation_metadata.parquet",
+      "description": "One record per selected well with compound, CRISPR, ORF, or control perturbation metadata.",
+      "contentUrl": "https://cellpainting-gallery.s3.amazonaws.com/cpg0016-jump/source_all/workspace/publication_data/2026_jump_lite/metadata/v1.0/jump_lite_perturbation_metadata.parquet",
+      "contentSize": "949745 B",
+      "encodingFormat": "application/x-parquet",
+      "sha256": "bbedb37f12fdeb9a09e72abaa166159d286052dc1201166d811c5310db5cd7e1"
+    },
+    {
+      "@type": "cr:FileObject",
+      "@id": "plate-manifest",
+      "name": "jump_lite_plate_manifest.parquet",
+      "description": "Counts of selected wells and sites for each source, batch, and plate.",
+      "contentUrl": "https://cellpainting-gallery.s3.amazonaws.com/cpg0016-jump/source_all/workspace/publication_data/2026_jump_lite/metadata/v1.0/jump_lite_plate_manifest.parquet",
+      "contentSize": "3733 B",
+      "encodingFormat": "application/x-parquet",
+      "sha256": "ab11dfce37ce115e5817bd6cc961853e88e9a4d21052d2eef3cc4e9dac592dc4"
+    },
+    {
+      "@type": "cr:FileObject",
+      "@id": "refchem-annotations-file",
+      "name": "jump_lite_refchem_annotations.parquet",
+      "description": "Release-relevant RefChemDB matches, targets, activity fields, confidence tiers, and direction-match indicators.",
+      "contentUrl": "https://cellpainting-gallery.s3.amazonaws.com/cpg0016-jump/source_all/workspace/publication_data/2026_jump_lite/metadata/v1.0/jump_lite_refchem_annotations.parquet",
+      "contentSize": "318521 B",
+      "encodingFormat": "application/x-parquet",
+      "sha256": "5a766a222907e1b3805f84cc2eccad0e5cd2f3eaac1add4983689853601db960"
+    },
+    {
+      "@type": "cr:FileObject",
+      "@id": "metadata-manifest",
+      "name": "metadata_manifest.json",
+      "description": "Machine-readable release counts, site-set digest, channel order, artifact sizes, and provenance notes.",
+      "contentUrl": "https://cellpainting-gallery.s3.amazonaws.com/cpg0016-jump/source_all/workspace/publication_data/2026_jump_lite/metadata/v1.0/metadata_manifest.json",
+      "contentSize": "1798 B",
+      "encodingFormat": "application/json",
+      "sha256": "9a8ce913d9c909a7956f96c2201c150ef4bc287ef5d8d327456bf784841541d5"
+    }
+  ],
+  "recordSet": [
+    {
+      "@type": "cr:RecordSet",
+      "@id": "sites",
+      "name": "Selected sites",
+      "description": "The frozen 655,101-site JUMP-Lite v1.0 index.",
+      "field": [
+        {
+          "@type": "cr:Field",
+          "@id": "sites/Metadata_Site_Key",
+          "name": "Metadata_Site_Key",
+          "description": "Stable site identifier: source, batch, plate, well, and site joined with double underscores.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {
+              "@id": "site-index"
+            },
+            "extract": {
+              "column": "Metadata_Site_Key"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "sites/Metadata_Source",
+          "name": "Metadata_Source",
+          "description": "Contributing JUMP source.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {
+              "@id": "site-index"
+            },
+            "extract": {
+              "column": "Metadata_Source"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "sites/Metadata_Batch",
+          "name": "Metadata_Batch",
+          "description": "Acquisition batch within the source.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {
+              "@id": "site-index"
+            },
+            "extract": {
+              "column": "Metadata_Batch"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "sites/Metadata_Plate",
+          "name": "Metadata_Plate",
+          "description": "Microscopy plate identifier.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {
+              "@id": "site-index"
+            },
+            "extract": {
+              "column": "Metadata_Plate"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "sites/Metadata_Well",
+          "name": "Metadata_Well",
+          "description": "Well identifier.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {
+              "@id": "site-index"
+            },
+            "extract": {
+              "column": "Metadata_Well"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "sites/Metadata_Site",
+          "name": "Metadata_Site",
+          "description": "Image site number within the well.",
+          "dataType": "sc:Integer",
+          "source": {
+            "fileObject": {
+              "@id": "site-index"
+            },
+            "extract": {
+              "column": "Metadata_Site"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "sites/URL_OrigRNA",
+          "name": "URL_OrigRNA",
+          "description": "Public URL of the original RNA-channel TIFF.",
+          "dataType": "sc:URL",
+          "source": {
+            "fileObject": {
+              "@id": "site-index"
+            },
+            "extract": {
+              "column": "URL_OrigRNA"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "sites/URL_OrigMito",
+          "name": "URL_OrigMito",
+          "description": "Public URL of the original mitochondria-channel TIFF.",
+          "dataType": "sc:URL",
+          "source": {
+            "fileObject": {
+              "@id": "site-index"
+            },
+            "extract": {
+              "column": "URL_OrigMito"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "sites/URL_OrigER",
+          "name": "URL_OrigER",
+          "description": "Public URL of the original endoplasmic-reticulum-channel TIFF.",
+          "dataType": "sc:URL",
+          "source": {
+            "fileObject": {
+              "@id": "site-index"
+            },
+            "extract": {
+              "column": "URL_OrigER"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "sites/URL_OrigDNA",
+          "name": "URL_OrigDNA",
+          "description": "Public URL of the original DNA-channel TIFF.",
+          "dataType": "sc:URL",
+          "source": {
+            "fileObject": {
+              "@id": "site-index"
+            },
+            "extract": {
+              "column": "URL_OrigDNA"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "sites/URL_OrigAGP",
+          "name": "URL_OrigAGP",
+          "description": "Public URL of the original actin/Golgi/plasma-membrane-channel TIFF.",
+          "dataType": "sc:URL",
+          "source": {
+            "fileObject": {
+              "@id": "site-index"
+            },
+            "extract": {
+              "column": "URL_OrigAGP"
+            }
+          }
+        }
+      ],
+      "key": {
+        "@id": "sites/Metadata_Site_Key"
+      }
+    },
+    {
+      "@type": "cr:RecordSet",
+      "@id": "image-channels",
+      "name": "Original image channels",
+      "description": "The 3,275,505 channel-level links from selected sites to original public JUMP TIFFs.",
+      "field": [
+        {
+          "@type": "cr:Field",
+          "@id": "image-channels/Metadata_Site_Key",
+          "name": "Metadata_Site_Key",
+          "description": "Stable site identifier.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {
+              "@id": "image-index"
+            },
+            "extract": {
+              "column": "Metadata_Site_Key"
+            }
+          },
+          "references": {
+            "field": {
+              "@id": "sites/Metadata_Site_Key"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "image-channels/Metadata_Source",
+          "name": "Metadata_Source",
+          "description": "Contributing JUMP source.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {
+              "@id": "image-index"
+            },
+            "extract": {
+              "column": "Metadata_Source"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "image-channels/Metadata_Batch",
+          "name": "Metadata_Batch",
+          "description": "Acquisition batch within the source.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {
+              "@id": "image-index"
+            },
+            "extract": {
+              "column": "Metadata_Batch"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "image-channels/Metadata_Plate",
+          "name": "Metadata_Plate",
+          "description": "Microscopy plate identifier.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {
+              "@id": "image-index"
+            },
+            "extract": {
+              "column": "Metadata_Plate"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "image-channels/Metadata_Well",
+          "name": "Metadata_Well",
+          "description": "Well identifier.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {
+              "@id": "image-index"
+            },
+            "extract": {
+              "column": "Metadata_Well"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "image-channels/Metadata_Site",
+          "name": "Metadata_Site",
+          "description": "Image site number within the well.",
+          "dataType": "sc:Integer",
+          "source": {
+            "fileObject": {
+              "@id": "image-index"
+            },
+            "extract": {
+              "column": "Metadata_Site"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "image-channels/Metadata_Channel",
+          "name": "Metadata_Channel",
+          "description": "Cell Painting channel name: AGP, DNA, ER, Mito, or RNA.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {
+              "@id": "image-index"
+            },
+            "extract": {
+              "column": "Metadata_Channel"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "image-channels/uri",
+          "name": "uri",
+          "description": "Public URL of the corresponding original JUMP TIFF.",
+          "dataType": "sc:URL",
+          "source": {
+            "fileObject": {
+              "@id": "image-index"
+            },
+            "extract": {
+              "column": "uri"
+            }
+          }
+        }
+      ],
+      "key": [
+        {
+          "@id": "image-channels/Metadata_Site_Key"
+        },
+        {
+          "@id": "image-channels/Metadata_Channel"
+        }
+      ]
+    },
+    {
+      "@type": "cr:RecordSet",
+      "@id": "perturbations",
+      "name": "Well perturbations",
+      "description": "Well-level perturbation metadata for 163,776 selected wells.",
+      "field": [
+        {
+          "@type": "cr:Field",
+          "@id": "perturbations/Metadata_Well_Key",
+          "name": "Metadata_Well_Key",
+          "description": "Stable well identifier: source, batch, plate, and well joined with double underscores.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {
+              "@id": "perturbation-metadata"
+            },
+            "extract": {
+              "column": "Metadata_Well_Key"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "perturbations/Metadata_Source",
+          "name": "Metadata_Source",
+          "description": "Contributing JUMP source.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {
+              "@id": "perturbation-metadata"
+            },
+            "extract": {
+              "column": "Metadata_Source"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "perturbations/Metadata_Batch",
+          "name": "Metadata_Batch",
+          "description": "Acquisition batch within the source.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {
+              "@id": "perturbation-metadata"
+            },
+            "extract": {
+              "column": "Metadata_Batch"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "perturbations/Metadata_Plate",
+          "name": "Metadata_Plate",
+          "description": "Microscopy plate identifier.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {
+              "@id": "perturbation-metadata"
+            },
+            "extract": {
+              "column": "Metadata_Plate"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "perturbations/Metadata_Well",
+          "name": "Metadata_Well",
+          "description": "Well identifier.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {
+              "@id": "perturbation-metadata"
+            },
+            "extract": {
+              "column": "Metadata_Well"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "perturbations/Metadata_JCP2022",
+          "name": "Metadata_JCP2022",
+          "description": "JUMP perturbation identifier for compound, CRISPR, ORF, and control wells.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {
+              "@id": "perturbation-metadata"
+            },
+            "extract": {
+              "column": "Metadata_JCP2022"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "perturbations/Metadata_broad_sample",
+          "name": "Metadata_broad_sample",
+          "description": "Broad Institute sample identifier when available.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {
+              "@id": "perturbation-metadata"
+            },
+            "extract": {
+              "column": "Metadata_broad_sample"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "perturbations/Metadata_Symbol",
+          "name": "Metadata_Symbol",
+          "description": "Gene symbol for CRISPR or ORF perturbations when available.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {
+              "@id": "perturbation-metadata"
+            },
+            "extract": {
+              "column": "Metadata_Symbol"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "perturbations/Metadata_pert_type",
+          "name": "Metadata_pert_type",
+          "description": "Original JUMP perturbation-type label.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {
+              "@id": "perturbation-metadata"
+            },
+            "extract": {
+              "column": "Metadata_pert_type"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "perturbations/Metadata_Perturbation_Type",
+          "name": "Metadata_Perturbation_Type",
+          "description": "Normalized perturbation modality: compound, CRISPR, or ORF. Control status is carried separately by Metadata_pert_type values such as negcon and poscon.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {
+              "@id": "perturbation-metadata"
+            },
+            "extract": {
+              "column": "Metadata_Perturbation_Type"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "perturbations/Metadata_Group",
+          "name": "Metadata_Group",
+          "description": "Dataset grouping label used for benchmark accounting.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {
+              "@id": "perturbation-metadata"
+            },
+            "extract": {
+              "column": "Metadata_Group"
+            }
+          }
+        }
+      ],
+      "key": {
+        "@id": "perturbations/Metadata_Well_Key"
+      }
+    },
+    {
+      "@type": "cr:RecordSet",
+      "@id": "plates",
+      "name": "Plate manifest",
+      "description": "Per-plate well and site counts for 551 plates.",
+      "field": [
+        {
+          "@type": "cr:Field",
+          "@id": "plates/Metadata_Source",
+          "name": "Metadata_Source",
+          "description": "Contributing JUMP source.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {
+              "@id": "plate-manifest"
+            },
+            "extract": {
+              "column": "Metadata_Source"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "plates/Metadata_Batch",
+          "name": "Metadata_Batch",
+          "description": "Acquisition batch within the source.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {
+              "@id": "plate-manifest"
+            },
+            "extract": {
+              "column": "Metadata_Batch"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "plates/Metadata_Plate",
+          "name": "Metadata_Plate",
+          "description": "Microscopy plate identifier.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {
+              "@id": "plate-manifest"
+            },
+            "extract": {
+              "column": "Metadata_Plate"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "plates/well_count",
+          "name": "well_count",
+          "description": "Number of selected wells on the plate.",
+          "dataType": "sc:Integer",
+          "source": {
+            "fileObject": {
+              "@id": "plate-manifest"
+            },
+            "extract": {
+              "column": "well_count"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "plates/site_count",
+          "name": "site_count",
+          "description": "Number of selected sites on the plate.",
+          "dataType": "sc:Integer",
+          "source": {
+            "fileObject": {
+              "@id": "plate-manifest"
+            },
+            "extract": {
+              "column": "site_count"
+            }
+          }
+        }
+      ],
+      "key": [
+        {
+          "@id": "plates/Metadata_Source"
+        },
+        {
+          "@id": "plates/Metadata_Batch"
+        },
+        {
+          "@id": "plates/Metadata_Plate"
+        }
+      ]
+    },
+    {
+      "@type": "cr:RecordSet",
+      "@id": "refchem-annotations",
+      "name": "RefChemDB annotations",
+      "description": "The 29,142 release-relevant curated compound annotation rows; records can repeat compounds and targets.",
+      "field": [
+        {
+          "@type": "cr:Field",
+          "@id": "refchem-annotations/C0",
+          "name": "C0",
+          "description": "Source-table row identifier retained from the RefChemDB matching export.",
+          "dataType": "sc:Integer",
+          "source": {
+            "fileObject": {
+              "@id": "refchem-annotations-file"
+            },
+            "extract": {
+              "column": "C0"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "refchem-annotations/Metadata_JCP2022",
+          "name": "Metadata_JCP2022",
+          "description": "JUMP compound identifier.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {
+              "@id": "refchem-annotations-file"
+            },
+            "extract": {
+              "column": "Metadata_JCP2022"
+            }
+          },
+          "references": {
+            "field": {
+              "@id": "perturbations/Metadata_JCP2022"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "refchem-annotations/Metadata_InChI",
+          "name": "Metadata_InChI",
+          "description": "Compound InChI string when available.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {
+              "@id": "refchem-annotations-file"
+            },
+            "extract": {
+              "column": "Metadata_InChI"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "refchem-annotations/DTXSID",
+          "name": "DTXSID",
+          "description": "EPA DSSTox substance identifier when available.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {
+              "@id": "refchem-annotations-file"
+            },
+            "extract": {
+              "column": "DTXSID"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "refchem-annotations/casrn",
+          "name": "casrn",
+          "description": "CAS Registry Number when available.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {
+              "@id": "refchem-annotations-file"
+            },
+            "extract": {
+              "column": "casrn"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "refchem-annotations/name",
+          "name": "name",
+          "description": "Compound name from the annotation source.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {
+              "@id": "refchem-annotations-file"
+            },
+            "extract": {
+              "column": "name"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "refchem-annotations/target",
+          "name": "target",
+          "description": "Annotated biological target.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {
+              "@id": "refchem-annotations-file"
+            },
+            "extract": {
+              "column": "target"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "refchem-annotations/target_type",
+          "name": "target_type",
+          "description": "Type of annotated target.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {
+              "@id": "refchem-annotations-file"
+            },
+            "extract": {
+              "column": "target_type"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "refchem-annotations/mode",
+          "name": "mode",
+          "description": "Reported mode or direction of action.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {
+              "@id": "refchem-annotations-file"
+            },
+            "extract": {
+              "column": "mode"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "refchem-annotations/activity_class",
+          "name": "activity_class",
+          "description": "RefChemDB activity-class label.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {
+              "@id": "refchem-annotations-file"
+            },
+            "extract": {
+              "column": "activity_class"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "refchem-annotations/support",
+          "name": "support",
+          "description": "Number of supporting records used by the annotation export.",
+          "dataType": "sc:Integer",
+          "source": {
+            "fileObject": {
+              "@id": "refchem-annotations-file"
+            },
+            "extract": {
+              "column": "support"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "refchem-annotations/in_cmap",
+          "name": "in_cmap",
+          "description": "Integer indicator for inclusion in Connectivity Map annotations.",
+          "dataType": "sc:Integer",
+          "source": {
+            "fileObject": {
+              "@id": "refchem-annotations-file"
+            },
+            "extract": {
+              "column": "in_cmap"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "refchem-annotations/Num_Cmpd2Target_Interactions_geq5",
+          "name": "Num_Cmpd2Target_Interactions_geq5",
+          "description": "Count of compound-to-target interactions meeting the source threshold of at least five.",
+          "dataType": "sc:Integer",
+          "source": {
+            "fileObject": {
+              "@id": "refchem-annotations-file"
+            },
+            "extract": {
+              "column": "Num_Cmpd2Target_Interactions_geq5"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "refchem-annotations/Num_Cmpd2Target_Interactions_gt1",
+          "name": "Num_Cmpd2Target_Interactions_gt1",
+          "description": "Count of compound-to-target interactions meeting the source threshold greater than one.",
+          "dataType": "sc:Integer",
+          "source": {
+            "fileObject": {
+              "@id": "refchem-annotations-file"
+            },
+            "extract": {
+              "column": "Num_Cmpd2Target_Interactions_gt1"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "refchem-annotations/Num_TargetByCmpd_Interactions_geq5",
+          "name": "Num_TargetByCmpd_Interactions_geq5",
+          "description": "Count of target-by-compound interactions meeting the source threshold of at least five.",
+          "dataType": "sc:Integer",
+          "source": {
+            "fileObject": {
+              "@id": "refchem-annotations-file"
+            },
+            "extract": {
+              "column": "Num_TargetByCmpd_Interactions_geq5"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "refchem-annotations/Num_TargetByCmpd_Interactions_gt1",
+          "name": "Num_TargetByCmpd_Interactions_gt1",
+          "description": "Count of target-by-compound interactions meeting the source threshold greater than one.",
+          "dataType": "sc:Integer",
+          "source": {
+            "fileObject": {
+              "@id": "refchem-annotations-file"
+            },
+            "extract": {
+              "column": "Num_TargetByCmpd_Interactions_gt1"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "refchem-annotations/CrossModalityTier",
+          "name": "CrossModalityTier",
+          "description": "Cross-modality annotation confidence tier.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {
+              "@id": "refchem-annotations-file"
+            },
+            "extract": {
+              "column": "CrossModalityTier"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "refchem-annotations/WithinModalityTier",
+          "name": "WithinModalityTier",
+          "description": "Within-modality annotation confidence tier.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {
+              "@id": "refchem-annotations-file"
+            },
+            "extract": {
+              "column": "WithinModalityTier"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "refchem-annotations/Metadata_JCP2022_target",
+          "name": "Metadata_JCP2022_target",
+          "description": "Compound-and-target grouping identifier.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {
+              "@id": "refchem-annotations-file"
+            },
+            "extract": {
+              "column": "Metadata_JCP2022_target"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "refchem-annotations/pert_type",
+          "name": "pert_type",
+          "description": "Perturbation-type label carried by the annotation export.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {
+              "@id": "refchem-annotations-file"
+            },
+            "extract": {
+              "column": "pert_type"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "refchem-annotations/modality",
+          "name": "modality",
+          "description": "Annotation modality label.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {
+              "@id": "refchem-annotations-file"
+            },
+            "extract": {
+              "column": "modality"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "refchem-annotations/modality_clean",
+          "name": "modality_clean",
+          "description": "Normalized annotation modality label.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {
+              "@id": "refchem-annotations-file"
+            },
+            "extract": {
+              "column": "modality_clean"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "refchem-annotations/cmpd_pert_dir_matched",
+          "name": "cmpd_pert_dir_matched",
+          "description": "Whether compound and perturbation directions match.",
+          "dataType": "sc:Boolean",
+          "source": {
+            "fileObject": {
+              "@id": "refchem-annotations-file"
+            },
+            "extract": {
+              "column": "cmpd_pert_dir_matched"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

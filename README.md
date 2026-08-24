@@ -52,6 +52,8 @@ aws s3 cp --no-sign-request --recursive \
   jump_lite_metadata/
 ```
 
+The repository-root [`croissant.json`](croissant.json) provides MLCommons Croissant 1.0 metadata for the five release tables and release manifest, including schemas, relationships, public URLs, sizes, and checksums. It intentionally uses these tabular entry points rather than enumerating the millions of sharded image, mask, and embedding objects whose layouts are documented below.
+
 ## What is included
 
 - **Images:** a 4.8 TB (4.4 TiB) lossless Zarr v3 store (`zstd`) plus Zarr v2 JPEG XL stores at high quality (`jpegxl_lossy_hq`, 237.7 GB), medium quality (`jpegxl_lossy_mq`, 92.0 GB), and high compression (`jpegxl_lossy_d20`, 16.2 GB). Each site is one unsigned 16-bit `(channel, y, x)` array. Reading JPEG XL arrays requires a compatible NumCodecs implementation such as `imagecodecs`.
