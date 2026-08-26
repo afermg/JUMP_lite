@@ -7,12 +7,21 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import pandas as pd
 
 HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
+from plot_heldout_codec_performance import (  # noqa: E402
+    DISPLAY_NAMES,
+    FAMILIES,
+    load_codec_comparisons,
+    load_scores,
+    load_uncertainty,
+    make_figure,
+)
 from run_analysis import (  # noqa: E402
     AnalysisError,
     CoverageError,
@@ -116,6 +125,29 @@ class AnalysisUnitTests(unittest.TestCase):
             self.assertEqual(resumed["result"]["value"], 3)
             with self.assertRaisesRegex(AnalysisError, "protocol mismatch"):
                 load_checkpoint(target, "protocol-b")
+
+    def test_heldout_figure_includes_vit_random_baseline(self) -> None:
+        source_results = HERE / "results"
+        scores = load_scores(source_results / "heldout_test_scores.csv")
+        uncertainty = load_uncertainty(
+            source_results / "uncertainty" / "heldout_uncertainty.csv", scores
+        )
+        comparisons = load_codec_comparisons(
+            source_results / "uncertainty" / "codec_vs_raw_paired.csv", scores
+        )
+
+        self.assertIn("dinov2_random", FAMILIES)
+        self.assertEqual(len(scores), len(FAMILIES) * 4)
+        self.assertEqual(
+            len(comparisons.loc[comparisons["family"] == "dinov2_random"]), 3
+        )
+        figure = make_figure(scores, uncertainty, comparisons)
+        try:
+            _, labels = figure.axes[0].get_legend_handles_labels()
+            self.assertEqual(labels, [DISPLAY_NAMES[family] for family in FAMILIES])
+            self.assertIn("ViT-rand", labels)
+        finally:
+            plt.close(figure)
 
     def test_report_requires_a_bound_finite_uncertainty_bundle(self) -> None:
         source_results = HERE / "results"

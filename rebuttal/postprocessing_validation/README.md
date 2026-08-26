@@ -1,9 +1,96 @@
 # Post-processing validation/test rebuttal analysis
 
-This directory contains a read-only, resumable analysis of post-processing
-configuration selection. It uses the frozen normalized profiles under
-`/work/datasets/JUMP-lite-wacv`; it does not regenerate or modify the canonical
-sweep.
+## Strict split-before-fit analysis
+
+`strict_split_fit.py` is the primary leakage-free runner for reviewer point A3.
+It constructs the treatment split before reading any feature matrix. Every
+feature-selection rule and fitted numerical transform then excludes held-out
+test treatments. Shared negative controls remain fit and retrieval references.
+The runner reads raw features and the resolved sweep YAML files, but it never
+reads canonical normalized `output.parquet` files or archived PA maps for a
+strict score.
+
+The fixed seed `20260811` assigns non-control `Metadata_JCP2022` identities to a
+20% selection partition and an 80% held-out test partition within complete group
+membership strata. Each candidate is fit on Raw selection treatments plus shared
+controls. Both PA and PC are recomputed on that selection partition. One recipe
+per family is selected by the existing within-family
+`min-max(PA) * min-max(PC)` rule. The winning recipe is frozen across codecs.
+Its numerical state is fit separately within each codec using only that codec's
+selection treatments plus shared controls, then applied to held-out treatments.
+No fallback may fit a test row.
+
+The learned-family archive contains 350 directory aliases per family but only
+175 effective resolved pipelines. The two aliases differ only in the unused
+`use_prune_correlated` top-level flag because the resolved learned pipeline has
+no correlation-pruning step. The strict runner evaluates each effective recipe
+once and records both aliases. The complete inventory is 1,160 effective
+recipes represented by 2,035 aliases: 175/350 for each of DINOv2, MorphEM,
+OpenPhenom, SubCell, and ViT-rand; 280/280 for CellProfiler; and 5/5 for Cell
+Count.
+
+Strict candidate fit state includes missingness and low-variance feature
+retention, per-plate standardization or RobustMAD, outlier removal,
+out-of-sample empirical INT, correlation pruning where the resolved pipeline
+enables it, and all TVN EFAAR state. Steps fit on controls use shared controls
+only. Other fitted steps use selection treatments plus controls. OpenPhenom
+feature prefixes are mapped to one numbered canonical axis before fitting.
+Missing fit strata, unseen transform strata, nonfinite values, schema drift,
+missing controls, and incomplete codec coverage fail closed.
+
+Run the bounded one-GPU smoke without changing production services:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 \
+LD_LIBRARY_PATH=/run/opengl-driver/lib:$NIX_LD_LIBRARY_PATH \
+PYTHONPATH=. \
+/work/users/amunoz/projects/JUMP_lite/src/norm_3/.pixi/envs/default/bin/python \
+  rebuttal/postprocessing_validation/strict_split_fit.py \
+  --mode smoke --families dinov2 --max-recipes 1 \
+  --output-dir /work/scratch/amunoz/jump-lite-strict-postprocessing-smoke-v1
+```
+
+The recommended create-only production command is:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 \
+LD_LIBRARY_PATH=/run/opengl-driver/lib:$NIX_LD_LIBRARY_PATH \
+PYTHONPATH=. \
+/work/users/amunoz/projects/JUMP_lite/src/norm_3/.pixi/envs/default/bin/python \
+  rebuttal/postprocessing_validation/strict_split_fit.py \
+  --mode production \
+  --output-dir /work/scratch/amunoz/jump-lite-strict-postprocessing-final-v1
+```
+
+A failed invocation may resume only against its exact protocol and code identity
+by adding `--resume`. Candidate cache keys bind the raw input hash, split hash,
+exact fit-ID hash, code hash, family, codec, and effective recipe. Winners are
+refit deterministically. Candidate transform states are not retained.
+
+Final-code DINOv2 candidate smoke v4 completed in 31.23 seconds with 3.36 GiB
+peak process RSS. A one-candidate CellProfiler smoke completed in 268.59 seconds.
+GPU sampling observed 7,502 MiB total use for DINOv2 and 24,022 MiB for
+CellProfiler, from a 4,090 MiB production baseline. The one-recipe DINOv2
+production smoke fit Raw, HQ, MQ, and D20 separately and completed in
+3 minutes 46 seconds with 10.58 GiB peak RSS. Its 20-file hash closure passed,
+and every codec scored the same 134,645-well test-plus-control intersection.
+Evidence roots are `/work/scratch/amunoz/jump-lite-strict-postprocessing-smoke-v4`,
+`/work/scratch/amunoz/jump-lite-strict-postprocessing-cellprofiler-smoke-v1`,
+and `/work/scratch/amunoz/jump-lite-strict-postprocessing-production-smoke-v3`.
+Sequential extrapolation is about 29 hours. Allow 28 to 36 hours on one shared
+H100 because the 280 CellProfiler candidates dominate runtime and general DL
+production remains active.
+
+The older `run_analysis.py` analysis below remains preserved as historical
+selection-only evidence. It reads transforms fitted before the split and must
+not be used as the final response to A3 or relabeled as strict held-out evidence.
+
+## Historical selection-only analysis
+
+This directory also contains the earlier read-only, resumable analysis of
+post-processing configuration selection. It uses the frozen normalized profiles
+under `/work/datasets/JUMP-lite-wacv`; it does not regenerate or modify the
+canonical sweep.
 
 ## Protocol
 

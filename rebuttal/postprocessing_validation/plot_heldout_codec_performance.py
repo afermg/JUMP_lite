@@ -14,24 +14,31 @@ import numpy as np
 import pandas as pd
 
 CODECS = ["Raw", "HQ", "MQ", "D20"]
-FAMILIES = ["morphem", "dinov2", "subcell", "openphenom"]
+PRIMARY_FAMILIES = ["morphem", "dinov2", "subcell", "openphenom"]
+FAMILIES = [*PRIMARY_FAMILIES, "dinov2_random"]
 DISPLAY_NAMES = {
     "morphem": "MorphEM",
     "dinov2": "DINOv2",
     "subcell": "SubCell",
     "openphenom": "OpenPhenom",
+    "dinov2_random": "ViT-rand",
 }
 COLORS = {
     "morphem": "#0072B2",
     "dinov2": "#D55E00",
     "subcell": "#009E73",
     "openphenom": "#CC79A7",
+    "dinov2_random": "#4D4D4D",
 }
 MARKERS = {
     "morphem": "o",
     "dinov2": "s",
     "subcell": "^",
     "openphenom": "D",
+    "dinov2_random": "X",
+}
+LINESTYLES = {
+    family: "--" if family == "dinov2_random" else "-" for family in FAMILIES
 }
 
 
@@ -149,8 +156,10 @@ def load_codec_comparisons(path: Path, scores: pd.DataFrame) -> pd.DataFrame:
     comparisons = comparisons.loc[
         comparisons["family"].isin(FAMILIES)
         & comparisons["codec"].isin(CODECS[1:])
-        & comparisons["primary_learned_model"]
     ].copy()
+    expected_primary = comparisons["family"].isin(PRIMARY_FAMILIES)
+    if not comparisons["primary_learned_model"].eq(expected_primary).all():
+        raise ValueError("Unexpected primary-learned-model classification")
     observed = set(zip(comparisons["family"], comparisons["codec"]))
     expected = {(family, codec) for family in FAMILIES for codec in CODECS[1:]}
     if observed != expected or len(comparisons) != len(expected):
@@ -195,7 +204,7 @@ def make_figure(
             "axes.spines.right": False,
         }
     )
-    fig, axes = plt.subplots(1, 2, figsize=(7.1, 2.8), constrained_layout=True)
+    fig, axes = plt.subplots(1, 2, figsize=(7.1, 3.0), constrained_layout=True)
     x = list(range(len(CODECS)))
 
     for family in FAMILIES:
@@ -220,6 +229,7 @@ def make_figure(
             "color": COLORS[family],
             "marker": MARKERS[family],
             "linewidth": 1.7,
+            "linestyle": LINESTYLES[family],
             "markersize": 5.2,
             "markeredgecolor": "white",
             "markeredgewidth": 0.45,
@@ -246,12 +256,18 @@ def make_figure(
 
     axes[0].set_title("(a) Absolute held-out score", loc="left", fontweight="bold")
     axes[0].set_ylabel(r"Balanced PA--PC product ($\times 10^{-2}$)")
-    axes[0].set_ylim(bottom=0)
+    absolute_low = float(uncertainty["product_ci_low"].min() * 100.0)
+    axes[0].set_ylim(bottom=min(-0.02, absolute_low * 1.15))
 
     axes[1].set_title("(b) Change from model-specific Raw", loc="left", fontweight="bold")
     axes[1].set_ylabel("Change from Raw (%)")
     axes[1].axhline(0, color="#555555", linewidth=0.9, linestyle="--", zorder=0)
-    axes[1].set_ylim(-58, 13)
+    relative_low = float(codec_comparisons["product_relative_pct_ci_low"].min())
+    relative_high = float(codec_comparisons["product_relative_pct_ci_high"].max())
+    axes[1].set_ylim(
+        np.floor((min(0.0, relative_low) - 5.0) / 10.0) * 10.0,
+        np.ceil((max(0.0, relative_high) + 5.0) / 10.0) * 10.0,
+    )
 
     for axis in axes:
         axis.set_xticks(x, CODECS)
@@ -264,10 +280,10 @@ def make_figure(
         handles,
         labels,
         loc="outside upper center",
-        ncol=4,
+        ncol=5,
         frameon=False,
-        handlelength=2.0,
-        columnspacing=1.5,
+        handlelength=1.7,
+        columnspacing=1.0,
     )
     return fig
 
