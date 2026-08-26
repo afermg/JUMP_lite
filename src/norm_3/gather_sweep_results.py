@@ -1860,9 +1860,13 @@ def generate_nap_pa_vs_pc_combined(pdf, output_dir: Path, model_colors: dict,
         print("No valid NAP data for combined plot.")
         return
 
+    # Target-2 cell_count uses cell and nuclei counts measured from Cellpose masks.
+    # Keep its label distinct from the legacy Raw-only Cell Count representation.
+    target2_family_display = {**FAMILY_DISPLAY, "cell_count": "Cellpose Counts"}
+
     # Families that get merged into one subplot
     _MERGED_FAMILIES = {"cell_count", "dinov2_random"}
-    _MERGED_TITLE = "CellCount + ViT-rand"
+    _MERGED_TITLE = "Cellpose Counts + ViT-rand"
 
     # Build detail slot list: each entry is (title, list_of_families), sorted alphabetically
     detail_slots: list[tuple[str, list[str]]] = []
@@ -1875,7 +1879,7 @@ def generate_nap_pa_vs_pc_combined(pdf, output_dir: Path, model_colors: dict,
                 detail_slots.append((_MERGED_TITLE, sorted(_MERGED_FAMILIES & set(best["family"].values))))
                 merged_added = True
         else:
-            detail_slots.append((FAMILY_DISPLAY.get(fam, fam), [fam]))
+            detail_slots.append((target2_family_display.get(fam, fam), [fam]))
     detail_slots.sort(key=lambda x: x[0].lower())
 
     n_detail_rows = 3
@@ -1907,7 +1911,11 @@ def generate_nap_pa_vs_pc_combined(pdf, output_dir: Path, model_colors: dict,
         pa_nap, pc_nap = row["PA_mean_nap"], row["PC_mean_nap"]
         family = row["family"]
         color = FAMILY_SET2_COLOR.get(family, (0.5, 0.5, 0.5))
-        label = FAMILY_DISPLAY.get(family, family) if family not in families_seen else None
+        label = (
+            target2_family_display.get(family, family)
+            if family not in families_seen
+            else None
+        )
         ax_ov.scatter(
             pc_nap, pa_nap,
             c=[color], s=200, alpha=0.85,
