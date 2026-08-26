@@ -21,9 +21,12 @@ import gc
 import hashlib
 import json
 import math
+import os
 from pathlib import Path
 import re
+import subprocess
 import sys
+import tempfile
 import time
 from typing import Any, Iterable, Mapping, Sequence
 
@@ -75,7 +78,7 @@ ARCHIVED_LABEL_PROFILE = (
     / "robustmad_all__tvn_efaar_e0.05"
     / "output.parquet"
 )
-PROTOCOL_VERSION = 4
+PROTOCOL_VERSION = 5
 SUPPORTED_STEPS = {
     "clean_nans",
     "filter_features",
@@ -647,8 +650,22 @@ def _gpu() -> Any:
         import cupy as cp
     except ImportError as exc:
         raise AnalysisError("CuPy is required for fitted numerical transforms") from exc
-    if cp.cuda.runtime.getDeviceCount() != 1:
-        # CUDA_VISIBLE_DEVICES must expose exactly one GPU to prevent accidental fanout.
+    count = cp.cuda.runtime.getDeviceCount()
+    configured = os.environ.get("JUMP_LITE_STRICT_GPU_INDEX")
+    if configured is not None:
+        try:
+            index = int(configured)
+        except ValueError as exc:
+            raise AnalysisError("invalid strict Hydra GPU index") from exc
+        if index < 0 or index >= count:
+            raise AnalysisError(
+                f"strict Hydra GPU index {index} outside {count} visible devices"
+            )
+        cp.cuda.Device(index).use()
+        return cp
+    if count != 1:
+        # The serial runner must expose exactly one GPU. Hydra workers instead
+        # bind one explicit visible-device index from the immutable task manifest.
         raise AnalysisError("strict runner requires exactly one visible GPU")
     return cp
 
@@ -1328,6 +1345,27 @@ def ensure_create_only(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=False)
 
 
+def atomic_create_json(path: Path, payload: Mapping[str, Any]) -> None:
+    """Atomically create an immutable JSON package without replacement."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    text = json.dumps(payload, indent=2, sort_keys=True) + "\n"
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    tmp_path = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        try:
+            os.link(tmp_path, path)
+        except FileExistsError as exc:
+            raise AnalysisError(
+                f"refusing to replace immutable package: {path}"
+            ) from exc
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+
 def candidate_cache_key(
     input_hash: str,
     split_hash: str,
@@ -1467,8 +1505,308 @@ def _output_file_record(path: Path, root: Path) -> dict[str, Any]:
     }
 
 
+def parse_gpu_indices(value: str) -> tuple[int, ...]:
+    try:
+        indices = tuple(int(part.strip()) for part in value.split(",") if part.strip())
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            "GPU indices must be comma-separated integers"
+        ) from exc
+    if not indices or any(index < 0 for index in indices):
+        raise argparse.ArgumentTypeError(
+            "at least one nonnegative GPU index is required"
+        )
+    if len(indices) != len(set(indices)):
+        raise argparse.ArgumentTypeError("GPU indices must be unique")
+    return indices
+
+
+def build_hydra_task_manifest(
+    *,
+    families: Sequence[str],
+    inventories: Mapping[str, Sequence[EffectiveRecipe]],
+    raw_inputs: Mapping[str, Mapping[str, Any]],
+    canonical_raw_schemas: Mapping[str, Sequence[str]],
+    annotations: pl.DataFrame,
+    split_by_id: Mapping[str, str],
+    gpu_indices: Sequence[int],
+    coordinator_sha256: str,
+    worker_sha256: str,
+    sweep_root: Path,
+) -> dict[str, Any]:
+    """Build deterministic prefix-group tasks covering each candidate once."""
+    tasks: list[dict[str, Any]] = []
+    split_sha256 = canonical_json_sha256(
+        sorted((str(key), str(value)) for key, value in split_by_id.items())
+    )
+    for family in families:
+        raw_identity = raw_inputs[f"{family}/Raw"]
+        frame, features, _ = load_raw_profile(
+            family,
+            "Raw",
+            annotations,
+            canonical_raw_schemas[family],
+            str(raw_identity["source_schema_sha256"]),
+        )
+        fit_ids_by_clean: dict[str, str] = {}
+        for group_index, group in enumerate(
+            contiguous_prefix_groups(inventories[family])
+        ):
+            first = group[0]
+            clean_signature = canonical_json_sha256(
+                [
+                    step
+                    for step in _enabled_steps(first.config)
+                    if step["name"] == "clean_nans"
+                ]
+            )
+            if clean_signature not in fit_ids_by_clean:
+                fit_ids_by_clean[clean_signature] = exact_fit_ids_hash(
+                    frame, features, first, split_by_id
+                )
+            prefix_behavior = recipe_prefix_behavior_sha256(first) or ""
+            task_index = len(tasks)
+            task: dict[str, Any] = {
+                "task_index": task_index,
+                "family": family,
+                "group_index": group_index,
+                "gpu_index": int(gpu_indices[task_index % len(gpu_indices)]),
+                "input_sha256": str(raw_identity["sha256"]),
+                "source_schema_sha256": str(raw_identity["source_schema_sha256"]),
+                "canonical_schema_sha256": str(raw_identity["canonical_schema_sha256"]),
+                "fit_ids_sha256": fit_ids_by_clean[clean_signature],
+                "split_sha256": split_sha256,
+                "prefix_behavior_sha256": prefix_behavior,
+                "coordinator_sha256": coordinator_sha256,
+                "worker_sha256": worker_sha256,
+                "sweep_root": str(sweep_root.resolve()),
+                "recipes": [
+                    {
+                        "canonical_name": recipe.canonical_name,
+                        "effective_signature": recipe.signature,
+                        "aliases": list(recipe.aliases),
+                    }
+                    for recipe in group
+                ],
+                "result_relpath": f"hydra_worker_results/task-{task_index:04d}.json",
+            }
+            task["prefix_signature"] = canonical_json_sha256(
+                {
+                    key: task[key]
+                    for key in (
+                        "family",
+                        "group_index",
+                        "input_sha256",
+                        "source_schema_sha256",
+                        "canonical_schema_sha256",
+                        "fit_ids_sha256",
+                        "split_sha256",
+                        "prefix_behavior_sha256",
+                        "coordinator_sha256",
+                        "worker_sha256",
+                        "sweep_root",
+                    )
+                }
+            )
+            task["task_sha256"] = canonical_json_sha256(task)
+            tasks.append(task)
+        del frame
+    candidate_keys = [
+        (task["family"], recipe["effective_signature"])
+        for task in tasks
+        for recipe in task["recipes"]
+    ]
+    expected = [
+        (family, recipe.signature)
+        for family in families
+        for recipe in inventories[family]
+    ]
+    if candidate_keys != expected or len(candidate_keys) != len(set(candidate_keys)):
+        raise AnalysisError(
+            "Hydra task manifest does not exactly close candidate inventory"
+        )
+    return {
+        "schema_version": 1,
+        "task_count": len(tasks),
+        "candidate_count": len(candidate_keys),
+        "gpu_indices": list(gpu_indices),
+        "tasks": tasks,
+    }
+
+
+def validate_worker_package_payload(
+    payload: Mapping[str, Any],
+    *,
+    protocol_hash: str,
+    task: Mapping[str, Any],
+    worker_sha256: str,
+    coordinator_sha256: str,
+) -> list[dict[str, Any]]:
+    if payload.get("protocol_hash") != protocol_hash:
+        raise AnalysisError("stale Hydra worker package protocol")
+    if payload.get("worker_sha256") != worker_sha256:
+        raise AnalysisError("stale Hydra worker package code")
+    if payload.get("coordinator_sha256") != coordinator_sha256:
+        raise AnalysisError("stale Hydra worker package coordinator")
+    if payload.get("task") != task or payload.get("task_sha256") != task["task_sha256"]:
+        raise AnalysisError("stale Hydra worker package task identity")
+    rows = payload.get("rows")
+    if not isinstance(rows, list) or len(rows) != len(task["recipes"]):
+        raise AnalysisError("Hydra worker package row closure mismatch")
+    expected = [recipe["effective_signature"] for recipe in task["recipes"]]
+    observed = [row.get("effective_signature") for row in rows]
+    if observed != expected or len(observed) != len(set(observed)):
+        raise AnalysisError("Hydra worker package recipe order mismatch")
+    for row in rows:
+        for key in (
+            "input_sha256",
+            "source_schema_sha256",
+            "canonical_schema_sha256",
+            "split_sha256",
+            "fit_ids_sha256",
+            "prefix_signature",
+            "task_sha256",
+        ):
+            if row.get(key) != task[key]:
+                raise AnalysisError(f"Hydra worker package {key} mismatch")
+        if row.get("worker_sha256") != worker_sha256:
+            raise AnalysisError("Hydra worker package row code mismatch")
+        if row.get("code_sha256") != coordinator_sha256:
+            raise AnalysisError("Hydra worker package row coordinator mismatch")
+    return [dict(row) for row in rows]
+
+
+def launch_hydra_selection(output: Path, task_count: int, hydra_jobs: int) -> None:
+    """Launch bounded waves so no two concurrent tasks share a bound GPU."""
+    worker = Path(__file__).with_name("strict_split_fit_hydra_worker.py")
+    sweep_root = output / "hydra_jobs"
+    for wave_index, start in enumerate(range(0, task_count, hydra_jobs)):
+        indices = list(range(start, min(start + hydra_jobs, task_count)))
+        task_override = "task_index=" + ",".join(str(index) for index in indices)
+        command = [
+            sys.executable,
+            str(worker),
+            "--multirun",
+            f"coordinator_root={output}",
+            task_override,
+            "hydra/launcher=joblib",
+            f"hydra.launcher.n_jobs={len(indices)}",
+            f"hydra.sweep.dir={sweep_root / f'wave-{wave_index:03d}'}",
+            "hydra.sweep.subdir=job-${hydra.job.num}",
+            "hydra.job.chdir=false",
+        ]
+        completed = subprocess.run(command, check=False)
+        if completed.returncode != 0:
+            raise AnalysisError(
+                "Hydra strict selection wave "
+                f"{wave_index} failed with exit status {completed.returncode}"
+            )
+
+
+def collect_hydra_selection(
+    *,
+    output: Path,
+    protocol_hash: str,
+    protocol: Mapping[str, Any],
+    manifest: Mapping[str, Any],
+    inventories: Mapping[str, Sequence[EffectiveRecipe]],
+) -> tuple[list[dict[str, Any]], dict[str, list[dict[str, Any]]]]:
+    """Validate packages and write canonical checkpoints in recipe order."""
+    worker_sha256 = str(protocol["hydra_selection"]["worker_sha256"])
+    coordinator_sha256 = str(protocol["runner_sha256"])
+    rows_by_signature: dict[tuple[str, str], dict[str, Any]] = {}
+    task_by_signature: dict[tuple[str, str], Mapping[str, Any]] = {}
+    expected_paths: set[Path] = set()
+    for task in manifest["tasks"]:
+        result_path = output / task["result_relpath"]
+        expected_paths.add(result_path.resolve())
+        if not result_path.is_file():
+            raise AnalysisError(f"missing Hydra worker package: {result_path}")
+        payload = json.loads(result_path.read_text())
+        rows = validate_worker_package_payload(
+            payload,
+            protocol_hash=protocol_hash,
+            task=task,
+            worker_sha256=worker_sha256,
+            coordinator_sha256=coordinator_sha256,
+        )
+        for row in rows:
+            key = (str(row["family"]), str(row["effective_signature"]))
+            if key in rows_by_signature:
+                raise AnalysisError("duplicate Hydra candidate result")
+            rows_by_signature[key] = row
+            task_by_signature[key] = task
+    result_root = output / "hydra_worker_results"
+    observed_paths = (
+        {path.resolve() for path in result_root.glob("*.json")}
+        if result_root.is_dir()
+        else set()
+    )
+    if observed_paths != expected_paths:
+        raise AnalysisError("Hydra worker result package closure mismatch")
+
+    family_rows: dict[str, list[dict[str, Any]]] = {}
+    for family, recipes in inventories.items():
+        canonical_rows: list[dict[str, Any]] = []
+        checkpoint_root = output / "checkpoints" / "selection" / family
+        checkpoint_root.mkdir(parents=True, exist_ok=True)
+        for recipe in recipes:
+            key = (family, recipe.signature)
+            row = rows_by_signature.get(key)
+            task = task_by_signature.get(key)
+            if row is None or task is None or row["config"] != recipe.canonical_name:
+                raise AnalysisError("Hydra result missing from canonical recipe order")
+            identity = checkpoint_identity(
+                code_sha256=coordinator_sha256,
+                family=family,
+                codec="Raw",
+                config=recipe.canonical_name,
+                effective_signature=recipe.signature,
+                input_sha256=str(task["input_sha256"]),
+                fit_ids_sha256=str(task["fit_ids_sha256"]),
+                split_sha256=str(task["split_sha256"]),
+                source_schema_sha256=str(task["source_schema_sha256"]),
+                canonical_schema_sha256=str(task["canonical_schema_sha256"]),
+            )
+            identity.update(
+                {
+                    "prefix_signature": str(task["prefix_signature"]),
+                    "worker_sha256": worker_sha256,
+                    "task_sha256": str(task["task_sha256"]),
+                }
+            )
+            cache_key = canonical_json_sha256(identity)
+            path = checkpoint_root / f"{cache_key}.json"
+            cached = _load_checkpoint(path, protocol_hash, identity)
+            if cached is None:
+                _checkpoint(
+                    path,
+                    protocol_hash,
+                    {"cache_key": cache_key, "result": row},
+                    identity,
+                )
+            else:
+                cached_row = dict(cached["result"])
+                _validate_cached_result_identity(cached_row, identity, path)
+                if cached_row != row:
+                    raise AnalysisError(f"Hydra canonical checkpoint drift: {path}")
+            canonical_rows.append(row)
+        family_rows[family] = canonical_rows
+    if set(rows_by_signature) != {
+        (family, recipe.signature)
+        for family, recipes in inventories.items()
+        for recipe in recipes
+    }:
+        raise AnalysisError("Hydra collected result inventory mismatch")
+    return [row for family in inventories for row in family_rows[family]], family_rows
+
+
 def run_production(args: argparse.Namespace) -> int:
     output = args.output_dir.resolve()
+    if args.hydra_jobs > len(args.hydra_gpus):
+        raise AnalysisError(
+            "Hydra jobs may not exceed bound GPUs; one concurrent task per GPU"
+        )
     annotations = build_annotation_table()
     split_rows = make_split_from_annotations(
         annotations, args.validation_fraction, args.seed
@@ -1500,6 +1838,24 @@ def run_production(args: argparse.Namespace) -> int:
                     identity["canonical_features"],
                 )
     code_hash = sha256_file(Path(__file__))
+    # The coordinator performs manifest fit-ID checks and final codec fits on
+    # the first bound GPU. Hydra workers override this per immutable task.
+    os.environ["JUMP_LITE_STRICT_GPU_INDEX"] = str(args.hydra_gpus[0])
+    worker_path = Path(__file__).with_name("strict_split_fit_hydra_worker.py")
+    worker_hash = sha256_file(worker_path)
+    task_manifest = build_hydra_task_manifest(
+        families=families,
+        inventories=inventories,
+        raw_inputs=raw_inputs,
+        canonical_raw_schemas=canonical_raw_schemas,
+        annotations=annotations,
+        split_by_id=split_by_id,
+        gpu_indices=args.hydra_gpus,
+        coordinator_sha256=code_hash,
+        worker_sha256=worker_hash,
+        sweep_root=args.sweep_root,
+    )
+    task_manifest_hash = canonical_json_sha256(task_manifest)
     protocol = {
         "protocol_version": PROTOCOL_VERSION,
         "strict_split_before_fit": True,
@@ -1511,12 +1867,30 @@ def run_production(args: argparse.Namespace) -> int:
         "seed": args.seed,
         "validation_fraction": args.validation_fraction,
         "cpu_workers": args.cpu_workers,
+        "hydra_selection": {
+            "launcher": "hydra_joblib_launcher.joblib_launcher.JoblibLauncher",
+            "hydra_jobs": args.hydra_jobs,
+            "gpu_indices": list(args.hydra_gpus),
+            "dispatch_policy": (
+                "bounded Hydra waves with at most one concurrent task per GPU"
+            ),
+            "coordinator_gpu_index": args.hydra_gpus[0],
+            "worker_sha256": worker_hash,
+            "task_manifest_sha256": task_manifest_hash,
+            "task_count": task_manifest["task_count"],
+            "candidate_count": task_manifest["candidate_count"],
+            "worker_result_policy": (
+                "unique immutable packages only; coordinator is sole canonical writer"
+            ),
+            "hydra_output_relpath": "hydra_jobs",
+            "worker_result_relpath": "hydra_worker_results",
+        },
         "selection_prefix_cache": {
             "policy": (
-                "one adjacent canonical recipe group at a time; cache enabled steps "
-                "strictly before normalize_tvn_efaar; release before next prefix"
+                "one Hydra task per contiguous canonical pre-TVN prefix group; "
+                "fit each prefix once and evaluate all suffix recipes"
             ),
-            "single_writer": True,
+            "single_canonical_writer": True,
             "group_counts": {
                 family: len(contiguous_prefix_groups(recipes))
                 for family, recipes in inventories.items()
@@ -1534,6 +1908,7 @@ def run_production(args: argparse.Namespace) -> int:
             inventories, args.sweep_root
         ),
         "raw_input_schemas": raw_inputs,
+        "canonical_raw_schemas": canonical_raw_schemas,
         "canonical_raw_schema_sha256": {
             family: ordered_schema_sha256(schema)
             for family, schema in canonical_raw_schemas.items()
@@ -1562,9 +1937,19 @@ def run_production(args: argparse.Namespace) -> int:
         observed = json.loads((output / "protocol.json").read_text())
         if canonical_json_sha256(observed) != protocol_hash:
             raise AnalysisError("resume protocol mismatch")
+        observed_manifest = json.loads(
+            (output / "hydra_task_manifest.json").read_text()
+        )
+        if observed_manifest != task_manifest:
+            raise AnalysisError("resume Hydra task manifest mismatch")
+        observed_split = json.loads((output / "hydra_split.json").read_text())
+        if observed_split != {"rows": split_rows}:
+            raise AnalysisError("resume Hydra split artifact mismatch")
     else:
         ensure_create_only(output)
         atomic_write_json(output / "protocol.json", protocol)
+        atomic_write_json(output / "hydra_task_manifest.json", task_manifest)
+        atomic_write_json(output / "hydra_split.json", {"rows": split_rows})
         atomic_write_pandas_csv(
             output / "treatment_split.csv", pd.DataFrame(split_rows)
         )
@@ -1577,171 +1962,18 @@ def run_production(args: argparse.Namespace) -> int:
     started = time.monotonic()
 
     for family in families:
-        raw_identity = raw_inputs[f"{family}/Raw"]
-        frame, features, input_path = load_raw_profile(
-            family,
-            "Raw",
-            annotations,
-            canonical_raw_schemas[family],
-            raw_identity["source_schema_sha256"],
-        )
-        input_hash = str(raw_identity["sha256"])
-        input_records[f"{family}/Raw"] = dict(raw_identity)
-        family_rows: list[dict[str, Any]] = []
-        family_checkpoint = checkpoint_root / "selection" / family
-        family_checkpoint.mkdir(parents=True, exist_ok=True)
-        fit_ids_hash_cache: dict[str, str] = {}
-        active_prefix_signature: str | None = None
-        active_prefix_frame: pl.DataFrame | None = None
-        active_prefix_state: StrictFitState | None = None
-        for recipe in inventories[family]:
-            clean_signature = canonical_json_sha256(
-                [
-                    step
-                    for step in _enabled_steps(recipe.config)
-                    if step["name"] == "clean_nans"
-                ]
-            )
-            if clean_signature not in fit_ids_hash_cache:
-                fit_ids_hash_cache[clean_signature] = exact_fit_ids_hash(
-                    frame, features, recipe, split_by_id
-                )
-            fit_ids_hash = fit_ids_hash_cache[clean_signature]
-            prefix_behavior = recipe_prefix_behavior_sha256(recipe)
-            bound_prefix_signature = (
-                prefix_cache_signature(
-                    prefix_behavior_sha256=prefix_behavior,
-                    family=family,
-                    codec="Raw",
-                    input_sha256=input_hash,
-                    source_schema_sha256=raw_identity["source_schema_sha256"],
-                    canonical_schema_sha256=raw_identity["canonical_schema_sha256"],
-                    split_sha256=protocol["split_sha256"],
-                    fit_ids_sha256=fit_ids_hash,
-                    code_sha256=code_hash,
-                    protocol_sha256=protocol_hash,
-                )
-                if prefix_behavior is not None
-                else ""
-            )
-            if (
-                active_prefix_signature is not None
-                and active_prefix_signature != bound_prefix_signature
-            ):
-                active_prefix_frame = None
-                active_prefix_state = None
-                active_prefix_signature = None
-                release_prefix_cache()
-            identity = checkpoint_identity(
-                code_sha256=code_hash,
-                family=family,
-                codec="Raw",
-                config=recipe.canonical_name,
-                effective_signature=recipe.signature,
-                input_sha256=input_hash,
-                fit_ids_sha256=fit_ids_hash,
-                split_sha256=protocol["split_sha256"],
-                source_schema_sha256=raw_identity["source_schema_sha256"],
-                canonical_schema_sha256=raw_identity["canonical_schema_sha256"],
-            )
-            identity["prefix_signature"] = bound_prefix_signature
-            cache_key = candidate_cache_key(
-                input_hash,
-                protocol["split_sha256"],
-                fit_ids_hash,
-                code_hash,
-                family,
-                "Raw",
-                recipe.canonical_name,
-                recipe.signature,
-                raw_identity["source_schema_sha256"],
-                raw_identity["canonical_schema_sha256"],
-                bound_prefix_signature,
-            )
-            path = family_checkpoint / f"{cache_key}.json"
-            cached = _load_checkpoint(path, protocol_hash, identity)
-            if cached is not None:
-                row = dict(cached["result"])
-                _validate_cached_result_identity(row, identity, path)
-            else:
-                candidate_started = time.monotonic()
-                prefix_cache_hit = False
-                if prefix_behavior is None:
-                    transformed, state = fit_transform_recipe(
-                        frame,
-                        features,
-                        recipe,
-                        split_by_id,
-                        "Raw",
-                        args.cpu_workers,
-                    )
-                else:
-                    if active_prefix_signature is None:
-                        active_prefix_frame, active_prefix_state = fit_recipe_prefix(
-                            frame,
-                            features,
-                            recipe,
-                            split_by_id,
-                            "Raw",
-                            args.cpu_workers,
-                        )
-                        active_prefix_signature = bound_prefix_signature
-                    else:
-                        prefix_cache_hit = True
-                    if active_prefix_frame is None or active_prefix_state is None:
-                        raise AnalysisError("active prefix cache is incomplete")
-                    transformed, state = complete_recipe_from_prefix(
-                        active_prefix_frame,
-                        active_prefix_state,
-                        recipe,
-                        split_by_id,
-                        args.cpu_workers,
-                    )
-                metrics, _, _ = score_partition(
-                    transformed, state.retained_features, validation_ids
-                )
-                if state.fit_ids_sha256 != fit_ids_hash:
-                    raise AnalysisError(
-                        "candidate cache fit-ID hash differs from fitted rows"
-                    )
-                row = {
-                    "status": "ok",
-                    "family": family,
-                    "codec": "Raw",
-                    "config": recipe.canonical_name,
-                    "aliases": "|".join(recipe.aliases),
-                    "alias_count": len(recipe.aliases),
-                    "effective_signature": recipe.signature,
-                    "prefix_behavior_sha256": prefix_behavior or "",
-                    "prefix_signature": bound_prefix_signature,
-                    "prefix_cache_hit": prefix_cache_hit,
-                    "state_sha256": state.digest(),
-                    "input_sha256": input_hash,
-                    "source_schema_sha256": raw_identity["source_schema_sha256"],
-                    "canonical_schema_sha256": raw_identity["canonical_schema_sha256"],
-                    "split_sha256": state.split_sha256,
-                    "code_sha256": code_hash,
-                    "fit_ids_sha256": state.fit_ids_sha256,
-                    "validation_pa_mean_nap": metrics["pa_mean_nap"],
-                    "validation_pc_mean_nap": metrics["pc_mean_nap"],
-                    "validation_wells": metrics["wells"],
-                    "validation_controls": metrics["controls"],
-                    "validation_treatments": metrics["treatments"],
-                    "elapsed_seconds": time.monotonic() - candidate_started,
-                    **state.fit_audit,
-                }
-                _checkpoint(
-                    path,
-                    protocol_hash,
-                    {"cache_key": cache_key, "result": row},
-                    identity,
-                )
-                del transformed, state
-            family_rows.append(row)
-        active_prefix_frame = None
-        active_prefix_state = None
-        active_prefix_signature = None
-        release_prefix_cache()
+        input_records[f"{family}/Raw"] = dict(raw_inputs[f"{family}/Raw"])
+    launch_hydra_selection(output, int(task_manifest["task_count"]), args.hydra_jobs)
+    collected_rows, collected_by_family = collect_hydra_selection(
+        output=output,
+        protocol_hash=protocol_hash,
+        protocol=protocol,
+        manifest=task_manifest,
+        inventories=inventories,
+    )
+    all_candidate_rows.clear()
+    for family in families:
+        family_rows = collected_by_family[family]
         scored, ranges = minmax_score_candidates(family_rows)
         all_candidate_rows.extend(scored)
         winning_name = str(scored[0]["config"])
@@ -1758,7 +1990,8 @@ def run_production(args: argparse.Namespace) -> int:
                 **{f"selection_{key}": value for key, value in ranges.items()},
             }
         )
-        del frame
+    if len(collected_rows) != len(all_candidate_rows):
+        raise AnalysisError("Hydra collected/scored candidate count mismatch")
 
     atomic_write_pandas_csv(
         output / "validation_config_scores.csv",
@@ -2096,6 +2329,18 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=_positive_int,
         default=1,
         help="bounded CPU threads for canonical per-feature computations",
+    )
+    parser.add_argument(
+        "--hydra-jobs",
+        type=_positive_int,
+        default=4,
+        help="bounded Hydra Joblib selection processes",
+    )
+    parser.add_argument(
+        "--hydra-gpus",
+        type=parse_gpu_indices,
+        default=(0, 1, 2, 3),
+        help="comma-separated visible GPU indices assigned deterministically",
     )
     parser.add_argument("--mode", choices=["smoke", "production"], default="smoke")
     parser.add_argument("--resume", action="store_true")
