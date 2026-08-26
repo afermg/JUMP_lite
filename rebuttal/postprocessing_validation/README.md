@@ -72,7 +72,7 @@ LD_LIBRARY_PATH=/run/opengl-driver/lib:$NIX_LD_LIBRARY_PATH \
 PYTHONPATH=. \
 /work/users/amunoz/projects/JUMP_lite/src/norm_3/.pixi/envs/default/bin/python \
   rebuttal/postprocessing_validation/strict_split_fit.py \
-  --mode production \
+  --mode production --cpu-workers 1 \
   --output-dir /work/scratch/amunoz/jump-lite-strict-postprocessing-final-v1
 ```
 
@@ -84,7 +84,23 @@ keys bind code, family, codec, selected canonical config and effective signature
 codec input, exact fit IDs, split, and source/canonical schema. Every cached
 identity is checked before reuse, so winner, YAML, input, fit population, or
 schema drift cannot reuse a final profile. Winners are refit deterministically.
-Candidate transform states are not retained.
+Candidate transform states are not retained. During selection, adjacent
+canonical recipes with identical enabled operations before
+`normalize_tvn_efaar` reuse one in-memory prefix. The prefix signature binds the
+resolved prefix behavior, family/codec, raw input, ordered source and canonical
+schemas, split, exact fit IDs, runner code, and protocol. Candidates and
+checkpoints are still evaluated and written one at a time in canonical order;
+each candidate records its prefix signature and whether it hit the active
+prefix. Only one prefix is retained, and its host objects and unused CuPy pool
+blocks are released before the next prefix. The cached and uncached paths are
+required by tests to produce identical retained features, fitted state digest,
+transformed values, PA/PC, and leakage sentinels.
+
+`--cpu-workers` bounds per-feature CPU work and defaults to 1. The initial
+8-thread CellProfiler experiments were slower under the shared-host workload,
+so no multi-threaded production cutover is approved from that evidence. Prefix
+reuse is orthogonal to this setting and preserves the serial numerical path at
+`--cpu-workers 1`.
 
 Final-code DINOv2 candidate smoke v4 completed in 31.23 seconds with 3.36 GiB
 peak process RSS. A one-candidate CellProfiler smoke completed in 268.59 seconds.

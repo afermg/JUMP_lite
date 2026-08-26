@@ -20,17 +20,25 @@ from rebuttal.postprocessing_validation.strict_split_fit import (
     _fit_plate_scalers,
     _gpu,
     _load_checkpoint,
+    _variance_keep,
     apply_fitted_recipe,
     build_annotation_table,
     candidate_cache_key,
     canonicalize_feature_schema,
     checkpoint_identity,
+    complete_recipe_from_prefix,
+    contiguous_prefix_groups,
     discover_effective_recipes,
     effective_recipe_signature,
     ensure_create_only,
     exact_fit_ids_hash,
+    fit_empirical_int,
+    fit_recipe_prefix,
     fit_transform_recipe,
+    prefix_cache_signature,
+    recipe_prefix_behavior_sha256,
     require_canonical_schema,
+    score_partition,
     transform_empirical_int,
     validate_projected_target_labels,
 )
@@ -100,6 +108,126 @@ def _frame() -> tuple[pl.DataFrame, dict[str, str]]:
                 )
                 index += 1
     return pl.DataFrame(rows), split
+
+
+def _int_recipe() -> EffectiveRecipe:
+    config = {
+        "steps": [
+            {"name": "clean_nans", "enabled": True, "params": {"na_cutoff": 0.3}},
+            {
+                "name": "filter_features",
+                "enabled": True,
+                "params": {
+                    "filters": [
+                        {
+                            "name": "variance_threshold",
+                            "freq_cut": 0.05,
+                            "unique_cut": 0.01,
+                        }
+                    ]
+                },
+            },
+            {"name": "inverse_normal_transform", "enabled": True, "params": {}},
+            {"name": "evaluate_metrics", "enabled": True, "params": {}},
+        ]
+    }
+    return EffectiveRecipe(
+        family="cell_count",
+        canonical_name="variance_int",
+        aliases=("variance_int",),
+        signature=effective_recipe_signature(config),
+        config=config,
+        config_paths=(Path("variance_int.yaml"),),
+    )
+
+
+def _int_frame() -> tuple[pl.DataFrame, dict[str, str]]:
+    rows = []
+    split: dict[str, str] = {}
+    index = 0
+    for plate_index, plate in enumerate(("P1", "P2")):
+        for control_index in range(5):
+            rows.append(
+                {
+                    "Metadata_id": f"w{index}",
+                    "Metadata_Plate": plate,
+                    "Metadata_Batch": f"B{plate_index}",
+                    "Metadata_JCP2022": "neg",
+                    "Metadata_Group": "group_high",
+                    "Metadata_negcon": True,
+                    "Metadata_RefChemDB_target": "unknown",
+                    "f0": float(control_index + plate_index * 0.1),
+                    "f1": float(2 * control_index - plate_index * 0.2),
+                    "f2": float(control_index % 2),
+                }
+            )
+            index += 1
+        for treatment_index in range(6):
+            treatment = f"v{treatment_index}"
+            split[treatment] = "validation"
+            for replicate in range(4):
+                rows.append(
+                    {
+                        "Metadata_id": f"w{index}",
+                        "Metadata_Plate": plate,
+                        "Metadata_Batch": f"B{plate_index}",
+                        "Metadata_JCP2022": treatment,
+                        "Metadata_Group": "group_high",
+                        "Metadata_negcon": False,
+                        "Metadata_RefChemDB_target": f"T{treatment_index // 3}",
+                        "f0": float(
+                            10 * treatment_index + replicate + plate_index * 0.1
+                        ),
+                        "f1": float(treatment_index - replicate - plate_index * 0.2),
+                        "f2": float((treatment_index + replicate) % 2),
+                    }
+                )
+                index += 1
+        treatment = f"t{plate_index}"
+        split[treatment] = "test"
+        for replicate in range(4):
+            rows.append(
+                {
+                    "Metadata_id": f"w{index}",
+                    "Metadata_Plate": plate,
+                    "Metadata_Batch": f"B{plate_index}",
+                    "Metadata_JCP2022": treatment,
+                    "Metadata_Group": "group_high",
+                    "Metadata_negcon": False,
+                    "Metadata_RefChemDB_target": "T2",
+                    "f0": float(100 + replicate),
+                    "f1": float(50 - replicate),
+                    "f2": float(replicate % 2),
+                }
+            )
+            index += 1
+    return pl.DataFrame(rows), split
+
+
+def _cached_recipe(epsilon: float) -> EffectiveRecipe:
+    base = _int_recipe()
+    config = deepcopy(base.config)
+    config["steps"].insert(
+        -1,
+        {
+            "name": "normalize_tvn_efaar",
+            "enabled": True,
+            "params": {
+                "n_components": 2,
+                "dim_ratio_threshold": 2.5,
+                "epsilon": epsilon,
+            },
+        },
+    )
+    name = f"variance_int_tvn_{epsilon}"
+    return EffectiveRecipe(
+        family="cell_count",
+        canonical_name=name,
+        aliases=(name,),
+        signature=effective_recipe_signature(config),
+        config=config,
+        config_paths=(Path(f"{name}.yaml"),),
+    )
 
 
 def _selection_proxy(transformed: pl.DataFrame, split: dict[str, str]) -> float:
@@ -186,6 +314,222 @@ class StrictSplitFitTests(unittest.TestCase):
         self.assertEqual(transformed[0], transformed[1])
         self.assertEqual(transformed[-1], transformed[-2])
 
+    def test_cpu_worker_feature_kernels_have_exact_parity(self) -> None:
+        rng = np.random.default_rng(20260826)
+        X_fit = rng.integers(-4, 5, size=(47, 19)).astype(np.float64)
+        X_transform = rng.integers(-8, 9, size=(31, 19)).astype(np.float64)
+        fitted_1 = fit_empirical_int(X_fit, cpu_workers=1)
+        fitted_8 = fit_empirical_int(X_fit, cpu_workers=8)
+        self.assertEqual(len(fitted_1), len(fitted_8))
+        for serial, parallel in zip(fitted_1, fitted_8, strict=True):
+            np.testing.assert_array_equal(serial, parallel)
+        np.testing.assert_array_equal(
+            transform_empirical_int(X_transform, fitted_1, cpu_workers=1),
+            transform_empirical_int(X_transform, fitted_8, cpu_workers=8),
+        )
+
+        cp = _gpu()
+        X_gpu = cp.asarray(X_fit)
+        fit_mask = np.arange(len(X_fit)) % 3 != 0
+        np.testing.assert_array_equal(
+            _variance_keep(X_gpu, fit_mask, 0.05, 0.01, cp, cpu_workers=1),
+            _variance_keep(X_gpu, fit_mask, 0.05, 0.01, cp, cpu_workers=8),
+        )
+        with self.assertRaisesRegex(AnalysisError, "at least 1"):
+            fit_empirical_int(X_fit, cpu_workers=0)
+
+    def test_cpu_worker_recipe_metrics_state_and_leakage_have_exact_parity(
+        self,
+    ) -> None:
+        frame, split = _int_frame()
+        features = ["f0", "f1", "f2"]
+        recipe = _int_recipe()
+        out_1, state_1 = fit_transform_recipe(
+            frame, features, recipe, split, "Raw", cpu_workers=1
+        )
+        out_8, state_8 = fit_transform_recipe(
+            frame, features, recipe, split, "Raw", cpu_workers=8
+        )
+        self.assertEqual(state_1.retained_features, state_8.retained_features)
+        self.assertEqual(state_1.digest(), state_8.digest())
+        np.testing.assert_array_equal(
+            out_1.select(state_1.retained_features).to_numpy(),
+            out_8.select(state_8.retained_features).to_numpy(),
+        )
+        applied_1 = apply_fitted_recipe(frame, features, state_1, cpu_workers=1)
+        applied_8 = apply_fitted_recipe(frame, features, state_1, cpu_workers=8)
+        np.testing.assert_array_equal(
+            applied_1.select(state_1.retained_features).to_numpy(),
+            applied_8.select(state_1.retained_features).to_numpy(),
+        )
+
+        validation = {key for key, value in split.items() if value == "validation"}
+        metrics_1, pa_1, pc_1 = score_partition(
+            out_1, state_1.retained_features, validation
+        )
+        metrics_8, pa_8, pc_8 = score_partition(
+            out_8, state_8.retained_features, validation
+        )
+        self.assertEqual(metrics_1, metrics_8)
+        self.assertTrue(pa_1.equals(pa_8))
+        self.assertTrue(pc_1.equals(pc_8))
+
+        perturbed = frame.with_columns(
+            pl.when(pl.col("Metadata_JCP2022").str.starts_with("t"))
+            .then(pl.col("f0") * 1000 + 777)
+            .otherwise(pl.col("f0"))
+            .alias("f0")
+        )
+        perturbed_out, perturbed_state = fit_transform_recipe(
+            perturbed, features, recipe, split, "Raw", cpu_workers=8
+        )
+        self.assertEqual(state_1.digest(), perturbed_state.digest())
+        validation_ids = sorted(validation)
+        np.testing.assert_array_equal(
+            out_1.filter(pl.col("Metadata_JCP2022").is_in(validation_ids))
+            .select(state_1.retained_features)
+            .to_numpy(),
+            perturbed_out.filter(pl.col("Metadata_JCP2022").is_in(validation_ids))
+            .select(perturbed_state.retained_features)
+            .to_numpy(),
+        )
+
+    def test_prefix_grouping_and_bound_signature_preserve_order(self) -> None:
+        recipes = [_cached_recipe(0.05), _cached_recipe(0.1), _int_recipe()]
+        groups = contiguous_prefix_groups(recipes)
+        self.assertEqual(
+            [[r.canonical_name for r in group] for group in groups],
+            [
+                [recipes[0].canonical_name, recipes[1].canonical_name],
+                [recipes[2].canonical_name],
+            ],
+        )
+        self.assertEqual(
+            recipe_prefix_behavior_sha256(recipes[0]),
+            recipe_prefix_behavior_sha256(recipes[1]),
+        )
+        self.assertIsNone(recipe_prefix_behavior_sha256(recipes[2]))
+        fields = {
+            "prefix_behavior_sha256": str(recipe_prefix_behavior_sha256(recipes[0])),
+            "family": "cell_count",
+            "codec": "Raw",
+            "input_sha256": "input",
+            "source_schema_sha256": "source",
+            "canonical_schema_sha256": "canonical",
+            "split_sha256": "split",
+            "fit_ids_sha256": "fit",
+            "code_sha256": "code",
+            "protocol_sha256": "protocol",
+        }
+        reference = prefix_cache_signature(**fields)
+        for key in fields:
+            changed = dict(fields)
+            changed[key] += "-changed"
+            self.assertNotEqual(prefix_cache_signature(**changed), reference)
+
+    def test_cached_prefix_matches_uncached_state_outputs_metrics_and_leakage(
+        self,
+    ) -> None:
+        frame, split = _int_frame()
+        features = ["f0", "f1", "f2"]
+        recipe = _cached_recipe(0.05)
+        uncached, uncached_state = fit_transform_recipe(
+            frame, features, recipe, split, "Raw", cpu_workers=1
+        )
+        prefix_frame, prefix_state = fit_recipe_prefix(
+            frame, features, recipe, split, "Raw", cpu_workers=1
+        )
+        cached, cached_state = complete_recipe_from_prefix(
+            prefix_frame, prefix_state, recipe, split, cpu_workers=1
+        )
+        self.assertEqual(
+            uncached_state.retained_features, cached_state.retained_features
+        )
+        self.assertEqual(uncached_state.digest(), cached_state.digest())
+        np.testing.assert_array_equal(
+            uncached.select(uncached_state.retained_features).to_numpy(),
+            cached.select(cached_state.retained_features).to_numpy(),
+        )
+        validation = {key for key, value in split.items() if value == "validation"}
+        uncached_metrics, uncached_pa, uncached_pc = score_partition(
+            uncached, uncached_state.retained_features, validation
+        )
+        cached_metrics, cached_pa, cached_pc = score_partition(
+            cached, cached_state.retained_features, validation
+        )
+        self.assertEqual(uncached_metrics, cached_metrics)
+        self.assertTrue(uncached_pa.equals(cached_pa))
+        self.assertTrue(uncached_pc.equals(cached_pc))
+
+        second_recipe = _cached_recipe(0.1)
+        second_uncached, second_uncached_state = fit_transform_recipe(
+            frame, features, second_recipe, split, "Raw", cpu_workers=1
+        )
+        second_cached, second_cached_state = complete_recipe_from_prefix(
+            prefix_frame, prefix_state, second_recipe, split, cpu_workers=1
+        )
+        self.assertEqual(second_uncached_state.digest(), second_cached_state.digest())
+        np.testing.assert_array_equal(
+            second_uncached.select(second_uncached_state.retained_features).to_numpy(),
+            second_cached.select(second_cached_state.retained_features).to_numpy(),
+        )
+        second_uncached_metrics, _, _ = score_partition(
+            second_uncached, second_uncached_state.retained_features, validation
+        )
+        second_cached_metrics, _, _ = score_partition(
+            second_cached, second_cached_state.retained_features, validation
+        )
+        self.assertEqual(second_uncached_metrics, second_cached_metrics)
+        uncached_rows = [
+            {
+                "config": recipe.canonical_name,
+                "validation_pa_mean_nap": uncached_metrics["pa_mean_nap"],
+                "validation_pc_mean_nap": uncached_metrics["pc_mean_nap"],
+            },
+            {
+                "config": second_recipe.canonical_name,
+                "validation_pa_mean_nap": second_uncached_metrics["pa_mean_nap"],
+                "validation_pc_mean_nap": second_uncached_metrics["pc_mean_nap"],
+            },
+        ]
+        cached_rows = deepcopy(uncached_rows)
+        cached_rows[0]["validation_pa_mean_nap"] = cached_metrics["pa_mean_nap"]
+        cached_rows[0]["validation_pc_mean_nap"] = cached_metrics["pc_mean_nap"]
+        cached_rows[1]["validation_pa_mean_nap"] = second_cached_metrics["pa_mean_nap"]
+        cached_rows[1]["validation_pc_mean_nap"] = second_cached_metrics["pc_mean_nap"]
+        self.assertEqual(
+            minmax_score_candidates(uncached_rows)[0][0]["config"],
+            minmax_score_candidates(cached_rows)[0][0]["config"],
+        )
+
+        perturbed = frame.with_columns(
+            pl.when(pl.col("Metadata_JCP2022").str.starts_with("t"))
+            .then(pl.col("f0") * 1000 + 777)
+            .otherwise(pl.col("f0"))
+            .alias("f0")
+        )
+        perturbed_prefix, perturbed_prefix_state = fit_recipe_prefix(
+            perturbed, features, recipe, split, "Raw", cpu_workers=1
+        )
+        _, perturbed_state = complete_recipe_from_prefix(
+            perturbed_prefix,
+            perturbed_prefix_state,
+            recipe,
+            split,
+            cpu_workers=1,
+        )
+        self.assertEqual(cached_state.digest(), perturbed_state.digest())
+
+    def test_prefix_checkpoint_resume_rejects_signature_drift(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "candidate.json"
+            identity = {"config": "a", "prefix_signature": "prefix-a"}
+            _checkpoint(path, "protocol", {"result": identity}, identity)
+            self.assertIsNotNone(_load_checkpoint(path, "protocol", identity))
+            drifted = {**identity, "prefix_signature": "prefix-b"}
+            with self.assertRaisesRegex(AnalysisError, "identity mismatch"):
+                _load_checkpoint(path, "protocol", drifted)
+
     def test_codec_schema_guards_and_openphenom_mapping(self) -> None:
         canonical, source = canonicalize_feature_schema(
             "openphenom",
@@ -253,7 +597,9 @@ class StrictSplitFitTests(unittest.TestCase):
             self.assertEqual(len(recipes), 175)
             self.assertEqual(sum(len(recipe.aliases) for recipe in recipes), 350)
             self.assertEqual({len(recipe.aliases) for recipe in recipes}, {2})
-        self.assertEqual(len(discover_effective_recipes("cellprofiler")), 280)
+        cellprofiler = discover_effective_recipes("cellprofiler")
+        self.assertEqual(len(cellprofiler), 280)
+        self.assertEqual(len(contiguous_prefix_groups(cellprofiler)), 8)
         self.assertEqual(len(discover_effective_recipes("cell_count")), 5)
 
     def test_missing_controls_and_unseen_plate_fail_closed(self) -> None:
@@ -309,6 +655,7 @@ class StrictSplitFitTests(unittest.TestCase):
             "canonical-schema",
         ]
         reference = candidate_cache_key(*base)
+        self.assertNotEqual(candidate_cache_key(*base, "prefix"), reference)
         for index in range(len(base)):
             changed = deepcopy(base)
             changed[index] += "-changed"

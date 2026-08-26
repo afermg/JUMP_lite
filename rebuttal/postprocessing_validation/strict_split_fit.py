@@ -14,8 +14,10 @@ and are never read by this runner.
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+import gc
 import hashlib
 import json
 import math
@@ -73,7 +75,7 @@ ARCHIVED_LABEL_PROFILE = (
     / "robustmad_all__tvn_efaar_e0.05"
     / "output.parquet"
 )
-PROTOCOL_VERSION = 3
+PROTOCOL_VERSION = 4
 SUPPORTED_STEPS = {
     "clean_nans",
     "filter_features",
@@ -253,6 +255,93 @@ def effective_recipe_signature(config: Mapping[str, Any]) -> str:
     # Resolved step behavior is authoritative.  Unused top-level sweep aliases,
     # including learned-family use_prune_correlated, are intentionally excluded.
     return canonical_json_sha256(_enabled_steps(config))
+
+
+def recipe_prefix_behavior_sha256(recipe: EffectiveRecipe) -> str | None:
+    """Hash enabled operations strictly before TVN EFAAR, or decline caching."""
+    steps = _enabled_steps(recipe.config)
+    positions = [
+        index
+        for index, step in enumerate(steps)
+        if step["name"] == "normalize_tvn_efaar"
+    ]
+    if len(positions) != 1:
+        return None
+    return canonical_json_sha256(steps[: positions[0]])
+
+
+def contiguous_prefix_groups(
+    recipes: Sequence[EffectiveRecipe],
+) -> list[list[EffectiveRecipe]]:
+    """Group only adjacent equal prefixes, preserving canonical candidate order."""
+    groups: list[list[EffectiveRecipe]] = []
+    keys: list[str] = []
+    for recipe in recipes:
+        behavior = recipe_prefix_behavior_sha256(recipe)
+        key = behavior if behavior is not None else f"uncacheable:{recipe.signature}"
+        if not groups or keys[-1] != key:
+            groups.append([recipe])
+            keys.append(key)
+        else:
+            groups[-1].append(recipe)
+    return groups
+
+
+def prefix_cache_signature(
+    *,
+    prefix_behavior_sha256: str,
+    family: str,
+    codec: str,
+    input_sha256: str,
+    source_schema_sha256: str,
+    canonical_schema_sha256: str,
+    split_sha256: str,
+    fit_ids_sha256: str,
+    code_sha256: str,
+    protocol_sha256: str,
+) -> str:
+    """Bind an in-memory prefix to every identity that permits safe reuse."""
+    return canonical_json_sha256(
+        {
+            "prefix_behavior_sha256": prefix_behavior_sha256,
+            "family": family,
+            "codec": codec,
+            "input_sha256": input_sha256,
+            "source_schema_sha256": source_schema_sha256,
+            "canonical_schema_sha256": canonical_schema_sha256,
+            "split_sha256": split_sha256,
+            "fit_ids_sha256": fit_ids_sha256,
+            "code_sha256": code_sha256,
+            "protocol_sha256": protocol_sha256,
+        }
+    )
+
+
+def _prefix_and_suffix_recipes(
+    recipe: EffectiveRecipe,
+) -> tuple[EffectiveRecipe, EffectiveRecipe]:
+    steps = _enabled_steps(recipe.config)
+    positions = [
+        index
+        for index, step in enumerate(steps)
+        if step["name"] == "normalize_tvn_efaar"
+    ]
+    if len(positions) != 1:
+        raise AnalysisError("prefix caching requires exactly one TVN EFAAR step")
+    split_at = positions[0]
+
+    def subrecipe(label: str, selected: Sequence[Mapping[str, Any]]) -> EffectiveRecipe:
+        config = {"steps": [dict(step) for step in selected]}
+        return EffectiveRecipe(
+            family=recipe.family,
+            canonical_name=f"{recipe.canonical_name}__{label}",
+            aliases=recipe.aliases,
+            signature=effective_recipe_signature(config),
+            config=config,
+            config_paths=recipe.config_paths,
+        )
+
+    return subrecipe("prefix", steps[:split_at]), subrecipe("suffix", steps[split_at:])
 
 
 def discover_effective_recipes(
@@ -572,25 +661,81 @@ def _feature_validity_fit(
     return cp.asnumpy(invalid.mean(axis=0) <= cutoff).astype(bool)
 
 
+def _validate_cpu_workers(cpu_workers: int) -> None:
+    if cpu_workers < 1:
+        raise AnalysisError("cpu_workers must be at least 1")
+
+
+def _feature_chunks(n_features: int, cpu_workers: int) -> list[tuple[int, int]]:
+    """Return bounded contiguous chunks in canonical feature order."""
+    _validate_cpu_workers(cpu_workers)
+    if n_features == 0:
+        return []
+    chunk_size = math.ceil(n_features / min(cpu_workers, n_features))
+    return [
+        (start, min(start + chunk_size, n_features))
+        for start in range(0, n_features, chunk_size)
+    ]
+
+
 def _variance_keep(
-    X: Any, fit_mask: np.ndarray, freq_cut: float, unique_cut: float, cp: Any
+    X: Any,
+    fit_mask: np.ndarray,
+    freq_cut: float,
+    unique_cut: float,
+    cp: Any,
+    cpu_workers: int = 1,
 ) -> np.ndarray:
     fit = cp.asnumpy(X[cp.asarray(fit_mask)])
     keep = np.zeros(fit.shape[1], dtype=bool)
     n = len(fit)
-    for i in range(fit.shape[1]):
-        values = fit[:, i]
-        values = values[np.isfinite(values)]
-        if len(values) == 0:
-            continue
-        _, counts = np.unique(values, return_counts=True)
-        if len(counts) / n < unique_cut:
-            continue
-        if len(counts) >= 2:
-            counts.sort()
-            if counts[-2] / counts[-1] < freq_cut:
+
+    def evaluate_chunk(bounds: tuple[int, int]) -> tuple[int, np.ndarray]:
+        start, stop = bounds
+        # Feature-major storage makes each stable per-feature sort contiguous and
+        # lets NumPy release the GIL for substantial work rather than scalar tasks.
+        sorted_chunk = np.array(fit[:, start:stop], order="F", copy=True)
+        sorted_chunk.sort(axis=0, kind="mergesort")
+        chunk_keep = np.zeros(stop - start, dtype=bool)
+        for offset in range(stop - start):
+            values = sorted_chunk[:, offset]
+            finite = np.isfinite(values)
+            if not finite.all():
+                values = values[finite]
+            if len(values) == 0:
                 continue
-        keep[i] = True
+            boundaries = np.flatnonzero(values[1:] != values[:-1]) + 1
+            counts = np.diff(np.concatenate(([0], boundaries, [len(values)])))
+            if len(counts) / n < unique_cut:
+                continue
+            if len(counts) >= 2:
+                counts.sort()
+                if counts[-2] / counts[-1] < freq_cut:
+                    continue
+            chunk_keep[offset] = True
+        return start, chunk_keep
+
+    chunks = _feature_chunks(fit.shape[1], cpu_workers)
+    if cpu_workers == 1:
+        for i in range(fit.shape[1]):
+            values = fit[:, i]
+            values = values[np.isfinite(values)]
+            if len(values) == 0:
+                continue
+            _, counts = np.unique(values, return_counts=True)
+            if len(counts) / n < unique_cut:
+                continue
+            if len(counts) >= 2:
+                counts.sort()
+                if counts[-2] / counts[-1] < freq_cut:
+                    continue
+            keep[i] = True
+        return keep
+    else:
+        with ThreadPoolExecutor(max_workers=cpu_workers) as executor:
+            results = executor.map(evaluate_chunk, chunks)
+    for start, chunk_keep in results:
+        keep[start : start + len(chunk_keep)] = chunk_keep
     return keep
 
 
@@ -639,23 +784,68 @@ def _apply_plate_scalers(
     return output
 
 
-def fit_empirical_int(X_fit: np.ndarray) -> list[np.ndarray]:
-    return [np.sort(X_fit[:, i], kind="mergesort") for i in range(X_fit.shape[1])]
+def fit_empirical_int(X_fit: np.ndarray, cpu_workers: int = 1) -> list[np.ndarray]:
+    def fit_chunk(bounds: tuple[int, int]) -> tuple[int, list[np.ndarray]]:
+        start, stop = bounds
+        sorted_chunk = np.array(X_fit[:, start:stop], order="F", copy=True)
+        sorted_chunk.sort(axis=0, kind="mergesort")
+        return start, [sorted_chunk[:, i] for i in range(stop - start)]
+
+    if cpu_workers == 1:
+        return [np.sort(X_fit[:, i], kind="mergesort") for i in range(X_fit.shape[1])]
+    chunks = _feature_chunks(X_fit.shape[1], cpu_workers)
+    with ThreadPoolExecutor(max_workers=cpu_workers) as executor:
+        results = executor.map(fit_chunk, chunks)
+    sorted_fit: list[np.ndarray] = []
+    for start, arrays in results:
+        if start != len(sorted_fit):
+            raise AnalysisError("INT fit chunks returned out of canonical order")
+        sorted_fit.extend(arrays)
+    return sorted_fit
 
 
 def transform_empirical_int(
-    X: np.ndarray, sorted_fit: Sequence[np.ndarray]
+    X: np.ndarray,
+    sorted_fit: Sequence[np.ndarray],
+    cpu_workers: int = 1,
 ) -> np.ndarray:
+    if X.shape[1] != len(sorted_fit):
+        raise AnalysisError("INT fit distribution count does not match feature count")
+
+    def transform_chunk(bounds: tuple[int, int]) -> tuple[int, np.ndarray]:
+        start, stop = bounds
+        chunk = np.empty((X.shape[0], stop - start), dtype=np.float64)
+        for offset, i in enumerate(range(start, stop)):
+            reference = sorted_fit[i]
+            if len(reference) == 0 or not np.isfinite(reference).all():
+                raise AnalysisError("invalid INT fit distribution")
+            values = X[:, i]
+            left = np.searchsorted(reference, values, side="left")
+            right = np.searchsorted(reference, values, side="right")
+            rank = np.clip((left + right + 1.0) / 2.0, 1.0, float(len(reference)))
+            quantile = (rank - 0.375) / (len(reference) + 0.25)
+            chunk[:, offset] = norm.ppf(quantile)
+        return start, chunk
+
     output = np.empty_like(X, dtype=np.float64)
-    for i, reference in enumerate(sorted_fit):
-        if len(reference) == 0 or not np.isfinite(reference).all():
-            raise AnalysisError("invalid INT fit distribution")
-        values = X[:, i]
-        left = np.searchsorted(reference, values, side="left")
-        right = np.searchsorted(reference, values, side="right")
-        rank = np.clip((left + right + 1.0) / 2.0, 1.0, float(len(reference)))
-        quantile = (rank - 0.375) / (len(reference) + 0.25)
-        output[:, i] = norm.ppf(quantile)
+    if cpu_workers == 1:
+        for i, reference in enumerate(sorted_fit):
+            if len(reference) == 0 or not np.isfinite(reference).all():
+                raise AnalysisError("invalid INT fit distribution")
+            values = X[:, i]
+            left = np.searchsorted(reference, values, side="left")
+            right = np.searchsorted(reference, values, side="right")
+            rank = np.clip((left + right + 1.0) / 2.0, 1.0, float(len(reference)))
+            quantile = (rank - 0.375) / (len(reference) + 0.25)
+            output[:, i] = norm.ppf(quantile)
+        if not np.isfinite(output).all():
+            raise AnalysisError("nonfinite out-of-sample INT output")
+        return output
+    chunks = _feature_chunks(X.shape[1], cpu_workers)
+    with ThreadPoolExecutor(max_workers=cpu_workers) as executor:
+        results = executor.map(transform_chunk, chunks)
+    for start, chunk in results:
+        output[:, start : start + chunk.shape[1]] = chunk
     if not np.isfinite(output).all():
         raise AnalysisError("nonfinite out-of-sample INT output")
     return output
@@ -797,7 +987,9 @@ def fit_transform_recipe(
     recipe: EffectiveRecipe,
     split_by_id: Mapping[str, str],
     codec: str,
+    cpu_workers: int = 1,
 ) -> tuple[pl.DataFrame, StrictFitState]:
+    _validate_cpu_workers(cpu_workers)
     cp = _gpu()
     roles = role_masks(frame, split_by_id)
     permitted = roles["control"] | roles["validation"]
@@ -871,6 +1063,7 @@ def fit_transform_recipe(
                         float(operation.get("freq_cut", 0.05)),
                         float(operation.get("unique_cut", 0.01)),
                         cp,
+                        cpu_workers,
                     )
                 elif operation["name"] == "drop_outliers":
                     fit = X[cp.asarray(permitted)]
@@ -900,8 +1093,12 @@ def fit_transform_recipe(
                 {"name": name, "params": params, "plate_scalers": scalers}
             )
         elif name == "inverse_normal_transform":
-            sorted_fit = fit_empirical_int(cp.asnumpy(X[cp.asarray(permitted)]))
-            X = cp.asarray(transform_empirical_int(cp.asnumpy(X), sorted_fit))
+            sorted_fit = fit_empirical_int(
+                cp.asnumpy(X[cp.asarray(permitted)]), cpu_workers
+            )
+            X = cp.asarray(
+                transform_empirical_int(cp.asnumpy(X), sorted_fit, cpu_workers)
+            )
             state.step_states.append(
                 {
                     "name": name,
@@ -954,11 +1151,79 @@ def fit_transform_recipe(
     return result, state
 
 
+def fit_recipe_prefix(
+    frame: pl.DataFrame,
+    feature_names: Sequence[str],
+    recipe: EffectiveRecipe,
+    split_by_id: Mapping[str, str],
+    codec: str,
+    cpu_workers: int = 1,
+) -> tuple[pl.DataFrame, StrictFitState]:
+    prefix_recipe, _ = _prefix_and_suffix_recipes(recipe)
+    return fit_transform_recipe(
+        frame,
+        feature_names,
+        prefix_recipe,
+        split_by_id,
+        codec,
+        cpu_workers,
+    )
+
+
+def complete_recipe_from_prefix(
+    prefix_frame: pl.DataFrame,
+    prefix_state: StrictFitState,
+    recipe: EffectiveRecipe,
+    split_by_id: Mapping[str, str],
+    cpu_workers: int = 1,
+) -> tuple[pl.DataFrame, StrictFitState]:
+    """Fit the recipe suffix and reconstruct the exact canonical full state."""
+    _, suffix_recipe = _prefix_and_suffix_recipes(recipe)
+    transformed, suffix_state = fit_transform_recipe(
+        prefix_frame,
+        prefix_state.retained_features,
+        suffix_recipe,
+        split_by_id,
+        prefix_state.codec,
+        cpu_workers,
+    )
+    if suffix_state.fit_ids_sha256 != prefix_state.fit_ids_sha256:
+        raise AnalysisError("prefix and suffix fit populations differ")
+    state = StrictFitState(
+        family=recipe.family,
+        codec=prefix_state.codec,
+        recipe=recipe.canonical_name,
+        effective_signature=recipe.signature,
+        input_features=list(prefix_state.input_features),
+        retained_features=list(suffix_state.retained_features),
+        input_schema_sha256=prefix_state.input_schema_sha256,
+        canonical_schema_sha256=prefix_state.canonical_schema_sha256,
+        fit_ids_sha256=prefix_state.fit_ids_sha256,
+        split_sha256=prefix_state.split_sha256,
+        step_states=[*prefix_state.step_states, *suffix_state.step_states],
+        fit_audit=dict(suffix_state.fit_audit),
+    )
+    return transformed, state
+
+
+def release_prefix_cache() -> None:
+    """Collect dropped host prefixes and release unused CuPy pool blocks."""
+    gc.collect()
+    try:
+        cp = _gpu()
+        cp.get_default_memory_pool().free_all_blocks()
+        cp.get_default_pinned_memory_pool().free_all_blocks()
+    except AnalysisError:
+        pass
+
+
 def apply_fitted_recipe(
     frame: pl.DataFrame,
     feature_names: Sequence[str],
     state: StrictFitState,
+    cpu_workers: int = 1,
 ) -> pl.DataFrame:
+    _validate_cpu_workers(cpu_workers)
     cp = _gpu()
     X = cp.asarray(frame.select(feature_names).to_numpy(), dtype=cp.float64)
     current = list(feature_names)
@@ -982,7 +1247,7 @@ def apply_fitted_recipe(
             X = _apply_plate_scalers(X, plates, step["plate_scalers"], cp)
         elif name == "inverse_normal_transform":
             refs = [step["sorted_fit"][str(i)] for i in range(len(current))]
-            X = cp.asarray(transform_empirical_int(cp.asnumpy(X), refs))
+            X = cp.asarray(transform_empirical_int(cp.asnumpy(X), refs, cpu_workers))
         elif name == "normalize_tvn_efaar":
             X = _apply_tvn_efaar(X, batches, step, cp)
             current = [f"PC_{i}" for i in range(X.shape[1])]
@@ -1074,21 +1339,22 @@ def candidate_cache_key(
     recipe_signature: str,
     source_schema_hash: str,
     canonical_schema_hash: str,
+    prefix_signature: str = "",
 ) -> str:
-    return canonical_json_sha256(
-        checkpoint_identity(
-            code_sha256=code_hash,
-            family=family,
-            codec=codec,
-            config=config,
-            effective_signature=recipe_signature,
-            input_sha256=input_hash,
-            fit_ids_sha256=fit_ids_hash,
-            split_sha256=split_hash,
-            source_schema_sha256=source_schema_hash,
-            canonical_schema_sha256=canonical_schema_hash,
-        )
+    identity = checkpoint_identity(
+        code_sha256=code_hash,
+        family=family,
+        codec=codec,
+        config=config,
+        effective_signature=recipe_signature,
+        input_sha256=input_hash,
+        fit_ids_sha256=fit_ids_hash,
+        split_sha256=split_hash,
+        source_schema_sha256=source_schema_hash,
+        canonical_schema_sha256=canonical_schema_hash,
     )
+    identity["prefix_signature"] = prefix_signature
+    return canonical_json_sha256(identity)
 
 
 def recipe_for_codec(
@@ -1244,6 +1510,18 @@ def run_production(args: argparse.Namespace) -> int:
         ),
         "seed": args.seed,
         "validation_fraction": args.validation_fraction,
+        "cpu_workers": args.cpu_workers,
+        "selection_prefix_cache": {
+            "policy": (
+                "one adjacent canonical recipe group at a time; cache enabled steps "
+                "strictly before normalize_tvn_efaar; release before next prefix"
+            ),
+            "single_writer": True,
+            "group_counts": {
+                family: len(contiguous_prefix_groups(recipes))
+                for family, recipes in inventories.items()
+            },
+        },
         "families": families,
         "candidate_effective_counts": {
             family: len(recipes) for family, recipes in inventories.items()
@@ -1313,6 +1591,9 @@ def run_production(args: argparse.Namespace) -> int:
         family_checkpoint = checkpoint_root / "selection" / family
         family_checkpoint.mkdir(parents=True, exist_ok=True)
         fit_ids_hash_cache: dict[str, str] = {}
+        active_prefix_signature: str | None = None
+        active_prefix_frame: pl.DataFrame | None = None
+        active_prefix_state: StrictFitState | None = None
         for recipe in inventories[family]:
             clean_signature = canonical_json_sha256(
                 [
@@ -1326,6 +1607,31 @@ def run_production(args: argparse.Namespace) -> int:
                     frame, features, recipe, split_by_id
                 )
             fit_ids_hash = fit_ids_hash_cache[clean_signature]
+            prefix_behavior = recipe_prefix_behavior_sha256(recipe)
+            bound_prefix_signature = (
+                prefix_cache_signature(
+                    prefix_behavior_sha256=prefix_behavior,
+                    family=family,
+                    codec="Raw",
+                    input_sha256=input_hash,
+                    source_schema_sha256=raw_identity["source_schema_sha256"],
+                    canonical_schema_sha256=raw_identity["canonical_schema_sha256"],
+                    split_sha256=protocol["split_sha256"],
+                    fit_ids_sha256=fit_ids_hash,
+                    code_sha256=code_hash,
+                    protocol_sha256=protocol_hash,
+                )
+                if prefix_behavior is not None
+                else ""
+            )
+            if (
+                active_prefix_signature is not None
+                and active_prefix_signature != bound_prefix_signature
+            ):
+                active_prefix_frame = None
+                active_prefix_state = None
+                active_prefix_signature = None
+                release_prefix_cache()
             identity = checkpoint_identity(
                 code_sha256=code_hash,
                 family=family,
@@ -1338,6 +1644,7 @@ def run_production(args: argparse.Namespace) -> int:
                 source_schema_sha256=raw_identity["source_schema_sha256"],
                 canonical_schema_sha256=raw_identity["canonical_schema_sha256"],
             )
+            identity["prefix_signature"] = bound_prefix_signature
             cache_key = candidate_cache_key(
                 input_hash,
                 protocol["split_sha256"],
@@ -1349,6 +1656,7 @@ def run_production(args: argparse.Namespace) -> int:
                 recipe.signature,
                 raw_identity["source_schema_sha256"],
                 raw_identity["canonical_schema_sha256"],
+                bound_prefix_signature,
             )
             path = family_checkpoint / f"{cache_key}.json"
             cached = _load_checkpoint(path, protocol_hash, identity)
@@ -1357,9 +1665,38 @@ def run_production(args: argparse.Namespace) -> int:
                 _validate_cached_result_identity(row, identity, path)
             else:
                 candidate_started = time.monotonic()
-                transformed, state = fit_transform_recipe(
-                    frame, features, recipe, split_by_id, "Raw"
-                )
+                prefix_cache_hit = False
+                if prefix_behavior is None:
+                    transformed, state = fit_transform_recipe(
+                        frame,
+                        features,
+                        recipe,
+                        split_by_id,
+                        "Raw",
+                        args.cpu_workers,
+                    )
+                else:
+                    if active_prefix_signature is None:
+                        active_prefix_frame, active_prefix_state = fit_recipe_prefix(
+                            frame,
+                            features,
+                            recipe,
+                            split_by_id,
+                            "Raw",
+                            args.cpu_workers,
+                        )
+                        active_prefix_signature = bound_prefix_signature
+                    else:
+                        prefix_cache_hit = True
+                    if active_prefix_frame is None or active_prefix_state is None:
+                        raise AnalysisError("active prefix cache is incomplete")
+                    transformed, state = complete_recipe_from_prefix(
+                        active_prefix_frame,
+                        active_prefix_state,
+                        recipe,
+                        split_by_id,
+                        args.cpu_workers,
+                    )
                 metrics, _, _ = score_partition(
                     transformed, state.retained_features, validation_ids
                 )
@@ -1375,6 +1712,9 @@ def run_production(args: argparse.Namespace) -> int:
                     "aliases": "|".join(recipe.aliases),
                     "alias_count": len(recipe.aliases),
                     "effective_signature": recipe.signature,
+                    "prefix_behavior_sha256": prefix_behavior or "",
+                    "prefix_signature": bound_prefix_signature,
+                    "prefix_cache_hit": prefix_cache_hit,
                     "state_sha256": state.digest(),
                     "input_sha256": input_hash,
                     "source_schema_sha256": raw_identity["source_schema_sha256"],
@@ -1396,7 +1736,12 @@ def run_production(args: argparse.Namespace) -> int:
                     {"cache_key": cache_key, "result": row},
                     identity,
                 )
+                del transformed, state
             family_rows.append(row)
+        active_prefix_frame = None
+        active_prefix_state = None
+        active_prefix_signature = None
+        release_prefix_cache()
         scored, ranges = minmax_score_candidates(family_rows)
         all_candidate_rows.extend(scored)
         winning_name = str(scored[0]["config"])
@@ -1465,7 +1810,12 @@ def run_production(args: argparse.Namespace) -> int:
             cached = _load_checkpoint(checkpoint_path, protocol_hash, identity)
             if cached is None:
                 transformed, state = fit_transform_recipe(
-                    frame, features, codec_recipe, split_by_id, codec
+                    frame,
+                    features,
+                    codec_recipe,
+                    split_by_id,
+                    codec,
+                    args.cpu_workers,
                 )
                 if state.fit_ids_sha256 != fit_ids_hash:
                     raise AnalysisError(
@@ -1673,7 +2023,12 @@ def run_smoke(args: argparse.Namespace) -> int:
     start = time.monotonic()
     for recipe in recipes:
         transformed, state = fit_transform_recipe(
-            frame, features, recipe, split_by_id, "Raw"
+            frame,
+            features,
+            recipe,
+            split_by_id,
+            "Raw",
+            args.cpu_workers,
         )
         metrics, _, _ = score_partition(
             transformed, state.retained_features, validation_ids
@@ -1705,6 +2060,7 @@ def run_smoke(args: argparse.Namespace) -> int:
             "family": family,
             "candidate_effective_count": len(recipes),
             "candidate_alias_count": sum(len(recipe.aliases) for recipe in recipes),
+            "cpu_workers": args.cpu_workers,
             "input": {"path": str(input_path), "sha256": sha256_file(input_path)},
             "split_sha256": canonical_json_sha256(
                 sorted((str(key), str(value)) for key, value in split_by_id.items())
@@ -1718,6 +2074,13 @@ def run_smoke(args: argparse.Namespace) -> int:
     return 0
 
 
+def _positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < 1:
+        raise argparse.ArgumentTypeError("must be at least 1")
+    return parsed
+
+
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output-dir", type=Path, required=True)
@@ -1728,6 +2091,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--max-recipes", type=int, default=None)
     parser.add_argument("--validation-fraction", type=float, default=0.2)
     parser.add_argument("--seed", type=int, default=20260811)
+    parser.add_argument(
+        "--cpu-workers",
+        type=_positive_int,
+        default=1,
+        help="bounded CPU threads for canonical per-feature computations",
+    )
     parser.add_argument("--mode", choices=["smoke", "production"], default="smoke")
     parser.add_argument("--resume", action="store_true")
     return parser.parse_args(argv)
