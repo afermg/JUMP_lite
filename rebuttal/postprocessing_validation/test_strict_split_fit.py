@@ -12,19 +12,27 @@ from rebuttal.postprocessing_validation.run_analysis import (
     AnalysisError,
     minmax_score_candidates,
 )
+from norm_3.core import RobustMAD_CPU, StandardScaler_CPU
 from rebuttal.postprocessing_validation.strict_split_fit import (
     EffectiveRecipe,
+    _apply_plate_scalers,
+    _checkpoint,
+    _fit_plate_scalers,
+    _gpu,
+    _load_checkpoint,
     apply_fitted_recipe,
+    build_annotation_table,
     candidate_cache_key,
     canonicalize_feature_schema,
+    checkpoint_identity,
     discover_effective_recipes,
     effective_recipe_signature,
     ensure_create_only,
     exact_fit_ids_hash,
     fit_transform_recipe,
+    require_canonical_schema,
     transform_empirical_int,
-    _checkpoint,
-    _load_checkpoint,
+    validate_projected_target_labels,
 )
 
 
@@ -178,7 +186,7 @@ class StrictSplitFitTests(unittest.TestCase):
         self.assertEqual(transformed[0], transformed[1])
         self.assertEqual(transformed[-1], transformed[-2])
 
-    def test_openphenom_schema_mapping_is_canonical_and_ordered(self) -> None:
+    def test_codec_schema_guards_and_openphenom_mapping(self) -> None:
         canonical, source = canonicalize_feature_schema(
             "openphenom",
             ["openphenom_nahualX_10", "openphenom_nahualX_2", "openphenom_nahualX_1"],
@@ -190,6 +198,54 @@ class StrictSplitFitTests(unittest.TestCase):
         )
         self.assertEqual(raw, canonical)
         self.assertEqual(set(raw_source), set(source))
+        # Physical order may vary because canonicalization explicitly reorders it.
+        reordered, _ = canonicalize_feature_schema(
+            "openphenom",
+            ["openphenom_nahualX_2", "openphenom_nahualX_1", "openphenom_nahualX_10"],
+        )
+        require_canonical_schema("openphenom", "HQ", canonical, reordered)
+        for observed, message in (
+            (canonical[:-1], "missing"),
+            ([*canonical, "nahualX_11"], "extra"),
+            (list(reversed(canonical)), "reordered=True"),
+        ):
+            with self.assertRaisesRegex(AnalysisError, message):
+                require_canonical_schema("openphenom", "HQ", canonical, observed)
+
+    def test_plate_scalers_match_norm3_cpu_semantics(self) -> None:
+        cp = _gpu()
+        # normal, exactly zero scale, and nonzero scale below 1e-18
+        X = np.array(
+            [
+                [1.0, 4.0, 0.0],
+                [2.0, 4.0, 2e-20],
+                [5.0, 4.0, 4e-20],
+            ],
+            dtype=np.float64,
+        )
+        plates = np.array(["P1"] * len(X))
+        fit_mask = np.ones(len(X), dtype=bool)
+        for method, epsilon, transformer in (
+            ("robustmad", 1e-20, RobustMAD_CPU(epsilon=1e-20)),
+            ("standardize", 123.0, StandardScaler_CPU()),
+        ):
+            state = _fit_plate_scalers(
+                cp.asarray(X), plates, fit_mask, method, epsilon, cp
+            )
+            observed = cp.asnumpy(
+                _apply_plate_scalers(cp.asarray(X), plates, state, cp)
+            )
+            expected = transformer.fit_transform(X)
+            np.testing.assert_allclose(observed, expected, rtol=1e-13, atol=0.0)
+
+    def test_projected_metadata_targets_match_archived_labels(self) -> None:
+        parity = validate_projected_target_labels(build_annotation_table())
+        self.assertEqual(parity["rows"], 163_776)
+        self.assertEqual(parity["mismatches"], 0)
+        self.assertEqual(
+            parity["columns_read"],
+            ["Metadata_id", "Metadata_RefChemDB_target"],
+        )
 
     def test_alias_deduplication_inventory_matches_archive(self) -> None:
         for family in ("dinov2", "morphem", "openphenom", "subcell", "dinov2_random"):
@@ -240,7 +296,18 @@ class StrictSplitFitTests(unittest.TestCase):
         )
 
     def test_candidate_cache_key_binds_all_required_identities(self) -> None:
-        base = ["input", "split", "fit", "code", "family", "Raw", "recipe"]
+        base = [
+            "input",
+            "split",
+            "fit",
+            "code",
+            "family",
+            "Raw",
+            "config",
+            "recipe",
+            "source-schema",
+            "canonical-schema",
+        ]
         reference = candidate_cache_key(*base)
         for index in range(len(base)):
             changed = deepcopy(base)
@@ -261,6 +328,29 @@ class StrictSplitFitTests(unittest.TestCase):
             )
             with self.assertRaisesRegex(AnalysisError, "protocol mismatch"):
                 _load_checkpoint(checkpoint, "protocol-b")
+
+    def test_final_checkpoint_rejects_winner_config_and_input_drift(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "final.json"
+            base = checkpoint_identity(
+                code_sha256="code",
+                family="dinov2",
+                codec="HQ",
+                config="winner-a",
+                effective_signature="signature-a",
+                input_sha256="input-a",
+                fit_ids_sha256="fit",
+                split_sha256="split",
+                source_schema_sha256="source",
+                canonical_schema_sha256="canonical",
+            )
+            _checkpoint(path, "protocol", {"result": {}}, base)
+            self.assertIsNotNone(_load_checkpoint(path, "protocol", base))
+            for field in ("config", "effective_signature", "input_sha256"):
+                drifted = dict(base)
+                drifted[field] += "-drift"
+                with self.assertRaisesRegex(AnalysisError, "identity mismatch"):
+                    _load_checkpoint(path, "protocol", drifted)
 
 
 if __name__ == "__main__":

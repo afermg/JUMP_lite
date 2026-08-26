@@ -67,7 +67,13 @@ PERTURBATION_METADATA = (
     REPO_ROOT / "metadata/jump_lite_v1_perturbation_metadata.parquet"
 )
 REFCHEM_METADATA = REPO_ROOT / "metadata/jump_lite_v1_refchem_annotations.parquet"
-PROTOCOL_VERSION = 2
+ARCHIVED_LABEL_PROFILE = (
+    SWEEP_ROOT
+    / "dinov2_jump_lite_updated_jpegxl_lossy_raw_raw_features"
+    / "robustmad_all__tvn_efaar_e0.05"
+    / "output.parquet"
+)
+PROTOCOL_VERSION = 3
 SUPPORTED_STEPS = {
     "clean_nans",
     "filter_features",
@@ -96,8 +102,11 @@ class StrictFitState:
     family: str
     codec: str
     recipe: str
+    effective_signature: str
     input_features: list[str]
     retained_features: list[str]
+    input_schema_sha256: str
+    canonical_schema_sha256: str
     fit_ids_sha256: str
     split_sha256: str
     step_states: list[dict[str, Any]] = field(default_factory=list)
@@ -133,6 +142,10 @@ class StrictFitState:
                 "family": self.family,
                 "codec": self.codec,
                 "recipe": self.recipe,
+                "effective_signature": self.effective_signature,
+                "input_features": self.input_features,
+                "input_schema_sha256": self.input_schema_sha256,
+                "canonical_schema_sha256": self.canonical_schema_sha256,
                 "fit_ids_sha256": self.fit_ids_sha256,
                 "split_sha256": self.split_sha256,
                 "retained_features": self.retained_features,
@@ -183,6 +196,45 @@ def canonicalize_feature_schema(
     )
     inverse = {value: key for key, value in mapping.items()}
     return order, {name: inverse[name] for name in order}
+
+
+def ordered_schema_sha256(feature_names: Sequence[str]) -> str:
+    """Hash an ordered feature axis without treating it as an unordered set."""
+    return canonical_json_sha256(list(feature_names))
+
+
+def require_canonical_schema(
+    family: str,
+    codec: str,
+    expected: Sequence[str],
+    observed: Sequence[str],
+) -> None:
+    if list(observed) != list(expected):
+        missing = [name for name in expected if name not in observed]
+        extra = [name for name in observed if name not in expected]
+        reordered = not missing and not extra
+        raise AnalysisError(
+            f"canonical Raw schema mismatch for {family}/{codec}: "
+            f"missing={missing[:5]}, extra={extra[:5]}, reordered={reordered}"
+        )
+
+
+def inspect_raw_profile(family: str, codec: str) -> dict[str, Any]:
+    """Read only parquet schema metadata and bind the physical/canonical axes."""
+    path = raw_feature_path(family, codec)
+    empty = pl.read_parquet(path, n_rows=0)
+    source_features, _ = infer_columns(empty, ["Metadata_"])
+    source_features = get_numeric_features(empty, source_features)
+    canonical, _ = canonicalize_feature_schema(family, source_features)
+    return {
+        "path": str(path),
+        "size_bytes": path.stat().st_size,
+        "sha256": sha256_file(path),
+        "source_features": source_features,
+        "source_schema_sha256": ordered_schema_sha256(source_features),
+        "canonical_features": canonical,
+        "canonical_schema_sha256": ordered_schema_sha256(canonical),
+    }
 
 
 def _enabled_steps(config: Mapping[str, Any]) -> list[dict[str, Any]]:
@@ -244,6 +296,50 @@ def discover_effective_recipes(
     return recipes[:limit] if limit is not None else recipes
 
 
+def protocol_recipe_inventory(
+    inventories: Mapping[str, Sequence[EffectiveRecipe]], sweep_root: Path
+) -> dict[str, list[dict[str, Any]]]:
+    """Bind every effective recipe, alias, codec YAML, and resolved behavior."""
+    result: dict[str, list[dict[str, Any]]] = {}
+    for family, recipes in inventories.items():
+        family_rows: list[dict[str, Any]] = []
+        for recipe in recipes:
+            codec_rows: dict[str, list[dict[str, Any]]] = {}
+            for codec, folder_name in FAMILIES[family].codec_folders.items():
+                alias_rows: list[dict[str, Any]] = []
+                for alias in recipe.aliases:
+                    path = sweep_root / folder_name / alias / "pipeline_config.yaml"
+                    if not path.is_file():
+                        raise AnalysisError(
+                            f"recipe inventory lacks {family}/{codec}/{alias}: {path}"
+                        )
+                    config = yaml.safe_load(path.read_text())
+                    signature = effective_recipe_signature(config)
+                    if signature != recipe.signature:
+                        raise AnalysisError(
+                            f"recipe behavior differs for {family}/{codec}/{alias}"
+                        )
+                    alias_rows.append(
+                        {
+                            "alias": alias,
+                            "path": str(path.resolve()),
+                            "yaml_sha256": sha256_file(path),
+                            "effective_signature": signature,
+                        }
+                    )
+                codec_rows[codec] = alias_rows
+            family_rows.append(
+                {
+                    "canonical_name": recipe.canonical_name,
+                    "aliases": list(recipe.aliases),
+                    "effective_signature": recipe.signature,
+                    "resolved_codecs": codec_rows,
+                }
+            )
+        result[family] = family_rows
+    return result
+
+
 def raw_feature_path(family: str, codec: str) -> Path:
     stem = FAMILIES[family].codec_folders[codec]
     subdir = (
@@ -272,7 +368,9 @@ def build_annotation_table() -> pl.DataFrame:
         raise AnalysisError(f"perturbation metadata missing {sorted(missing)}")
     refchem = pl.read_parquet(REFCHEM_METADATA)
     targets = (
-        refchem.filter(pl.col("WithinModalityTier").is_in(["Tier1", "Tier2", "Tier3"]))
+        refchem.filter(
+            pl.col("WithinModalityTier").is_in(["Tier0", "Tier1", "Tier2", "Tier3"])
+        )
         .filter(pl.col("target").is_not_null())
         .group_by(COMPOUND_COL)
         .agg(pl.col("target").unique().sort().str.join("|").alias("_compound_target"))
@@ -298,14 +396,62 @@ def build_annotation_table() -> pl.DataFrame:
     return perturb
 
 
+def validate_projected_target_labels(
+    annotations: pl.DataFrame, archived_profile: Path = ARCHIVED_LABEL_PROFILE
+) -> dict[str, Any]:
+    """Check labels only; no archived feature or score column is projected."""
+    if not archived_profile.is_file():
+        raise AnalysisError(
+            f"missing canonical archived label profile: {archived_profile}"
+        )
+    projected = pl.read_parquet(
+        archived_profile, columns=[ID_COL, TARGET_COL]
+    ).with_columns(pl.col(ID_COL).cast(pl.Utf8), pl.col(TARGET_COL).cast(pl.Utf8))
+    annotation_ids = annotations.select(
+        pl.col("Metadata_Well_Key").cast(pl.Utf8).alias(ID_COL),
+        pl.col(TARGET_COL).cast(pl.Utf8).alias("_projected_target"),
+    )
+    if annotation_ids[ID_COL].n_unique() != len(annotation_ids):
+        raise AnalysisError("projected annotation labels have duplicate well IDs")
+    compared = projected.join(annotation_ids, on=ID_COL, how="left")
+    missing = compared.filter(pl.col("_projected_target").is_null()).height
+    mismatches = compared.filter(
+        pl.col("_projected_target") != pl.col(TARGET_COL)
+    ).height
+    if len(compared) != len(projected) or missing or mismatches:
+        raise AnalysisError(
+            "projected target-label parity failed: "
+            f"rows={len(compared)}/{len(projected)}, missing={missing}, "
+            f"mismatches={mismatches}"
+        )
+    labels = compared.select(ID_COL, TARGET_COL).sort(ID_COL)
+    return {
+        "archived_profile": str(archived_profile),
+        "columns_read": [ID_COL, TARGET_COL],
+        "rows": len(labels),
+        "mismatches": 0,
+        "projected_labels_sha256": canonical_json_sha256(labels.to_dicts()),
+    }
+
+
 def load_raw_profile(
-    family: str, codec: str, annotations: pl.DataFrame
+    family: str,
+    codec: str,
+    annotations: pl.DataFrame,
+    expected_canonical_schema: Sequence[str] | None = None,
+    expected_source_schema_sha256: str | None = None,
 ) -> tuple[pl.DataFrame, list[str], Path]:
     path = raw_feature_path(family, codec)
     frame = pl.read_parquet(path)
     raw_features, _ = infer_columns(frame, ["Metadata_"])
     raw_features = get_numeric_features(frame, raw_features)
+    source_schema_sha256 = ordered_schema_sha256(raw_features)
     canonical, source_by_canonical = canonicalize_feature_schema(family, raw_features)
+    if expected_source_schema_sha256 is not None:
+        if source_schema_sha256 != expected_source_schema_sha256:
+            raise AnalysisError(f"source feature schema drift for {family}/{codec}")
+    if expected_canonical_schema is not None:
+        require_canonical_schema(family, codec, expected_canonical_schema, canonical)
     frame = frame.rename(
         {
             source: canonical_name
@@ -453,6 +599,7 @@ def _fit_plate_scalers(
     plates: np.ndarray,
     fit_mask: np.ndarray,
     method: str,
+    epsilon: float,
     cp: Any,
 ) -> dict[str, tuple[np.ndarray, np.ndarray]]:
     result: dict[str, tuple[np.ndarray, np.ndarray]] = {}
@@ -463,13 +610,12 @@ def _fit_plate_scalers(
         fit = X[cp.asarray(mask)]
         if method == "standardize":
             center = cp.mean(fit, axis=0)
-            scale = cp.std(fit, axis=0)
+            scale = cp.std(fit, axis=0) + 1e-18
         elif method == "robustmad":
             center = cp.median(fit, axis=0)
-            scale = cp.median(cp.abs(fit - center), axis=0)
+            scale = cp.median(cp.abs(fit - center), axis=0) + epsilon
         else:
             raise AnalysisError(f"unsupported scaler {method}")
-        scale = cp.where(cp.abs(scale) < 1e-18, 1.0, scale)
         result[plate] = (cp.asnumpy(center), cp.asnumpy(scale))
     return result
 
@@ -665,12 +811,16 @@ def fit_transform_recipe(
     split_hash = canonical_json_sha256(
         sorted((str(k), str(v)) for k, v in split_by_id.items())
     )
+    schema_hash = ordered_schema_sha256(feature_names)
     state = StrictFitState(
         family=recipe.family,
         codec=codec,
         recipe=recipe.canonical_name,
+        effective_signature=recipe.signature,
         input_features=list(feature_names),
         retained_features=list(feature_names),
+        input_schema_sha256=schema_hash,
+        canonical_schema_sha256=schema_hash,
         fit_ids_sha256=sha256_strings(fit_ids),
         split_sha256=split_hash,
     )
@@ -743,7 +893,8 @@ def fit_transform_recipe(
                 roles["control"] if params.get("fit_on_controls", False) else permitted
             )
             method = "standardize" if name.endswith("standardize") else "robustmad"
-            scalers = _fit_plate_scalers(X, plates, fit_mask, method, cp)
+            epsilon = float(params.get("epsilon", 1e-18))
+            scalers = _fit_plate_scalers(X, plates, fit_mask, method, epsilon, cp)
             X = _apply_plate_scalers(X, plates, scalers, cp)
             state.step_states.append(
                 {"name": name, "params": params, "plate_scalers": scalers}
@@ -919,18 +1070,24 @@ def candidate_cache_key(
     code_hash: str,
     family: str,
     codec: str,
+    config: str,
     recipe_signature: str,
+    source_schema_hash: str,
+    canonical_schema_hash: str,
 ) -> str:
     return canonical_json_sha256(
-        {
-            "input": input_hash,
-            "split": split_hash,
-            "fit_ids": fit_ids_hash,
-            "code": code_hash,
-            "family": family,
-            "codec": codec,
-            "recipe": recipe_signature,
-        }
+        checkpoint_identity(
+            code_sha256=code_hash,
+            family=family,
+            codec=codec,
+            config=config,
+            effective_signature=recipe_signature,
+            input_sha256=input_hash,
+            fit_ids_sha256=fit_ids_hash,
+            split_sha256=split_hash,
+            source_schema_sha256=source_schema_hash,
+            canonical_schema_sha256=canonical_schema_hash,
+        )
     )
 
 
@@ -963,20 +1120,77 @@ def recipe_for_codec(
     )
 
 
-def _checkpoint(path: Path, protocol_hash: str, payload: Mapping[str, Any]) -> None:
+def checkpoint_identity(
+    *,
+    code_sha256: str,
+    family: str,
+    codec: str,
+    config: str,
+    effective_signature: str,
+    input_sha256: str,
+    fit_ids_sha256: str,
+    split_sha256: str,
+    source_schema_sha256: str,
+    canonical_schema_sha256: str,
+) -> dict[str, str]:
+    return {
+        "code_sha256": code_sha256,
+        "family": family,
+        "codec": codec,
+        "config": config,
+        "effective_signature": effective_signature,
+        "input_sha256": input_sha256,
+        "fit_ids_sha256": fit_ids_sha256,
+        "split_sha256": split_sha256,
+        "source_schema_sha256": source_schema_sha256,
+        "canonical_schema_sha256": canonical_schema_sha256,
+    }
+
+
+def _checkpoint(
+    path: Path,
+    protocol_hash: str,
+    payload: Mapping[str, Any],
+    identity: Mapping[str, str] | None = None,
+) -> None:
     atomic_write_json(
         path,
-        {"protocol_hash": protocol_hash, "completed_at": utc_now(), **dict(payload)},
+        {
+            "protocol_hash": protocol_hash,
+            "identity": dict(identity or {}),
+            "identity_sha256": canonical_json_sha256(dict(identity or {})),
+            "completed_at": utc_now(),
+            **dict(payload),
+        },
     )
 
 
-def _load_checkpoint(path: Path, protocol_hash: str) -> dict[str, Any] | None:
+def _load_checkpoint(
+    path: Path,
+    protocol_hash: str,
+    expected_identity: Mapping[str, str] | None = None,
+) -> dict[str, Any] | None:
     if not path.is_file():
         return None
     payload = json.loads(path.read_text())
     if payload.get("protocol_hash") != protocol_hash:
         raise AnalysisError(f"checkpoint protocol mismatch: {path}")
+    observed_identity = payload.get("identity")
+    if observed_identity != dict(expected_identity or {}):
+        raise AnalysisError(f"checkpoint identity mismatch: {path}")
+    if payload.get("identity_sha256") != canonical_json_sha256(observed_identity):
+        raise AnalysisError(f"checkpoint identity digest mismatch: {path}")
     return payload
+
+
+def _validate_cached_result_identity(
+    result: Mapping[str, Any],
+    expected_identity: Mapping[str, str],
+    path: Path,
+) -> None:
+    for key, expected in expected_identity.items():
+        if result.get(key) != expected:
+            raise AnalysisError(f"cached result identity mismatch for {key}: {path}")
 
 
 def _output_file_record(path: Path, root: Path) -> dict[str, Any]:
@@ -1003,6 +1217,23 @@ def run_production(args: argparse.Namespace) -> int:
         family: discover_effective_recipes(family, args.sweep_root, args.max_recipes)
         for family in families
     }
+    target_label_parity = validate_projected_target_labels(annotations)
+    raw_inputs: dict[str, dict[str, Any]] = {}
+    canonical_raw_schemas: dict[str, list[str]] = {}
+    for family in families:
+        for codec in FAMILIES[family].codec_folders:
+            identity = inspect_raw_profile(family, codec)
+            raw_inputs[f"{family}/{codec}"] = identity
+            if codec == "Raw":
+                canonical_raw_schemas[family] = list(identity["canonical_features"])
+            else:
+                require_canonical_schema(
+                    family,
+                    codec,
+                    canonical_raw_schemas[family],
+                    identity["canonical_features"],
+                )
+    code_hash = sha256_file(Path(__file__))
     protocol = {
         "protocol_version": PROTOCOL_VERSION,
         "strict_split_before_fit": True,
@@ -1021,8 +1252,24 @@ def run_production(args: argparse.Namespace) -> int:
             family: sum(len(recipe.aliases) for recipe in recipes)
             for family, recipes in inventories.items()
         },
-        "split_sha256": canonical_json_sha256(split_rows),
-        "runner_sha256": sha256_file(Path(__file__)),
+        "effective_recipe_inventory": protocol_recipe_inventory(
+            inventories, args.sweep_root
+        ),
+        "raw_input_schemas": raw_inputs,
+        "canonical_raw_schema_sha256": {
+            family: ordered_schema_sha256(schema)
+            for family, schema in canonical_raw_schemas.items()
+        },
+        "target_label_parity": target_label_parity,
+        "archived_label_use": (
+            "metadata-only parity projection; archived feature and score columns "
+            "are never read by strict fitting or scoring"
+        ),
+        "split_sha256": canonical_json_sha256(
+            sorted((str(key), str(value)) for key, value in split_by_id.items())
+        ),
+        "split_artifact_sha256": canonical_json_sha256(split_rows),
+        "runner_sha256": code_hash,
         "sweep_root": str(args.sweep_root.resolve()),
         "raw_root": str(RAW_ROOT),
         "metadata": {
@@ -1045,7 +1292,6 @@ def run_production(args: argparse.Namespace) -> int:
         )
     checkpoint_root = output / "checkpoints"
     checkpoint_root.mkdir(exist_ok=True)
-    code_hash = sha256_file(Path(__file__))
     all_candidate_rows: list[dict[str, Any]] = []
     winners: dict[str, EffectiveRecipe] = {}
     selected_rows: list[dict[str, Any]] = []
@@ -1053,13 +1299,16 @@ def run_production(args: argparse.Namespace) -> int:
     started = time.monotonic()
 
     for family in families:
-        frame, features, input_path = load_raw_profile(family, "Raw", annotations)
-        input_hash = sha256_file(input_path)
-        input_records[f"{family}/Raw"] = {
-            "path": str(input_path),
-            "size_bytes": input_path.stat().st_size,
-            "sha256": input_hash,
-        }
+        raw_identity = raw_inputs[f"{family}/Raw"]
+        frame, features, input_path = load_raw_profile(
+            family,
+            "Raw",
+            annotations,
+            canonical_raw_schemas[family],
+            raw_identity["source_schema_sha256"],
+        )
+        input_hash = str(raw_identity["sha256"])
+        input_records[f"{family}/Raw"] = dict(raw_identity)
         family_rows: list[dict[str, Any]] = []
         family_checkpoint = checkpoint_root / "selection" / family
         family_checkpoint.mkdir(parents=True, exist_ok=True)
@@ -1077,6 +1326,18 @@ def run_production(args: argparse.Namespace) -> int:
                     frame, features, recipe, split_by_id
                 )
             fit_ids_hash = fit_ids_hash_cache[clean_signature]
+            identity = checkpoint_identity(
+                code_sha256=code_hash,
+                family=family,
+                codec="Raw",
+                config=recipe.canonical_name,
+                effective_signature=recipe.signature,
+                input_sha256=input_hash,
+                fit_ids_sha256=fit_ids_hash,
+                split_sha256=protocol["split_sha256"],
+                source_schema_sha256=raw_identity["source_schema_sha256"],
+                canonical_schema_sha256=raw_identity["canonical_schema_sha256"],
+            )
             cache_key = candidate_cache_key(
                 input_hash,
                 protocol["split_sha256"],
@@ -1084,12 +1345,16 @@ def run_production(args: argparse.Namespace) -> int:
                 code_hash,
                 family,
                 "Raw",
+                recipe.canonical_name,
                 recipe.signature,
+                raw_identity["source_schema_sha256"],
+                raw_identity["canonical_schema_sha256"],
             )
             path = family_checkpoint / f"{cache_key}.json"
-            cached = _load_checkpoint(path, protocol_hash)
+            cached = _load_checkpoint(path, protocol_hash, identity)
             if cached is not None:
                 row = dict(cached["result"])
+                _validate_cached_result_identity(row, identity, path)
             else:
                 candidate_started = time.monotonic()
                 transformed, state = fit_transform_recipe(
@@ -1112,6 +1377,10 @@ def run_production(args: argparse.Namespace) -> int:
                     "effective_signature": recipe.signature,
                     "state_sha256": state.digest(),
                     "input_sha256": input_hash,
+                    "source_schema_sha256": raw_identity["source_schema_sha256"],
+                    "canonical_schema_sha256": raw_identity["canonical_schema_sha256"],
+                    "split_sha256": state.split_sha256,
+                    "code_sha256": code_hash,
                     "fit_ids_sha256": state.fit_ids_sha256,
                     "validation_pa_mean_nap": metrics["pa_mean_nap"],
                     "validation_pc_mean_nap": metrics["pc_mean_nap"],
@@ -1122,7 +1391,10 @@ def run_production(args: argparse.Namespace) -> int:
                     **state.fit_audit,
                 }
                 _checkpoint(
-                    path, protocol_hash, {"cache_key": cache_key, "result": row}
+                    path,
+                    protocol_hash,
+                    {"cache_key": cache_key, "result": row},
+                    identity,
                 )
             family_rows.append(row)
         scored, ranges = minmax_score_candidates(family_rows)
@@ -1161,22 +1433,44 @@ def run_production(args: argparse.Namespace) -> int:
     for family, winner in winners.items():
         for codec in FAMILIES[family].codec_folders:
             path = profiles_root / f"{family}__{codec}.parquet"
-            checkpoint_path = final_checkpoint / f"{family}__{codec}.json"
-            cached = _load_checkpoint(checkpoint_path, protocol_hash)
+            codec_recipe = recipe_for_codec(winner, codec, args.sweep_root)
+            raw_identity = raw_inputs[f"{family}/{codec}"]
+            frame, features, input_path = load_raw_profile(
+                family,
+                codec,
+                annotations,
+                canonical_raw_schemas[family],
+                raw_identity["source_schema_sha256"],
+            )
+            input_hash = str(raw_identity["sha256"])
+            input_records[f"{family}/{codec}"] = dict(raw_identity)
+            fit_ids_hash = exact_fit_ids_hash(
+                frame, features, codec_recipe, split_by_id
+            )
+            identity = checkpoint_identity(
+                code_sha256=code_hash,
+                family=family,
+                codec=codec,
+                config=winner.canonical_name,
+                effective_signature=winner.signature,
+                input_sha256=input_hash,
+                fit_ids_sha256=fit_ids_hash,
+                split_sha256=protocol["split_sha256"],
+                source_schema_sha256=raw_identity["source_schema_sha256"],
+                canonical_schema_sha256=raw_identity["canonical_schema_sha256"],
+            )
+            checkpoint_path = final_checkpoint / (
+                f"{family}__{codec}__{canonical_json_sha256(identity)}.json"
+            )
+            cached = _load_checkpoint(checkpoint_path, protocol_hash, identity)
             if cached is None:
-                codec_recipe = recipe_for_codec(winner, codec, args.sweep_root)
-                frame, features, input_path = load_raw_profile(
-                    family, codec, annotations
-                )
-                input_hash = sha256_file(input_path)
-                input_records[f"{family}/{codec}"] = {
-                    "path": str(input_path),
-                    "size_bytes": input_path.stat().st_size,
-                    "sha256": input_hash,
-                }
                 transformed, state = fit_transform_recipe(
                     frame, features, codec_recipe, split_by_id, codec
                 )
+                if state.fit_ids_sha256 != fit_ids_hash:
+                    raise AnalysisError(
+                        "final cache fit-ID hash differs from fitted rows"
+                    )
                 transformed.write_parquet(path, compression="zstd")
                 row = {
                     "family": family,
@@ -1187,6 +1481,10 @@ def run_production(args: argparse.Namespace) -> int:
                     "fit_ids_sha256": state.fit_ids_sha256,
                     "input_path": str(input_path),
                     "input_sha256": input_hash,
+                    "source_schema_sha256": raw_identity["source_schema_sha256"],
+                    "canonical_schema_sha256": raw_identity["canonical_schema_sha256"],
+                    "split_sha256": state.split_sha256,
+                    "code_sha256": code_hash,
                     "native_wells": len(transformed),
                     "native_controls": transformed.filter(pl.col(NEGCON_COL)).height,
                     "native_treatments": transformed.filter(~pl.col(NEGCON_COL))[
@@ -1197,19 +1495,14 @@ def run_production(args: argparse.Namespace) -> int:
                     "profile_size_bytes": path.stat().st_size,
                     **state.fit_audit,
                 }
-                _checkpoint(checkpoint_path, protocol_hash, {"result": row})
+                _checkpoint(checkpoint_path, protocol_hash, {"result": row}, identity)
             else:
                 row = dict(cached["result"])
+                _validate_cached_result_identity(row, identity, checkpoint_path)
                 if not path.is_file() or sha256_file(path) != row["profile_sha256"]:
                     raise AnalysisError(f"final profile checkpoint mismatch: {path}")
-                input_path = Path(row["input_path"])
                 if sha256_file(input_path) != row["input_sha256"]:
                     raise AnalysisError(f"resumed raw input drift: {input_path}")
-                input_records[f"{family}/{codec}"] = {
-                    "path": str(input_path),
-                    "size_bytes": input_path.stat().st_size,
-                    "sha256": row["input_sha256"],
-                }
             profile_paths[(family, codec)] = path
             fit_audits.append(row)
 
@@ -1413,7 +1706,10 @@ def run_smoke(args: argparse.Namespace) -> int:
             "candidate_effective_count": len(recipes),
             "candidate_alias_count": sum(len(recipe.aliases) for recipe in recipes),
             "input": {"path": str(input_path), "sha256": sha256_file(input_path)},
-            "split_sha256": canonical_json_sha256(split_rows),
+            "split_sha256": canonical_json_sha256(
+                sorted((str(key), str(value)) for key, value in split_by_id.items())
+            ),
+            "split_artifact_sha256": canonical_json_sha256(split_rows),
             "code_sha256": sha256_file(Path(__file__)),
             "elapsed_seconds": time.monotonic() - start,
             "winner": scored[0]["config"],

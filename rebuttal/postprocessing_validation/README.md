@@ -34,9 +34,23 @@ retention, per-plate standardization or RobustMAD, outlier removal,
 out-of-sample empirical INT, correlation pruning where the resolved pipeline
 enables it, and all TVN EFAAR state. Steps fit on controls use shared controls
 only. Other fitted steps use selection treatments plus controls. OpenPhenom
-feature prefixes are mapped to one numbered canonical axis before fitting.
+feature prefixes are mapped to one numbered canonical axis before fitting. The
+ordered Raw canonical feature schema is frozen per family; every codec must map
+exactly onto that axis before fitting. Physical source-column order may differ
+only because the loader explicitly reorders it to the canonical axis. Source,
+canonical-schema, raw-input, split, fit-ID, code, selected-config, and effective-
+signature hashes are bound into checkpoints and audited on resume. RobustMAD
+uses `MAD + epsilon`, and standardization uses `std + 1e-18`, exactly matching
+the resolved norm_3 CPU transformer semantics; near-zero scales are not replaced.
 Missing fit strata, unseen transform strata, nonfinite values, schema drift,
 missing controls, and incomplete codec coverage fail closed.
+
+Compound targets use current RefChem `WithinModalityTier` Tier0 through Tier3.
+A metadata-only preflight projects `Metadata_id` and
+`Metadata_RefChemDB_target` from one canonical archived profile and requires
+zero label mismatches across all 163,776 wells. This parity check reads no
+archived feature or score column; archived normalized values never enter strict
+fits or strict scores.
 
 Run the bounded one-GPU smoke without changing production services:
 
@@ -63,9 +77,14 @@ PYTHONPATH=. \
 ```
 
 A failed invocation may resume only against its exact protocol and code identity
-by adding `--resume`. Candidate cache keys bind the raw input hash, split hash,
-exact fit-ID hash, code hash, family, codec, and effective recipe. Winners are
-refit deterministically. Candidate transform states are not retained.
+by adding `--resume`. The protocol binds the complete effective-recipe
+inventory, every alias, effective signature, resolved codec YAML hash, ordered
+source/canonical schemas, and raw input hashes. Candidate and final-fit cache
+keys bind code, family, codec, selected canonical config and effective signature,
+codec input, exact fit IDs, split, and source/canonical schema. Every cached
+identity is checked before reuse, so winner, YAML, input, fit population, or
+schema drift cannot reuse a final profile. Winners are refit deterministically.
+Candidate transform states are not retained.
 
 Final-code DINOv2 candidate smoke v4 completed in 31.23 seconds with 3.36 GiB
 peak process RSS. A one-candidate CellProfiler smoke completed in 268.59 seconds.
