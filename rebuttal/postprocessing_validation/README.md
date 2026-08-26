@@ -64,17 +64,31 @@ PYTHONPATH=. \
   --output-dir /work/scratch/amunoz/jump-lite-strict-postprocessing-smoke-v1
 ```
 
-The recommended create-only production command is:
+The recommended create-only production command uses Hydra with the Joblib
+launcher. All four configured GPU indices must be visible. The runner checks
+this before creating or modifying the output root and fails closed if any
+configured index is absent.
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 \
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
 LD_LIBRARY_PATH=/run/opengl-driver/lib:$NIX_LD_LIBRARY_PATH \
 PYTHONPATH=. \
 /work/users/amunoz/projects/JUMP_lite/src/norm_3/.pixi/envs/default/bin/python \
   rebuttal/postprocessing_validation/strict_split_fit.py \
   --mode production --cpu-workers 1 \
-  --output-dir /work/scratch/amunoz/jump-lite-strict-postprocessing-final-v1
+  --hydra-jobs 4 --hydra-gpus 0,1,2,3 \
+  --output-dir /work/scratch/amunoz/jump-lite-strict-postprocessing-hydra-final-v1
 ```
+
+Hydra dispatches one immutable task for each contiguous shared pre-TVN prefix
+group. At most four tasks run concurrently, one per configured GPU. Workers
+write only unique immutable packages under `hydra_worker_results`. The single
+coordinator validates those packages and writes canonical checkpoints in recipe
+order. Hydra operational logs use a distinct create-only attempt directory for
+each launched wave under `hydra_jobs`; those mutable operational logs are
+provenance-bound by the protocol but excluded from scientific checksum closure.
+A nonblocking OS lock beside the output root is held for the coordinator's
+lifetime, so a second fresh or resume coordinator fails before output mutation.
 
 A failed invocation may resume only against its exact protocol and code identity
 by adding `--resume`. The protocol binds the complete effective-recipe
@@ -84,17 +98,19 @@ keys bind code, family, codec, selected canonical config and effective signature
 codec input, exact fit IDs, split, and source/canonical schema. Every cached
 identity is checked before reuse, so winner, YAML, input, fit population, or
 schema drift cannot reuse a final profile. Winners are refit deterministically.
-Candidate transform states are not retained. During selection, adjacent
-canonical recipes with identical enabled operations before
-`normalize_tvn_efaar` reuse one in-memory prefix. The prefix signature binds the
-resolved prefix behavior, family/codec, raw input, ordered source and canonical
-schemas, split, exact fit IDs, runner code, and protocol. Candidates and
-checkpoints are still evaluated and written one at a time in canonical order;
-each candidate records its prefix signature and whether it hit the active
-prefix. Only one prefix is retained, and its host objects and unused CuPy pool
-blocks are released before the next prefix. The cached and uncached paths are
-required by tests to produce identical retained features, fitted state digest,
-transformed values, PA/PC, and leakage sentinels.
+Candidate transform states are not retained. Each Hydra task contains one
+contiguous group of canonical recipes with identical enabled operations before
+`normalize_tvn_efaar`. Its worker fits that prefix once and evaluates the suffix
+recipes in canonical order. The prefix signature binds resolved behavior,
+family and codec, raw input, ordered source and canonical schemas, split, exact
+fit IDs, runner and worker code, ordered aliases, and exact resolved YAML paths
+and byte hashes. Parallel workers emit immutable group packages only. After all
+packages validate, the coordinator alone writes candidate checkpoints in global
+canonical order. Each candidate records its prefix signature and cache-hit
+status. A worker retains only its current prefix and releases host objects and
+unused CuPy pool blocks before its next task. Tests require cached and uncached
+paths to produce identical retained features, state digest, transformed values,
+PA/PC, and leakage sentinels.
 
 `--cpu-workers` bounds per-feature CPU work and defaults to 1. The initial
 8-thread CellProfiler experiments were slower under the shared-host workload,

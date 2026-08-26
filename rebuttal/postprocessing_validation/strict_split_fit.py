@@ -15,8 +15,10 @@ from __future__ import annotations
 
 import argparse
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+import fcntl
 import gc
 import hashlib
 import json
@@ -1505,6 +1507,40 @@ def _output_file_record(path: Path, root: Path) -> dict[str, Any]:
     }
 
 
+def validate_visible_gpu_indices(
+    gpu_indices: Sequence[int], visible_device_count: int
+) -> None:
+    missing = [index for index in gpu_indices if index >= visible_device_count]
+    if missing:
+        raise AnalysisError(
+            "configured Hydra GPU indices are not visible: "
+            f"missing={missing}, visible_device_count={visible_device_count}"
+        )
+
+
+def coordinator_lock_path(output: Path) -> Path:
+    return output.parent / f".{output.name}.strict-coordinator.lock"
+
+
+@contextmanager
+def hold_coordinator_lock(output: Path) -> Iterable[Path]:
+    """Lifetime-hold one nonblocking coordinator lock beside the output root."""
+    path = coordinator_lock_path(output)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handle = path.open("a+", encoding="utf-8")
+    try:
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise AnalysisError(f"strict coordinator lock is held: {path}") from exc
+        yield path
+    finally:
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        finally:
+            handle.close()
+
+
 def parse_gpu_indices(value: str) -> tuple[int, ...]:
     try:
         indices = tuple(int(part.strip()) for part in value.split(",") if part.strip())
@@ -1585,6 +1621,12 @@ def build_hydra_task_manifest(
                         "canonical_name": recipe.canonical_name,
                         "effective_signature": recipe.signature,
                         "aliases": list(recipe.aliases),
+                        "config_paths": [
+                            str(path.resolve()) for path in recipe.config_paths
+                        ],
+                        "config_sha256": [
+                            sha256_file(path) for path in recipe.config_paths
+                        ],
                     }
                     for recipe in group
                 ],
@@ -1676,13 +1718,53 @@ def validate_worker_package_payload(
     return [dict(row) for row in rows]
 
 
-def launch_hydra_selection(output: Path, task_count: int, hydra_jobs: int) -> None:
-    """Launch bounded waves so no two concurrent tasks share a bound GPU."""
+def _validate_existing_worker_package(
+    output: Path,
+    task: Mapping[str, Any],
+    protocol_hash: str,
+    protocol: Mapping[str, Any],
+) -> bool:
+    path = output / str(task["result_relpath"])
+    if not path.exists():
+        return False
+    payload = json.loads(path.read_text())
+    validate_worker_package_payload(
+        payload,
+        protocol_hash=protocol_hash,
+        task=task,
+        worker_sha256=str(protocol["hydra_selection"]["worker_sha256"]),
+        coordinator_sha256=str(protocol["runner_sha256"]),
+    )
+    return True
+
+
+def launch_hydra_selection(
+    output: Path,
+    protocol_hash: str,
+    protocol: Mapping[str, Any],
+    manifest: Mapping[str, Any],
+    hydra_jobs: int,
+) -> None:
+    """Launch bounded, resumable waves with distinct operational directories."""
     worker = Path(__file__).with_name("strict_split_fit_hydra_worker.py")
     sweep_root = output / "hydra_jobs"
-    for wave_index, start in enumerate(range(0, task_count, hydra_jobs)):
-        indices = list(range(start, min(start + hydra_jobs, task_count)))
+    tasks = list(manifest["tasks"])
+    for wave_index, start in enumerate(range(0, len(tasks), hydra_jobs)):
+        wave_tasks = tasks[start : start + hydra_jobs]
+        existing = [
+            _validate_existing_worker_package(output, task, protocol_hash, protocol)
+            for task in wave_tasks
+        ]
+        if all(existing):
+            continue
+        indices = [int(task["task_index"]) for task in wave_tasks]
         task_override = "task_index=" + ",".join(str(index) for index in indices)
+        wave_root = sweep_root / f"wave-{wave_index:03d}"
+        attempt = 0
+        while (wave_root / f"attempt-{attempt:04d}").exists():
+            attempt += 1
+        attempt_root = wave_root / f"attempt-{attempt:04d}"
+        attempt_root.mkdir(parents=True, exist_ok=False)
         command = [
             sys.executable,
             str(worker),
@@ -1691,7 +1773,7 @@ def launch_hydra_selection(output: Path, task_count: int, hydra_jobs: int) -> No
             task_override,
             "hydra/launcher=joblib",
             f"hydra.launcher.n_jobs={len(indices)}",
-            f"hydra.sweep.dir={sweep_root / f'wave-{wave_index:03d}'}",
+            f"hydra.sweep.dir={attempt_root}",
             "hydra.sweep.subdir=job-${hydra.job.num}",
             "hydra.job.chdir=false",
         ]
@@ -1803,10 +1885,19 @@ def collect_hydra_selection(
 
 def run_production(args: argparse.Namespace) -> int:
     output = args.output_dir.resolve()
+    with hold_coordinator_lock(output) as lock_path:
+        return _run_production_locked(args, lock_path)
+
+
+def _run_production_locked(args: argparse.Namespace, lock_path: Path) -> int:
+    output = args.output_dir.resolve()
     if args.hydra_jobs > len(args.hydra_gpus):
         raise AnalysisError(
             "Hydra jobs may not exceed bound GPUs; one concurrent task per GPU"
         )
+    os.environ["JUMP_LITE_STRICT_GPU_INDEX"] = str(args.hydra_gpus[0])
+    cp = _gpu()
+    validate_visible_gpu_indices(args.hydra_gpus, cp.cuda.runtime.getDeviceCount())
     annotations = build_annotation_table()
     split_rows = make_split_from_annotations(
         annotations, args.validation_fraction, args.seed
@@ -1883,6 +1974,9 @@ def run_production(args: argparse.Namespace) -> int:
                 "unique immutable packages only; coordinator is sole canonical writer"
             ),
             "hydra_output_relpath": "hydra_jobs",
+            "hydra_output_classification": (
+                "operational logs excluded from scientific checksum closure"
+            ),
             "worker_result_relpath": "hydra_worker_results",
         },
         "selection_prefix_cache": {
@@ -1923,6 +2017,11 @@ def run_production(args: argparse.Namespace) -> int:
         ),
         "split_artifact_sha256": canonical_json_sha256(split_rows),
         "runner_sha256": code_hash,
+        "coordinator_lock": {
+            "path": str(lock_path),
+            "policy": "nonblocking exclusive OS flock held for coordinator lifetime",
+            "outside_scientific_closure": True,
+        },
         "sweep_root": str(args.sweep_root.resolve()),
         "raw_root": str(RAW_ROOT),
         "metadata": {
@@ -1963,7 +2062,9 @@ def run_production(args: argparse.Namespace) -> int:
 
     for family in families:
         input_records[f"{family}/Raw"] = dict(raw_inputs[f"{family}/Raw"])
-    launch_hydra_selection(output, int(task_manifest["task_count"]), args.hydra_jobs)
+    launch_hydra_selection(
+        output, protocol_hash, protocol, task_manifest, args.hydra_jobs
+    )
     collected_rows, collected_by_family = collect_hydra_selection(
         output=output,
         protocol_hash=protocol_hash,
@@ -2217,7 +2318,9 @@ def run_production(args: argparse.Namespace) -> int:
     closure_paths = sorted(
         path
         for path in output.rglob("*")
-        if path.is_file() and path.name not in {"SHA256SUMS", "output_hashes.json"}
+        if path.is_file()
+        and path.name not in {"SHA256SUMS", "output_hashes.json"}
+        and path.relative_to(output).parts[0] != "hydra_jobs"
     )
     atomic_write_json(
         output / "output_hashes.json",
@@ -2226,7 +2329,9 @@ def run_production(args: argparse.Namespace) -> int:
     checksum_paths = sorted(
         path
         for path in output.rglob("*")
-        if path.is_file() and path.name != "SHA256SUMS"
+        if path.is_file()
+        and path.name != "SHA256SUMS"
+        and path.relative_to(output).parts[0] != "hydra_jobs"
     )
     atomic_write_text(
         output / "SHA256SUMS",

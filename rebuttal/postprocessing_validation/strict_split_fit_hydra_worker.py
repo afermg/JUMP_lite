@@ -69,6 +69,26 @@ def _load_bound_task(
     return protocol, task, protocol_hash
 
 
+def bind_live_recipes(task: dict[str, Any], sweep_root: Path) -> list[EffectiveRecipe]:
+    recipes = discover_effective_recipes(str(task["family"]), sweep_root)
+    by_signature = {recipe.signature: recipe for recipe in recipes}
+    selected: list[EffectiveRecipe] = []
+    for expected in task["recipes"]:
+        recipe = by_signature.get(expected["effective_signature"])
+        if recipe is None or recipe.canonical_name != expected["canonical_name"]:
+            raise AnalysisError("Hydra worker recipe inventory mismatch")
+        observed_paths = [str(path.resolve()) for path in recipe.config_paths]
+        observed_hashes = [sha256_file(path) for path in recipe.config_paths]
+        if list(recipe.aliases) != expected["aliases"]:
+            raise AnalysisError("Hydra worker recipe alias drift")
+        if observed_paths != expected["config_paths"]:
+            raise AnalysisError("Hydra worker recipe config-path drift")
+        if observed_hashes != expected["config_sha256"]:
+            raise AnalysisError("Hydra worker recipe YAML-byte drift")
+        selected.append(recipe)
+    return selected
+
+
 def run_task(root: Path, task_index: int) -> Path:
     protocol, task, protocol_hash = _load_bound_task(root, task_index)
     worker_path = Path(__file__).resolve()
@@ -87,6 +107,7 @@ def run_task(root: Path, task_index: int) -> Path:
         return result_path
 
     os.environ["JUMP_LITE_STRICT_GPU_INDEX"] = str(task["gpu_index"])
+    selected = bind_live_recipes(task, Path(protocol["sweep_root"]))
     _gpu()
     annotations = build_annotation_table()
     split_by_id = {
@@ -103,15 +124,6 @@ def run_task(root: Path, task_index: int) -> Path:
     }
 
     family = str(task["family"])
-    recipes = discover_effective_recipes(family, Path(protocol["sweep_root"]))
-    by_signature = {recipe.signature: recipe for recipe in recipes}
-    selected: list[EffectiveRecipe] = []
-    for expected in task["recipes"]:
-        recipe = by_signature.get(expected["effective_signature"])
-        if recipe is None or recipe.canonical_name != expected["canonical_name"]:
-            raise AnalysisError("Hydra worker recipe inventory mismatch")
-        selected.append(recipe)
-
     raw_identity = protocol["raw_input_schemas"][f"{family}/Raw"]
     if sha256_file(Path(raw_identity["path"])) != task["input_sha256"]:
         raise AnalysisError("Hydra worker Raw input hash mismatch")

@@ -2,14 +2,20 @@ from __future__ import annotations
 
 from copy import deepcopy
 import json
+import os
 from pathlib import Path
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
 import polars as pl
 
-from rebuttal.postprocessing_validation.run_analysis import AnalysisError
+from rebuttal.postprocessing_validation.run_analysis import AnalysisError, sha256_file
+from rebuttal.postprocessing_validation.strict_split_fit_hydra_worker import (
+    bind_live_recipes,
+    run_task,
+)
 from rebuttal.postprocessing_validation.strict_split_fit import (
     EffectiveRecipe,
     atomic_create_json,
@@ -17,8 +23,10 @@ from rebuttal.postprocessing_validation.strict_split_fit import (
     canonical_json_sha256,
     collect_hydra_selection,
     discover_effective_recipes,
+    hold_coordinator_lock,
     launch_hydra_selection,
     parse_args,
+    validate_visible_gpu_indices,
     validate_worker_package_payload,
 )
 
@@ -214,9 +222,15 @@ class StrictHydraTests(unittest.TestCase):
             )
 
     def test_hydra_launcher_and_cli_guards(self) -> None:
-        with patch("subprocess.run") as run:
+        tasks = deepcopy(self.manifest["tasks"][:3])
+        manifest = {"tasks": tasks}
+        protocol = {
+            "runner_sha256": "coordinator",
+            "hydra_selection": {"worker_sha256": "worker"},
+        }
+        with tempfile.TemporaryDirectory() as tmp, patch("subprocess.run") as run:
             run.return_value.returncode = 0
-            launch_hydra_selection(Path("/output"), 3, 4)
+            launch_hydra_selection(Path(tmp), "protocol", protocol, manifest, 4)
         self.assertEqual(run.call_count, 1)
         command = run.call_args.args[0]
         self.assertIn("hydra/launcher=joblib", command)
@@ -231,6 +245,199 @@ class StrictHydraTests(unittest.TestCase):
             parse_args(["--output-dir", "/tmp/x", "--hydra-gpus", "1,1"])
         with self.assertRaises(SystemExit):
             parse_args(["--output-dir", "/tmp/x", "--hydra-jobs", "0"])
+        validate_visible_gpu_indices((0, 1, 2, 3), 4)
+        with self.assertRaisesRegex(AnalysisError, "not visible"):
+            validate_visible_gpu_indices((0, 1, 2, 3), 1)
+
+    def test_recipe_alias_paths_and_yaml_hashes_are_manifest_bound(self) -> None:
+        recipe = self.manifest["tasks"][5]["recipes"][0]
+        self.assertEqual(
+            recipe["aliases"], list(self.inventories["cellprofiler"][0].aliases)
+        )
+        self.assertEqual(len(recipe["config_paths"]), len(recipe["config_sha256"]))
+        self.assertTrue(
+            all(Path(path).is_absolute() for path in recipe["config_paths"])
+        )
+        changed = deepcopy(self.manifest)
+        changed["tasks"][5]["recipes"][0]["config_sha256"][0] = "stale"
+        self.assertNotEqual(
+            canonical_json_sha256(self.manifest), canonical_json_sha256(changed)
+        )
+
+    def test_worker_rejects_alias_and_yaml_byte_drift(self) -> None:
+        task = deepcopy(self.manifest["tasks"][5])
+        live = self.inventories["cellprofiler"][:35]
+        with patch(
+            "rebuttal.postprocessing_validation.strict_split_fit_hydra_worker.discover_effective_recipes",
+            return_value=live,
+        ):
+            bound = bind_live_recipes(task, Path("/sweep"))
+            self.assertEqual(len(bound), 35)
+            alias_drift = deepcopy(task)
+            alias_drift["recipes"][0]["aliases"] = ["changed"]
+            with self.assertRaisesRegex(AnalysisError, "alias drift"):
+                bind_live_recipes(alias_drift, Path("/sweep"))
+            yaml_drift = deepcopy(task)
+            yaml_drift["recipes"][0]["config_sha256"][0] = "changed"
+            with self.assertRaisesRegex(AnalysisError, "YAML-byte drift"):
+                bind_live_recipes(yaml_drift, Path("/sweep"))
+
+    def test_run_task_binds_gpu_identity_and_creates_package(self) -> None:
+        recipe = self.inventories["cell_count"][0]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            raw = root / "raw.parquet"
+            raw.write_bytes(b"raw")
+            task = {
+                "task_index": 0,
+                "family": "cell_count",
+                "group_index": 0,
+                "gpu_index": 3,
+                "input_sha256": sha256_file(raw),
+                "source_schema_sha256": "source",
+                "canonical_schema_sha256": "canonical",
+                "fit_ids_sha256": "fit",
+                "split_sha256": canonical_json_sha256(
+                    [("t", "test"), ("v", "validation")]
+                ),
+                "prefix_behavior_sha256": "",
+                "prefix_signature": "prefix",
+                "coordinator_sha256": sha256_file(
+                    Path("rebuttal/postprocessing_validation/strict_split_fit.py")
+                ),
+                "worker_sha256": sha256_file(
+                    Path(
+                        "rebuttal/postprocessing_validation/strict_split_fit_hydra_worker.py"
+                    )
+                ),
+                "sweep_root": "/sweep",
+                "recipes": [
+                    {
+                        "canonical_name": recipe.canonical_name,
+                        "effective_signature": recipe.signature,
+                        "aliases": list(recipe.aliases),
+                        "config_paths": [
+                            str(path.resolve()) for path in recipe.config_paths
+                        ],
+                        "config_sha256": [
+                            sha256_file(path) for path in recipe.config_paths
+                        ],
+                    }
+                ],
+                "result_relpath": "hydra_worker_results/task-0000.json",
+            }
+            task["task_sha256"] = canonical_json_sha256(task)
+            manifest = {"tasks": [task]}
+            protocol = {
+                "runner_sha256": task["coordinator_sha256"],
+                "sweep_root": "/sweep",
+                "split_sha256": task["split_sha256"],
+                "canonical_raw_schemas": {"cell_count": ["f0"]},
+                "raw_input_schemas": {"cell_count/Raw": {"path": str(raw)}},
+                "hydra_selection": {
+                    "worker_sha256": task["worker_sha256"],
+                    "task_manifest_sha256": canonical_json_sha256(manifest),
+                },
+            }
+            (root / "protocol.json").write_text(json.dumps(protocol))
+            (root / "hydra_task_manifest.json").write_text(json.dumps(manifest))
+            (root / "hydra_split.json").write_text(
+                json.dumps(
+                    {
+                        "rows": [
+                            {"treatment_id": "t", "split": "test"},
+                            {"treatment_id": "v", "split": "validation"},
+                        ]
+                    }
+                )
+            )
+            state = SimpleNamespace(
+                retained_features=["f0"],
+                fit_ids_sha256="fit",
+                split_sha256=task["split_sha256"],
+                fit_audit={},
+                digest=lambda: "state",
+            )
+            transformed = pl.DataFrame({"f0": [1.0]})
+            with (
+                patch(
+                    "rebuttal.postprocessing_validation.strict_split_fit_hydra_worker.bind_live_recipes",
+                    return_value=[recipe],
+                ),
+                patch(
+                    "rebuttal.postprocessing_validation.strict_split_fit_hydra_worker._gpu"
+                ),
+                patch(
+                    "rebuttal.postprocessing_validation.strict_split_fit_hydra_worker.build_annotation_table",
+                    return_value=pl.DataFrame(),
+                ),
+                patch(
+                    "rebuttal.postprocessing_validation.strict_split_fit_hydra_worker.load_raw_profile",
+                    return_value=(pl.DataFrame(), ["f0"], raw),
+                ),
+                patch(
+                    "rebuttal.postprocessing_validation.strict_split_fit_hydra_worker.exact_fit_ids_hash",
+                    return_value="fit",
+                ),
+                patch(
+                    "rebuttal.postprocessing_validation.strict_split_fit_hydra_worker.fit_transform_recipe",
+                    return_value=(transformed, state),
+                ),
+                patch(
+                    "rebuttal.postprocessing_validation.strict_split_fit_hydra_worker.score_partition",
+                    return_value=(
+                        {
+                            "pa_mean_nap": 0.1,
+                            "pc_mean_nap": 0.2,
+                            "wells": 1,
+                            "controls": 1,
+                            "treatments": 1,
+                        },
+                        None,
+                        None,
+                    ),
+                ),
+                patch(
+                    "rebuttal.postprocessing_validation.strict_split_fit_hydra_worker.release_prefix_cache"
+                ),
+            ):
+                result = run_task(root, 0)
+            self.assertEqual(os.environ["JUMP_LITE_STRICT_GPU_INDEX"], "3")
+            self.assertEqual(result, root / task["result_relpath"])
+            self.assertTrue(result.is_file())
+
+    def test_coordinator_lock_rejects_second_holder(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "result"
+            with hold_coordinator_lock(output):
+                with self.assertRaisesRegex(AnalysisError, "lock is held"):
+                    with hold_coordinator_lock(output):
+                        pass
+
+    def test_full_wave_skips_and_partial_wave_relaunches(self) -> None:
+        tasks = deepcopy(self.manifest["tasks"][:2])
+        manifest = {"tasks": tasks}
+        protocol = {
+            "runner_sha256": "coordinator",
+            "hydra_selection": {"worker_sha256": "worker"},
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for task in tasks:
+                atomic_create_json(root / task["result_relpath"], _package(task))
+            with patch("subprocess.run") as run:
+                launch_hydra_selection(root, "protocol", protocol, manifest, 2)
+            run.assert_not_called()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            atomic_create_json(root / tasks[0]["result_relpath"], _package(tasks[0]))
+            with patch("subprocess.run") as run:
+                run.return_value.returncode = 0
+                launch_hydra_selection(root, "protocol", protocol, manifest, 2)
+            self.assertEqual(run.call_count, 1)
+            command = run.call_args.args[0]
+            self.assertIn("task_index=0,1", command)
+            self.assertTrue(any("attempt-0000" in value for value in command))
 
 
 if __name__ == "__main__":
