@@ -3,9 +3,9 @@
 JUMP-Lite is a compact, source-spanning subset of the JUMP Cell Painting
 dataset. It provides lossless and lossy-compressed multichannel image arrays together with
 per-site deep-learning feature Parquets, image provenance metadata, perturbation
-metadata, curated RefChemDB-derived annotations, and the masks, per-site object
-features, and compact profiles used by the publication's Target-2 compression
-subanalysis.
+metadata, curated RefChemDB-derived annotations, JUMP-lite Cellpose cell and
+nuclei instance masks, and the masks, per-site object features, and compact
+profiles used by the publication's separate Target-2 compression subanalysis.
 
 The original TIFF images are already public under `cpg0016-jump`. This release
 is deposited as an aggregated multi-source subset beneath
@@ -22,6 +22,8 @@ compressed site back to its five original TIFF URLs.
 | Wells with images | 163,776 |
 | Modality-specific perturbations | 24,356 |
 | Sites | 655,101 |
+| Mask-covered sites | 632,672 |
+| Cell/nuclei mask arrays | 2,530,688 |
 | Channels per site | 5 |
 | Original image references | 3,275,505 |
 
@@ -60,6 +62,16 @@ cpg0016-jump/source_all/
 │           │       ├── jump_lite_refchem_annotations.parquet
 │           │       ├── jump_lite_plate_manifest.parquet
 │           │       └── metadata_manifest.json
+│           ├── segmentation/
+│           │   └── 2026_jump_lite_v1.0/
+│           │       ├── README.md
+│           │       ├── manifests/
+│           │       ├── cell_masks/
+│           │       │   ├── zstd.zarr/
+│           │       │   └── jpegxl_lossy_mq.zarr/
+│           │       └── nuclei_masks/
+│           │           ├── zstd.zarr/
+│           │           └── jpegxl_lossy_mq.zarr/
 │           └── target_2/
 │               └── v1.0/
 │                   ├── README.md
@@ -134,6 +146,21 @@ replacing the original JUMP TIFFs. Their decoding requires a Zarr-compatible
 registration of the `imagecodecs_jpegxl` codec, such as
 `imagecodecs.numcodecs.Jpegxl`. The Zstd arrays were rebuilt directly from the
 five original public TIFFs for each frozen site without caching those TIFFs.
+
+## Segmentation masks
+
+The release provides Cellpose cell and nuclei instance-label masks for the
+632,672-site mask-covered analysis cohort under both lossless `zstd` and
+`jpegxl_lossy_mq` image inputs. The four independent Zarr v3 stores contain
+2,530,688 top-level arrays in total, each named by the exact site key. Every
+array is losslessly encoded `uint16` with shape `(1, height, width)`; zero is
+background and positive values are local instance labels.
+
+Cell and nuclei labels are independent. Label IDs must not be joined across
+object types, sites, or codecs. Exact coverage, shapes, object counts, source
+and encoded SHA-256 hashes, and producer provenance are recorded in
+`segmentation/2026_jump_lite_v1.0/manifests/masks.parquet` and
+`manifests/provenance.json`.
 
 ## Per-site Parquet outputs
 

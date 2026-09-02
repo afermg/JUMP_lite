@@ -1,6 +1,6 @@
 # JUMP-Lite
 
-**JUMP-Lite** is a compact, analysis-ready subset of the [JUMP Cell Painting dataset](https://registry.opendata.aws/cellpainting-gallery/). It combines compressed five-channel microscopy images with per-site deep-learning embeddings, exact links to the original TIFFs, perturbation metadata, curated RefChemDB annotations, and publication artifacts for the four-plate Target-2 compression analysis.
+**JUMP-Lite** is a compact, analysis-ready subset of the [JUMP Cell Painting dataset](https://registry.opendata.aws/cellpainting-gallery/). It combines compressed five-channel microscopy images with per-site deep-learning embeddings, Cellpose cell and nuclei instance masks, exact links to the original TIFFs, perturbation metadata, curated RefChemDB annotations, and publication artifacts for the four-plate Target-2 compression analysis.
 
 > **Release status:** JUMP-Lite v1.0 has been deposited in the Cell Painting Gallery (CPG) and is awaiting gallery promotion. The public paths below will be available by mid-September 2026 at the latest.
 
@@ -14,6 +14,8 @@
 | Wells                       |                           163,776 |
 | Benchmark perturbations     |                            24,356 |
 | Image sites                 |                           655,101 |
+| Mask-covered sites          |                           632,672 |
+| Cell/nuclei mask arrays     |                         2,530,688 |
 | Channels                    |        5: AGP, DNA, ER, Mito, RNA |
 | Compressed image variants   |              4: Zstd, HQ, MQ, D20 |
 | Lossless Zstd               |              4.8 TB (4.4 TiB) |
@@ -38,6 +40,7 @@ s3://cellpainting-gallery/cpg0016-jump/source_all/
 |---|---|
 | Compressed images | `images/2026_jump_lite_v1.0/images_compressed/<codec>.zarr/` |
 | Metadata and annotations | `workspace/publication_data/2026_jump_lite/metadata/v1.0/` |
+| Cell and nuclei instance masks | `workspace/publication_data/2026_jump_lite/segmentation/2026_jump_lite_v1.0/{cell_masks,nuclei_masks}/{zstd,jpegxl_lossy_mq}.zarr/` |
 | Target-2 masks, object features, and compact profiles | `workspace/publication_data/2026_jump_lite/target_2/v1.0/` |
 | Per-site embeddings | `workspace_dl/embeddings/<model>-<codec>/2026_jump_lite_v1.0/` |
 
@@ -52,6 +55,7 @@ aws s3 cp --no-sign-request --recursive \
 ## What is included
 
 - **Images:** a 4.8 TB (4.4 TiB) lossless Zarr v3 store (`zstd`) plus Zarr v2 JPEG XL stores at high quality (`jpegxl_lossy_hq`, 237.7 GB), medium quality (`jpegxl_lossy_mq`, 92.0 GB), and high compression (`jpegxl_lossy_d20`, 16.2 GB). Each site is one unsigned 16-bit `(channel, y, x)` array. Reading JPEG XL arrays requires a compatible NumCodecs implementation such as `imagecodecs`.
+- **Segmentation masks:** 2,530,688 losslessly encoded Zarr v3 arrays provide Cellpose cell and nuclei instance labels for 632,672 sites under both lossless Zstd and MQ inputs. Every mask is `uint16` with shape `(1, height, width)`. Cell and nuclei labels are independent: label IDs are not paired across object types, sites, or codecs.
 - **Embeddings:** per-site long-form Parquets from DINOv2, randomly initialized DINOv2, MorphEm, OpenPhenom, and two SubCell input variants. These are site-level outputs, not aggregated well profiles.
 - **Metadata:** `jump_lite_site_index.parquet` is the primary index and links every compressed site to its five original JUMP TIFF URLs. The release also provides a channel-level image index, perturbation metadata, a plate manifest, and a machine-readable manifest.
 - **Annotations:** `jump_lite_refchem_annotations.parquet` contains the release-relevant RefChemDB/JUMP confidence matches, including targets, genes, activity fields, confidence tiers, and direction-match indicators.
@@ -75,6 +79,7 @@ The exact 655,101-site paper benchmark cohort is frozen across all four image va
 public JUMP TIFFs
   → plate filtering and deterministic site selection
   → lossless Zstd and JPEG XL site-major Zarr arrays
+  → Cellpose cell/nuclei masks for lossless Zstd and MQ
   → model-specific tiling and per-site embeddings
   → frozen metadata and annotation tables
   → cross-variant validation and CPG deposit
