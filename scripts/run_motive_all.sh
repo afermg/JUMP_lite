@@ -27,20 +27,20 @@ echo "[run_motive_all] sweep has ${n_total} output.parquet files"
 
 echo
 echo "=== 1/3: motive-eval-sweep (full annotations) → ${OUT_FULL} ==="
-nix develop . --command just motive-eval-sweep \
+just motive-eval-sweep \
     "${SWEEP_DIR}" "${OUT_FULL}" "${JOBS}" "${ANN_FULL}" "${SPLITS}"
 
 echo
 echo "=== 2/3: motive-eval-sweep (strict annotations) → ${OUT_STRICT} ==="
-nix develop . --command just motive-eval-sweep \
+just motive-eval-sweep \
     "${SWEEP_DIR}" "${OUT_STRICT}" "${JOBS}" "${ANN_STRICT}" "${SPLITS}"
 
 echo
 echo "=== 3/3: regenerate plots + delta plots ==="
-nix develop . --command just motive-plot       "${OUT_FULL}"   "${PLOT_FULL}"
-nix develop . --command just motive-plot-delta "${PLOT_FULL}"
-nix develop . --command just motive-plot       "${OUT_STRICT}" "${PLOT_STRICT}"
-nix develop . --command just motive-plot-delta "${PLOT_STRICT}"
+just motive-plot       "${OUT_FULL}"   "${PLOT_FULL}"
+just motive-plot-delta "${PLOT_FULL}"
+just motive-plot       "${OUT_STRICT}" "${PLOT_STRICT}"
+just motive-plot-delta "${PLOT_STRICT}"
 
 echo
 echo "DONE."

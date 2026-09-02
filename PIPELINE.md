@@ -1,26 +1,20 @@
 # Pipeline Steps
 
-## Step 1a: Image Compression (batch)
-- **Script:** `src/compress_tif.py`
-- **Input:** Raw 16-bit TIF microscopy images (5-channel Cell Painting), grouped by site
-- **Output:** Zarr arrays `(5, H, W)` per site, compressed with specified codec
-- **Codecs:** zstd, lz4hc, zlib, jpegxl_lossless, jpegxl_lossy (effort/quality variants), brotli
-- **Deps:** numpy, zarr, joblib, PIL, imagecodecs, numcodecs, scikit-image
-- **Config:** Edit `input_dir`, `output_dir`, and uncomment desired codecs in the `compressors` dict directly in the script
-- **Run:** `nix develop . uv run python src/compress_tif.py`
-
-## Step 1b: Image Compression (single codec, CLI)
-- **Script:** `src/compress_tif_single.py`
-- **Input:** Raw 16-bit TIF images directory
-- **Output:** Zarr array per site, compressed with the specified codec
+## Step 1: Image Compression
+- **Script:** `src/compress_tif_release.py` (`src/compress_tif.py` is retained unchanged as historical analysis provenance)
+- **Input:** Raw unsigned 16-bit TIFF microscopy images named `<source>__<batch>__<plate>__<well>__<site>__<channel>.tif`
+- **Output:** One site-major Zarr array `(5, H, W)` per site, in canonical channel order AGP, DNA, ER, Mito, RNA
+- **Release codecs:** Zstd plus JPEG XL HQ (distance 1), MQ (distance 3), and D20 (distance 20)
+- **Validation:** The CLI rejects malformed names, duplicate or missing channels, non-2-D or non-uint16 TIFFs, unknown codecs, and any site compression failure
 - **Args:**
-  - `--input <path>` (required) Input directory containing .tif files
-  - `--output <path>` (required) Output directory for zarr files
-  - `--codec <name>` (required) Codec: `zstd`, `jpegxl_lossy_hq`, `jpegxl_lossy_mq`, `jpegxl_lossy_lq`, `jpegxl_lossy_effort_3`
-  - `--overwrite` Overwrite existing zarr files
-  - `--n-jobs <N>` Parallel workers (default: 16)
-  - `--no-skip-existing` Recompress everything
-- **Run:** `nix develop . uv run python src/compress_tif_single.py --input data/raw --output data/compressed --codec jpegxl_lossy_hq`
+  - `--input <path>` input directory containing TIFF files
+  - `--output <path>` output directory for codec Zarr stores
+  - `--codec <name>` codec name; run `--help` for the complete exploration-codec set
+  - `--overwrite` explicitly replace the selected codec store
+  - `--n-jobs <N>` parallel site workers (default: 16)
+  - `--no-skip-existing` fail if a site already exists instead of validating and skipping it; this option does not replace data
+- **Run:** `uv run python src/compress_tif_release.py --input data/raw --output data/compressed --codec jpegxl_lossy_hq`
+- **Bounded release smoke test:** `just dataset-smoke <jump_lite_site_index.parquet>` validates the complete release index and regenerates one five-channel site per release source under all four release codecs. See `REPRODUCE.md`.
 
 ## Step 1c: Feature Extraction
 - **Script:** `src/extract_features.py`

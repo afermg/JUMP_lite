@@ -1,0 +1,1003 @@
+{
+  "format_version": "jump-lite-source-stratified-validation-attestation-v1",
+  "completed_at": "2026-09-02T03:21:33.500710+00:00",
+  "scope": "structural smoke test, not a biological population sample",
+  "command": "just dataset-smoke-local <site-index> <source-tiffs> <jxl-reference> <zstd-reference> data/generated/dataset-smoke/validation-20260901-v4",
+  "implementation": {
+    "base_git_commit": "f725c6b1042c64818c2cc698a133842b4a38c87f",
+    "working_tree_note": "Validation used the current uncommitted reproducibility changes; bind to the source hashes below.",
+    "src/compress_tif_release.py_sha256": "8714a82766d060c62e7686fea703e214e9bd891e912bfff722b7e3c704bb3deb",
+    "scripts/reproduce_dataset_sample.py_sha256": "2b9b84f3d38bd1ecee59b8aac64fe39cf2507574e243d034faf3a5ab1cbb09f7",
+    "justfile_sha256": "2c517f6cac7433671ce9cf610f127da1eadb6b9df5b56d622db738d42d6ceb1c",
+    "uv.lock_sha256": "0529afdd7f1ffae60fc1798c68ed2e964135102b91658e326ef20f15a02b07a1"
+  },
+  "environment": {
+    "python": "3.12.11",
+    "numpy": "1.26.4",
+    "zarr": "3.1.5",
+    "numcodecs": "0.16.5",
+    "imagecodecs": "2026.1.14",
+    "pillow": "11.3.0",
+    "libjxl": "libjxl 0.11.1"
+  },
+  "site_index": {
+    "path": "jump_lite_metadata/jump_lite_site_index.parquet",
+    "bytes": 6914554,
+    "sha256": "ec0e8a87ee66d640025617c360165d20d16a35bde655e7f78854a69651e87eec",
+    "site_count": 655101,
+    "site_key_sha256": "4ea6ea3f5457c33a1412a80a89d8696d4f8e77474cf449e75db7ce6ba98685e2",
+    "source_counts": {
+      "source_2": 14075,
+      "source_4": 326650,
+      "source_6": 14160,
+      "source_7": 96308,
+      "source_8": 8384,
+      "source_13": 195524
+    }
+  },
+  "sampling": {
+    "method": "lexical middle site within each release source",
+    "scope": "structural smoke test, not a biological population sample",
+    "sites": [
+      "source_13__20221017_Run3__CP-CC9-R3-18__B03__1",
+      "source_2__20210823_Batch_10__1086291986__O13__2",
+      "source_4__2021_06_14_Batch6__BR00124778__E14__2",
+      "source_6__p211012CPU2OS48hw384exp033JUMP__110000295609__P23__4",
+      "source_7__20210727_Run3__CP3-SC1-10__P04__1",
+      "source_8__J3__A1170538__F08__4"
+    ],
+    "site_count": 6,
+    "tiff_count": 30,
+    "channel_order": [
+      "AGP",
+      "DNA",
+      "ER",
+      "Mito",
+      "RNA"
+    ],
+    "codecs": [
+      "zstd",
+      "jpegxl_lossy_hq",
+      "jpegxl_lossy_mq",
+      "jpegxl_lossy_d20"
+    ]
+  },
+  "source_tiffs": [
+    {
+      "site_key": "source_13__20221017_Run3__CP-CC9-R3-18__B03__1",
+      "source": "source_13",
+      "channel": "AGP",
+      "url": "s3://cellpainting-gallery/cpg0016-jump/source_13/images/20221017_Run3/images/CP-CC9-R3-18/CP-CC9-R3-18_B03_T0001F002L01A04Z01C05.tif",
+      "bytes": 2768896,
+      "sha256": "98acc92c691db52a4b00b1521d5bdb11b5d9b861c02dc9d24c2422d319ba798a"
+    },
+    {
+      "site_key": "source_13__20221017_Run3__CP-CC9-R3-18__B03__1",
+      "source": "source_13",
+      "channel": "DNA",
+      "url": "s3://cellpainting-gallery/cpg0016-jump/source_13/images/20221017_Run3/images/CP-CC9-R3-18/CP-CC9-R3-18_B03_T0001F002L01A01Z01C01.tif",
+      "bytes": 2768896,
+      "sha256": "b123b67fbe429df5eb71bf4cec74586edb8c3047f9d93fc65d17ba98b05a5c2b"
+    },
+    {
+      "site_key": "source_13__20221017_Run3__CP-CC9-R3-18__B03__1",
+      "source": "source_13",
+      "channel": "ER",
+      "url": "s3://cellpainting-gallery/cpg0016-jump/source_13/images/20221017_Run3/images/CP-CC9-R3-18/CP-CC9-R3-18_B03_T0001F002L01A03Z01C04.tif",
+      "bytes": 2768896,
+      "sha256": "a54926253fa21b4441eb178c7f38c3be860cbf8ff47d4ffd8a2a505c2ba4aba0"
+    },
+    {
+      "site_key": "source_13__20221017_Run3__CP-CC9-R3-18__B03__1",
+      "source": "source_13",
+      "channel": "Mito",
+      "url": "s3://cellpainting-gallery/cpg0016-jump/source_13/images/20221017_Run3/images/CP-CC9-R3-18/CP-CC9-R3-18_B03_T0001F002L01A01Z01C02.tif",
+      "bytes": 2768896,
+      "sha256": "11dfe6bf8401246d9f1353086e28220ab56edb43ccc71d45a13c751d4ee8d2de"
+    },
+    {
+      "site_key": "source_13__20221017_Run3__CP-CC9-R3-18__B03__1",
+      "source": "source_13",
+      "channel": "RNA",
+      "url": "s3://cellpainting-gallery/cpg0016-jump/source_13/images/20221017_Run3/images/CP-CC9-R3-18/CP-CC9-R3-18_B03_T0001F002L01A02Z01C03.tif",
+      "bytes": 2768896,
+      "sha256": "45d0cc7c59e9e1a12e9f9a7f611a97599e8c1975c62155f8a534a41b11934e56"
+    },
+    {
+      "site_key": "source_2__20210823_Batch_10__1086291986__O13__2",
+      "source": "source_2",
+      "channel": "AGP",
+      "url": "s3://cellpainting-gallery/cpg0016-jump/source_2/images/20210823_Batch_10/images/1086291986/1086291986_O13_T0001F002L01A04Z01C04.tif",
+      "bytes": 1986560,
+      "sha256": "cda95da2341a6caa9a14b2af08a2c7ef0279ea63096e2cf7793236d8ca79d0b1"
+    },
+    {
+      "site_key": "source_2__20210823_Batch_10__1086291986__O13__2",
+      "source": "source_2",
+      "channel": "DNA",
+      "url": "s3://cellpainting-gallery/cpg0016-jump/source_2/images/20210823_Batch_10/images/1086291986/1086291986_O13_T0001F002L01A01Z01C01.tif",
+      "bytes": 1986560,
+      "sha256": "cfb53ac2a01654b80bed9b27406264090b7d04a0c0dd79c9adfdf388d7c60f21"
+    },
+    {
+      "site_key": "source_2__20210823_Batch_10__1086291986__O13__2",
+      "source": "source_2",
+      "channel": "ER",
+      "url": "s3://cellpainting-gallery/cpg0016-jump/source_2/images/20210823_Batch_10/images/1086291986/1086291986_O13_T0001F002L01A02Z01C02.tif",
+      "bytes": 1986560,
+      "sha256": "052eaa12e94a0bbe10849f289f537f5d79631c0ba595270c55a28fd6aef8dbb3"
+    },
+    {
+      "site_key": "source_2__20210823_Batch_10__1086291986__O13__2",
+      "source": "source_2",
+      "channel": "Mito",
+      "url": "s3://cellpainting-gallery/cpg0016-jump/source_2/images/20210823_Batch_10/images/1086291986/1086291986_O13_T0001F002L01A05Z01C05.tif",
+      "bytes": 1986560,
+      "sha256": "98b240a6a69ef73259dab37127c65a000dba841fe8bcf2ab27f8c92191f280a0"
+    },
+    {
+      "site_key": "source_2__20210823_Batch_10__1086291986__O13__2",
+      "source": "source_2",
+      "channel": "RNA",
+      "url": "s3://cellpainting-gallery/cpg0016-jump/source_2/images/20210823_Batch_10/images/1086291986/1086291986_O13_T0001F002L01A03Z01C03.tif",
+      "bytes": 1986560,
+      "sha256": "3439681f098c5542d54b2f581c4440b178a65a3b2e1e9b721c61d9bc070c4711"
+    },
+    {
+      "site_key": "source_4__2021_06_14_Batch6__BR00124778__E14__2",
+      "source": "source_4",
+      "channel": "AGP",
+      "url": "s3://cellpainting-gallery/cpg0016-jump/source_4/images/2021_06_14_Batch6/images/BR00124778__2021-06-23T01_22_14-Measurement2/Images/r05c14f02p01-ch2sk1fk1fl1.tiff",
+      "bytes": 2868855,
+      "sha256": "84efbe07b99d3107208efa6b9377affa414abf8a83b5b68af198767a3bbbceb1"
+    },
+    {
+      "site_key": "source_4__2021_06_14_Batch6__BR00124778__E14__2",
+      "source": "source_4",
+      "channel": "DNA",
+      "url": "s3://cellpainting-gallery/cpg0016-jump/source_4/images/2021_06_14_Batch6/images/BR00124778__2021-06-23T01_22_14-Measurement2/Images/r05c14f02p01-ch5sk1fk1fl1.tiff",
+      "bytes": 2324771,
+      "sha256": "85edcddc751e170af9acf9b8fbb6271f5286865bf07714c3af2eb5cf1e0d0f6b"
+    },
+    {
+      "site_key": "source_4__2021_06_14_Batch6__BR00124778__E14__2",
+      "source": "source_4",
+      "channel": "ER",
+      "url": "s3://cellpainting-gallery/cpg0016-jump/source_4/images/2021_06_14_Batch6/images/BR00124778__2021-06-23T01_22_14-Measurement2/Images/r05c14f02p01-ch4sk1fk1fl1.tiff",
+      "bytes": 2870543,
+      "sha256": "81950c97ad2aceb5748777ec63d31c1cca7b31444e7f05b0a6924a8b7c40b292"
+    },
+    {
+      "site_key": "source_4__2021_06_14_Batch6__BR00124778__E14__2",
+      "source": "source_4",
+      "channel": "Mito",
+      "url": "s3://cellpainting-gallery/cpg0016-jump/source_4/images/2021_06_14_Batch6/images/BR00124778__2021-06-23T01_22_14-Measurement2/Images/r05c14f02p01-ch1sk1fk1fl1.tiff",
+      "bytes": 2664509,
+      "sha256": "f4d51b4d9d1631fd50384951641039551593e8fe042f3bd9096cdc257f93a6c4"
+    },
+    {
+      "site_key": "source_4__2021_06_14_Batch6__BR00124778__E14__2",
+      "source": "source_4",
+      "channel": "RNA",
+      "url": "s3://cellpainting-gallery/cpg0016-jump/source_4/images/2021_06_14_Batch6/images/BR00124778__2021-06-23T01_22_14-Measurement2/Images/r05c14f02p01-ch3sk1fk1fl1.tiff",
+      "bytes": 2891979,
+      "sha256": "e5d71029ed6e5205492e78b7ec40ccefa47e5cebd8c70179604d1b4d78fe4209"
+    },
+    {
+      "site_key": "source_6__p211012CPU2OS48hw384exp033JUMP__110000295609__P23__4",
+      "source": "source_6",
+      "channel": "AGP",
+      "url": "s3://cellpainting-gallery/cpg0016-jump/source_6/images/p211012CPU2OS48hw384exp033JUMP/images/110000295609/110000295609_P23_T0001F004L01A03Z01C04.tif",
+      "bytes": 1883282,
+      "sha256": "425a80522f53207e6cfdee1018933ac43e2cad6ee551af039dcccfce325abc62"
+    },
+    {
+      "site_key": "source_6__p211012CPU2OS48hw384exp033JUMP__110000295609__P23__4",
+      "source": "source_6",
+      "channel": "DNA",
+      "url": "s3://cellpainting-gallery/cpg0016-jump/source_6/images/p211012CPU2OS48hw384exp033JUMP/images/110000295609/110000295609_P23_T0001F004L01A01Z01C01.tif",
+      "bytes": 1883282,
+      "sha256": "0e699d7a62ca081f7ee583fba8cb58daa454f780d4bfab07fc741507a8cfb00e"
+    },
+    {
+      "site_key": "source_6__p211012CPU2OS48hw384exp033JUMP__110000295609__P23__4",
+      "source": "source_6",
+      "channel": "ER",
+      "url": "s3://cellpainting-gallery/cpg0016-jump/source_6/images/p211012CPU2OS48hw384exp033JUMP/images/110000295609/110000295609_P23_T0001F004L01A02Z01C02.tif",
+      "bytes": 1883282,
+      "sha256": "86e7860e2c5937452249cd889576a4458d4647d7de87fc07422dddc6b6f97f19"
+    },
+    {
+      "site_key": "source_6__p211012CPU2OS48hw384exp033JUMP__110000295609__P23__4",
+      "source": "source_6",
+      "channel": "Mito",
+      "url": "s3://cellpainting-gallery/cpg0016-jump/source_6/images/p211012CPU2OS48hw384exp033JUMP/images/110000295609/110000295609_P23_T0001F004L01A01Z01C05.tif",
+      "bytes": 1883282,
+      "sha256": "03e7e9688830fcc69a4867d068c977c21c2555392fb0f390b6bd88b984f6f205"
+    },
+    {
+      "site_key": "source_6__p211012CPU2OS48hw384exp033JUMP__110000295609__P23__4",
+      "source": "source_6",
+      "channel": "RNA",
+      "url": "s3://cellpainting-gallery/cpg0016-jump/source_6/images/p211012CPU2OS48hw384exp033JUMP/images/110000295609/110000295609_P23_T0001F004L01A02Z01C03.tif",
+      "bytes": 1883282,
+      "sha256": "299c5cff578db19ccef57b0f128ec388ad426483f88ae092e07ebe2a6d85f286"
+    },
+    {
+      "site_key": "source_7__20210727_Run3__CP3-SC1-10__P04__1",
+      "source": "source_7",
+      "channel": "AGP",
+      "url": "s3://cellpainting-gallery/cpg0016-jump/source_7/images/20210727_Run3/images/CP3-SC1-10/CP3-SC1-10_P04_T0001F002L01A04Z01C05.tif",
+      "bytes": 2768896,
+      "sha256": "03f31cfe43ca57a5b39b21a09a2d0d16107f200e126f613012bd72118c5753ec"
+    },
+    {
+      "site_key": "source_7__20210727_Run3__CP3-SC1-10__P04__1",
+      "source": "source_7",
+      "channel": "DNA",
+      "url": "s3://cellpainting-gallery/cpg0016-jump/source_7/images/20210727_Run3/images/CP3-SC1-10/CP3-SC1-10_P04_T0001F002L01A01Z01C01.tif",
+      "bytes": 2768896,
+      "sha256": "94fb25f991eb82f5eb8eab693bb380d5f1d332e10e678384d3ec40525d4f7b70"
+    },
+    {
+      "site_key": "source_7__20210727_Run3__CP3-SC1-10__P04__1",
+      "source": "source_7",
+      "channel": "ER",
+      "url": "s3://cellpainting-gallery/cpg0016-jump/source_7/images/20210727_Run3/images/CP3-SC1-10/CP3-SC1-10_P04_T0001F002L01A03Z01C04.tif",
+      "bytes": 2768896,
+      "sha256": "28401af4a73eef0212214733d965b24689a2a95550a95f00f5b443e30828b4fa"
+    },
+    {
+      "site_key": "source_7__20210727_Run3__CP3-SC1-10__P04__1",
+      "source": "source_7",
+      "channel": "Mito",
+      "url": "s3://cellpainting-gallery/cpg0016-jump/source_7/images/20210727_Run3/images/CP3-SC1-10/CP3-SC1-10_P04_T0001F002L01A01Z01C02.tif",
+      "bytes": 2768896,
+      "sha256": "5cd46c3b6d82a052aa6e26f8ff2fd13dab7901b387232c63c45796560037b3e2"
+    },
+    {
+      "site_key": "source_7__20210727_Run3__CP3-SC1-10__P04__1",
+      "source": "source_7",
+      "channel": "RNA",
+      "url": "s3://cellpainting-gallery/cpg0016-jump/source_7/images/20210727_Run3/images/CP3-SC1-10/CP3-SC1-10_P04_T0001F002L01A02Z01C03.tif",
+      "bytes": 2768896,
+      "sha256": "a9f5eddf44b3b43a846a7f4d31125c6707657295970d4323f14afde620ddb07e"
+    },
+    {
+      "site_key": "source_8__J3__A1170538__F08__4",
+      "source": "source_8",
+      "channel": "AGP",
+      "url": "s3://cellpainting-gallery/cpg0016-jump/source_8/images/J3/images/A1170538/Images/HTS_F08_s4_w24C3F012F-E6AE-4BE4-9D23-13DC0A8DAD45.tif",
+      "bytes": 2105546,
+      "sha256": "18e3be33e5259fa87eedcf4b7ffb931e501ca6b5cd55217018bbc3b0013d03e7"
+    },
+    {
+      "site_key": "source_8__J3__A1170538__F08__4",
+      "source": "source_8",
+      "channel": "DNA",
+      "url": "s3://cellpainting-gallery/cpg0016-jump/source_8/images/J3/images/A1170538/Images/HTS_F08_s4_w59F696233-005D-4ABB-8EE8-00682669A894.tif",
+      "bytes": 2105516,
+      "sha256": "ed489d006629564d47c20939ce92a74d505602d7d9b6fb8bc83efd391e3af419"
+    },
+    {
+      "site_key": "source_8__J3__A1170538__F08__4",
+      "source": "source_8",
+      "channel": "ER",
+      "url": "s3://cellpainting-gallery/cpg0016-jump/source_8/images/J3/images/A1170538/Images/HTS_F08_s4_w4676CDAF6-2D6C-491A-A576-74F788E8A9E2.tif",
+      "bytes": 2105526,
+      "sha256": "f1ecea2563185ccbf66a64883f1d05327ee5446a2b687f7d941d653ba9c8b533"
+    },
+    {
+      "site_key": "source_8__J3__A1170538__F08__4",
+      "source": "source_8",
+      "channel": "Mito",
+      "url": "s3://cellpainting-gallery/cpg0016-jump/source_8/images/J3/images/A1170538/Images/HTS_F08_s4_w18C2E197A-3D8F-46F4-B9AE-1E13D5DE1560.tif",
+      "bytes": 2106038,
+      "sha256": "ec03e6c61619244d0253dff61e58d64fd4533131b458e0c26f999fee56176bd0"
+    },
+    {
+      "site_key": "source_8__J3__A1170538__F08__4",
+      "source": "source_8",
+      "channel": "RNA",
+      "url": "s3://cellpainting-gallery/cpg0016-jump/source_8/images/J3/images/A1170538/Images/HTS_F08_s4_w382CDF271-2C84-458A-AD5D-D356A6AF904B.tif",
+      "bytes": 2105524,
+      "sha256": "76cddca4c60a5f259e6890f1b35ea8459205ba7120bf6d255e4da8c905b6b0a1"
+    }
+  ],
+  "outputs": [
+    {
+      "codec": "zstd",
+      "site_key": "source_13__20221017_Run3__CP-CC9-R3-18__B03__1",
+      "shape": [
+        5,
+        1080,
+        1280
+      ],
+      "dtype": "uint16",
+      "generated_files": {
+        "c/0/0/0": {
+          "bytes": 8042580,
+          "sha256": "14ebb2b5a9c788015a20300efe7476c87ed7b178a47ce9b61da2500963edc178"
+        },
+        "zarr.json": {
+          "bytes": 742,
+          "sha256": "7b72054743587a0c45f6f208bb71186ed0dcc4dc3e85e3394cc99566e845fc15"
+        }
+      },
+      "exact_attestation_match": true,
+      "exact_reference_match": true,
+      "source_roundtrip_exact": true,
+      "mean_absolute_error": 0.0,
+      "max_absolute_error": 0
+    },
+    {
+      "codec": "zstd",
+      "site_key": "source_2__20210823_Batch_10__1086291986__O13__2",
+      "shape": [
+        5,
+        996,
+        996
+      ],
+      "dtype": "uint16",
+      "generated_files": {
+        "c/0/0/0": {
+          "bytes": 4716178,
+          "sha256": "47b4c8e4c295c47475055906a5c9c32afe9d37367a1e8c104374245ece8216b6"
+        },
+        "zarr.json": {
+          "bytes": 738,
+          "sha256": "967ef34ab58c92d5be93792df45c09991885f08fd0137196e639955c31c43ebc"
+        }
+      },
+      "exact_attestation_match": true,
+      "exact_reference_match": true,
+      "source_roundtrip_exact": true,
+      "mean_absolute_error": 0.0,
+      "max_absolute_error": 0
+    },
+    {
+      "codec": "zstd",
+      "site_key": "source_4__2021_06_14_Batch6__BR00124778__E14__2",
+      "shape": [
+        5,
+        1080,
+        1080
+      ],
+      "dtype": "uint16",
+      "generated_files": {
+        "c/0/0/0": {
+          "bytes": 7727351,
+          "sha256": "77fb05a6dfdef943702b1bb0bbf81d06f6d082ad8403e4113d1251d28c658248"
+        },
+        "zarr.json": {
+          "bytes": 742,
+          "sha256": "822bc45ee6171e17588e40a0e4d7050a832ead2de2211823480c9a0a3933c1c4"
+        }
+      },
+      "exact_attestation_match": true,
+      "exact_reference_match": true,
+      "source_roundtrip_exact": true,
+      "mean_absolute_error": 0.0,
+      "max_absolute_error": 0
+    },
+    {
+      "codec": "zstd",
+      "site_key": "source_6__p211012CPU2OS48hw384exp033JUMP__110000295609__P23__4",
+      "shape": [
+        5,
+        970,
+        970
+      ],
+      "dtype": "uint16",
+      "generated_files": {
+        "c/0/0/0": {
+          "bytes": 5538695,
+          "sha256": "aeb6d23d480813170c76f026194b22fec5544ecbda3eebf8adb5aa7d6af3f2f0"
+        },
+        "zarr.json": {
+          "bytes": 738,
+          "sha256": "4d3c8db352f7083e3ff0067ea3a467e8bf7b1e5f1cadb9d18e35a573d01aa595"
+        }
+      },
+      "exact_attestation_match": true,
+      "exact_reference_match": true,
+      "source_roundtrip_exact": true,
+      "mean_absolute_error": 0.0,
+      "max_absolute_error": 0
+    },
+    {
+      "codec": "zstd",
+      "site_key": "source_7__20210727_Run3__CP3-SC1-10__P04__1",
+      "shape": [
+        5,
+        1080,
+        1280
+      ],
+      "dtype": "uint16",
+      "generated_files": {
+        "c/0/0/0": {
+          "bytes": 6572079,
+          "sha256": "1b784f5546df15abcc9ee0bcad540ef8423f4274343ab185118766d1fb5d5695"
+        },
+        "zarr.json": {
+          "bytes": 742,
+          "sha256": "7b72054743587a0c45f6f208bb71186ed0dcc4dc3e85e3394cc99566e845fc15"
+        }
+      },
+      "exact_attestation_match": true,
+      "exact_reference_match": true,
+      "source_roundtrip_exact": true,
+      "mean_absolute_error": 0.0,
+      "max_absolute_error": 0
+    },
+    {
+      "codec": "zstd",
+      "site_key": "source_8__J3__A1170538__F08__4",
+      "shape": [
+        5,
+        1024,
+        1024
+      ],
+      "dtype": "uint16",
+      "generated_files": {
+        "c/0/0/0": {
+          "bytes": 7098055,
+          "sha256": "ea8d54a039be7124cbaf0ca25246c3feb0cc04c87a91de54a40feb1048b6f5ca"
+        },
+        "zarr.json": {
+          "bytes": 742,
+          "sha256": "4939695aac48f2385b59c4f502d064b1062f4605954f1d5d70e799e7abfcc493"
+        }
+      },
+      "exact_attestation_match": true,
+      "exact_reference_match": true,
+      "source_roundtrip_exact": true,
+      "mean_absolute_error": 0.0,
+      "max_absolute_error": 0
+    },
+    {
+      "codec": "jpegxl_lossy_hq",
+      "site_key": "source_13__20221017_Run3__CP-CC9-R3-18__B03__1",
+      "shape": [
+        5,
+        1080,
+        1280
+      ],
+      "dtype": "uint16",
+      "generated_files": {
+        ".zarray": {
+          "bytes": 568,
+          "sha256": "2ebdc344d96880bcb59e0096a82815382f35507f4c6b2fd8ea1a7f9f280f33e1"
+        },
+        ".zattrs": {
+          "bytes": 2,
+          "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+        },
+        "0.0.0": {
+          "bytes": 463502,
+          "sha256": "21f07c18db056623f8e64eb76059d5833eb11dd8e9224b84a41da95d10cb8a10"
+        }
+      },
+      "exact_attestation_match": true,
+      "exact_reference_match": true,
+      "source_roundtrip_exact": false,
+      "mean_absolute_error": 39.09835807291667,
+      "max_absolute_error": 1173
+    },
+    {
+      "codec": "jpegxl_lossy_hq",
+      "site_key": "source_2__20210823_Batch_10__1086291986__O13__2",
+      "shape": [
+        5,
+        996,
+        996
+      ],
+      "dtype": "uint16",
+      "generated_files": {
+        ".zarray": {
+          "bytes": 564,
+          "sha256": "ae8966cb4653ad5f17197a11802512f8518acbfcac14f344bf22262ef685c5cd"
+        },
+        ".zattrs": {
+          "bytes": 2,
+          "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+        },
+        "0.0.0": {
+          "bytes": 147689,
+          "sha256": "372a321478c5e9b1e2cbcc3938f5f02853f568ea242f76ff75cacbd418e2b005"
+        }
+      },
+      "exact_attestation_match": true,
+      "exact_reference_match": true,
+      "source_roundtrip_exact": false,
+      "mean_absolute_error": 23.253578369703714,
+      "max_absolute_error": 2111
+    },
+    {
+      "codec": "jpegxl_lossy_hq",
+      "site_key": "source_4__2021_06_14_Batch6__BR00124778__E14__2",
+      "shape": [
+        5,
+        1080,
+        1080
+      ],
+      "dtype": "uint16",
+      "generated_files": {
+        ".zarray": {
+          "bytes": 568,
+          "sha256": "88292b2c99af72e637079ce51b9968713c76b11fba908dcf393ed76c13541b09"
+        },
+        ".zattrs": {
+          "bytes": 2,
+          "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+        },
+        "0.0.0": {
+          "bytes": 420715,
+          "sha256": "fa4334d6cc1fd43431d5bbb8bb800637d03077894bad431b3e280d46af0a51e8"
+        }
+      },
+      "exact_attestation_match": true,
+      "exact_reference_match": true,
+      "source_roundtrip_exact": false,
+      "mean_absolute_error": 52.30427263374486,
+      "max_absolute_error": 2151
+    },
+    {
+      "codec": "jpegxl_lossy_hq",
+      "site_key": "source_6__p211012CPU2OS48hw384exp033JUMP__110000295609__P23__4",
+      "shape": [
+        5,
+        970,
+        970
+      ],
+      "dtype": "uint16",
+      "generated_files": {
+        ".zarray": {
+          "bytes": 564,
+          "sha256": "3d0aaf89bfdcae5b391fe8e31db01b8f36d4f6536879ef8fbb2dab1b65368c46"
+        },
+        ".zattrs": {
+          "bytes": 2,
+          "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+        },
+        "0.0.0": {
+          "bytes": 327965,
+          "sha256": "a6dd2c7459c27215d670408b6a4f0591d2bb44168f352b527a5b98c7c267f4b2"
+        }
+      },
+      "exact_attestation_match": true,
+      "exact_reference_match": true,
+      "source_roundtrip_exact": false,
+      "mean_absolute_error": 37.82828419598257,
+      "max_absolute_error": 2851
+    },
+    {
+      "codec": "jpegxl_lossy_hq",
+      "site_key": "source_7__20210727_Run3__CP3-SC1-10__P04__1",
+      "shape": [
+        5,
+        1080,
+        1280
+      ],
+      "dtype": "uint16",
+      "generated_files": {
+        ".zarray": {
+          "bytes": 568,
+          "sha256": "2ebdc344d96880bcb59e0096a82815382f35507f4c6b2fd8ea1a7f9f280f33e1"
+        },
+        ".zattrs": {
+          "bytes": 2,
+          "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+        },
+        "0.0.0": {
+          "bytes": 219851,
+          "sha256": "4aa355575ff91282994820a038272b4c43badfa70e08fc51e81f40d2928a2308"
+        }
+      },
+      "exact_attestation_match": true,
+      "exact_reference_match": true,
+      "source_roundtrip_exact": false,
+      "mean_absolute_error": 20.16546455439815,
+      "max_absolute_error": 1532
+    },
+    {
+      "codec": "jpegxl_lossy_hq",
+      "site_key": "source_8__J3__A1170538__F08__4",
+      "shape": [
+        5,
+        1024,
+        1024
+      ],
+      "dtype": "uint16",
+      "generated_files": {
+        ".zarray": {
+          "bytes": 568,
+          "sha256": "864ee9bf74e0088f4fcec32cc5f4531860f7dbc6d76e3e5e3cfdc386b1a8a536"
+        },
+        ".zattrs": {
+          "bytes": 2,
+          "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+        },
+        "0.0.0": {
+          "bytes": 563224,
+          "sha256": "589c1aca479e44f6c597e5cb00e3f6e0f47ce905ee41e66a918e535742cb2967"
+        }
+      },
+      "exact_attestation_match": true,
+      "exact_reference_match": true,
+      "source_roundtrip_exact": false,
+      "mean_absolute_error": 80.56549758911133,
+      "max_absolute_error": 3986
+    },
+    {
+      "codec": "jpegxl_lossy_mq",
+      "site_key": "source_13__20221017_Run3__CP-CC9-R3-18__B03__1",
+      "shape": [
+        5,
+        1080,
+        1280
+      ],
+      "dtype": "uint16",
+      "generated_files": {
+        ".zarray": {
+          "bytes": 568,
+          "sha256": "2adef5442cf370e0f4d30c7d19b26c1715f9fdf16fe64c01bdf889716455ddda"
+        },
+        ".zattrs": {
+          "bytes": 2,
+          "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+        },
+        "0.0.0": {
+          "bytes": 158079,
+          "sha256": "9daa7395004dbb60f4e37e9c212fb89f52a461ecbf70a19e7752f52bcf61c148"
+        }
+      },
+      "exact_attestation_match": true,
+      "exact_reference_match": true,
+      "source_roundtrip_exact": false,
+      "mean_absolute_error": 62.02554947916666,
+      "max_absolute_error": 2988
+    },
+    {
+      "codec": "jpegxl_lossy_mq",
+      "site_key": "source_2__20210823_Batch_10__1086291986__O13__2",
+      "shape": [
+        5,
+        996,
+        996
+      ],
+      "dtype": "uint16",
+      "generated_files": {
+        ".zarray": {
+          "bytes": 564,
+          "sha256": "3aa81c9e359fe190b577ca2358cfb0e0c14ea486a5052d76dbf85dbad239135d"
+        },
+        ".zattrs": {
+          "bytes": 2,
+          "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+        },
+        "0.0.0": {
+          "bytes": 50695,
+          "sha256": "a49d258f8eb3e02428e0bead302a3f777ae8c0b6578c7879ea7b2b982ad722b0"
+        }
+      },
+      "exact_attestation_match": true,
+      "exact_reference_match": true,
+      "source_roundtrip_exact": false,
+      "mean_absolute_error": 32.48366457799068,
+      "max_absolute_error": 8266
+    },
+    {
+      "codec": "jpegxl_lossy_mq",
+      "site_key": "source_4__2021_06_14_Batch6__BR00124778__E14__2",
+      "shape": [
+        5,
+        1080,
+        1080
+      ],
+      "dtype": "uint16",
+      "generated_files": {
+        ".zarray": {
+          "bytes": 568,
+          "sha256": "1917dd4ad9b0f6380be25944c8d3f67bdfbd8bd50a9064e0fd0213d010ef9c57"
+        },
+        ".zattrs": {
+          "bytes": 2,
+          "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+        },
+        "0.0.0": {
+          "bytes": 187223,
+          "sha256": "9149e6fb7a533bfe6c4c8f43d6e371b9955fba497a8f96f6564cde204806349f"
+        }
+      },
+      "exact_attestation_match": true,
+      "exact_reference_match": true,
+      "source_roundtrip_exact": false,
+      "mean_absolute_error": 99.17735991083676,
+      "max_absolute_error": 5222
+    },
+    {
+      "codec": "jpegxl_lossy_mq",
+      "site_key": "source_6__p211012CPU2OS48hw384exp033JUMP__110000295609__P23__4",
+      "shape": [
+        5,
+        970,
+        970
+      ],
+      "dtype": "uint16",
+      "generated_files": {
+        ".zarray": {
+          "bytes": 564,
+          "sha256": "c65de63a7416ed7800165bfd0a5129830f2e882a90a978f6d434a8a8afe05ce8"
+        },
+        ".zattrs": {
+          "bytes": 2,
+          "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+        },
+        "0.0.0": {
+          "bytes": 108232,
+          "sha256": "8856f6c8aa689a9effe5db0d05f52cae75f477e4c7832f141b1375bb82bbae03"
+        }
+      },
+      "exact_attestation_match": true,
+      "exact_reference_match": true,
+      "source_roundtrip_exact": false,
+      "mean_absolute_error": 59.908579445212034,
+      "max_absolute_error": 8364
+    },
+    {
+      "codec": "jpegxl_lossy_mq",
+      "site_key": "source_7__20210727_Run3__CP3-SC1-10__P04__1",
+      "shape": [
+        5,
+        1080,
+        1280
+      ],
+      "dtype": "uint16",
+      "generated_files": {
+        ".zarray": {
+          "bytes": 568,
+          "sha256": "2adef5442cf370e0f4d30c7d19b26c1715f9fdf16fe64c01bdf889716455ddda"
+        },
+        ".zattrs": {
+          "bytes": 2,
+          "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+        },
+        "0.0.0": {
+          "bytes": 76805,
+          "sha256": "214d6ce26b1c402b545374a20db41fa4e8fc656ae73ed2fd530179e97b3e69b4"
+        }
+      },
+      "exact_attestation_match": true,
+      "exact_reference_match": true,
+      "source_roundtrip_exact": false,
+      "mean_absolute_error": 29.218599537037036,
+      "max_absolute_error": 3577
+    },
+    {
+      "codec": "jpegxl_lossy_mq",
+      "site_key": "source_8__J3__A1170538__F08__4",
+      "shape": [
+        5,
+        1024,
+        1024
+      ],
+      "dtype": "uint16",
+      "generated_files": {
+        ".zarray": {
+          "bytes": 568,
+          "sha256": "c505d0970bcc5240a7f31edf02a4ae36d0f3e1cfb09cabbe1ab41b26025e1a34"
+        },
+        ".zattrs": {
+          "bytes": 2,
+          "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+        },
+        "0.0.0": {
+          "bytes": 204297,
+          "sha256": "518f3869477dae7765c27c09d18264332ac5d349b21e375a8cbf4de78b66f0dd"
+        }
+      },
+      "exact_attestation_match": true,
+      "exact_reference_match": true,
+      "source_roundtrip_exact": false,
+      "mean_absolute_error": 142.8769432067871,
+      "max_absolute_error": 11739
+    },
+    {
+      "codec": "jpegxl_lossy_d20",
+      "site_key": "source_13__20221017_Run3__CP-CC9-R3-18__B03__1",
+      "shape": [
+        5,
+        1080,
+        1280
+      ],
+      "dtype": "uint16",
+      "generated_files": {
+        ".zarray": {
+          "bytes": 569,
+          "sha256": "451ebfe4a2701adf64949be7e6c070a010d3362d2cc1aab1339f992f01c58d75"
+        },
+        ".zattrs": {
+          "bytes": 2,
+          "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+        },
+        "0.0.0": {
+          "bytes": 18224,
+          "sha256": "4370821fb985068b17e0995fa602a8cdadd37d2d474d87bd72b4dbe131ab5429"
+        }
+      },
+      "exact_attestation_match": true,
+      "exact_reference_match": true,
+      "source_roundtrip_exact": false,
+      "mean_absolute_error": 128.62055830439814,
+      "max_absolute_error": 8071
+    },
+    {
+      "codec": "jpegxl_lossy_d20",
+      "site_key": "source_2__20210823_Batch_10__1086291986__O13__2",
+      "shape": [
+        5,
+        996,
+        996
+      ],
+      "dtype": "uint16",
+      "generated_files": {
+        ".zarray": {
+          "bytes": 565,
+          "sha256": "2fee34c7e593a36780e431d45532673e91f82d8267d2a7376ebdc98be9513870"
+        },
+        ".zattrs": {
+          "bytes": 2,
+          "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+        },
+        "0.0.0": {
+          "bytes": 10387,
+          "sha256": "6c1c8b17b8e688017ff273601237d15be75635dd4bfc0c6c2c685f8045fcc518"
+        }
+      },
+      "exact_attestation_match": true,
+      "exact_reference_match": true,
+      "source_roundtrip_exact": false,
+      "mean_absolute_error": 54.06084982500282,
+      "max_absolute_error": 20005
+    },
+    {
+      "codec": "jpegxl_lossy_d20",
+      "site_key": "source_4__2021_06_14_Batch6__BR00124778__E14__2",
+      "shape": [
+        5,
+        1080,
+        1080
+      ],
+      "dtype": "uint16",
+      "generated_files": {
+        ".zarray": {
+          "bytes": 569,
+          "sha256": "01852e4e16de963d4aa9fe39a41cd57a306e279bb65f025194bd618313cd7612"
+        },
+        ".zattrs": {
+          "bytes": 2,
+          "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+        },
+        "0.0.0": {
+          "bytes": 36530,
+          "sha256": "6ebc993f77db51988b1bcaa067a345660cc396b76af939f36495170723234573"
+        }
+      },
+      "exact_attestation_match": true,
+      "exact_reference_match": true,
+      "source_roundtrip_exact": false,
+      "mean_absolute_error": 284.7026844993141,
+      "max_absolute_error": 18813
+    },
+    {
+      "codec": "jpegxl_lossy_d20",
+      "site_key": "source_6__p211012CPU2OS48hw384exp033JUMP__110000295609__P23__4",
+      "shape": [
+        5,
+        970,
+        970
+      ],
+      "dtype": "uint16",
+      "generated_files": {
+        ".zarray": {
+          "bytes": 565,
+          "sha256": "8035dafa8add8e1dbd175ff18300cdc6a68f6fe6cbce2e6f2288420921578a70"
+        },
+        ".zattrs": {
+          "bytes": 2,
+          "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+        },
+        "0.0.0": {
+          "bytes": 15740,
+          "sha256": "31a72d93275458d0fa1d2a5c70c70a32149ad9f4535b284545899b672769ed68"
+        }
+      },
+      "exact_attestation_match": true,
+      "exact_reference_match": true,
+      "source_roundtrip_exact": false,
+      "mean_absolute_error": 114.93108938250612,
+      "max_absolute_error": 15888
+    },
+    {
+      "codec": "jpegxl_lossy_d20",
+      "site_key": "source_7__20210727_Run3__CP3-SC1-10__P04__1",
+      "shape": [
+        5,
+        1080,
+        1280
+      ],
+      "dtype": "uint16",
+      "generated_files": {
+        ".zarray": {
+          "bytes": 569,
+          "sha256": "451ebfe4a2701adf64949be7e6c070a010d3362d2cc1aab1339f992f01c58d75"
+        },
+        ".zattrs": {
+          "bytes": 2,
+          "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+        },
+        "0.0.0": {
+          "bytes": 12342,
+          "sha256": "a1586bec92b0181ee9b7b6ad0fbcc99837fd6e3e84cc4d8f73846a0800187ff4"
+        }
+      },
+      "exact_attestation_match": true,
+      "exact_reference_match": true,
+      "source_roundtrip_exact": false,
+      "mean_absolute_error": 53.04066015625,
+      "max_absolute_error": 12499
+    },
+    {
+      "codec": "jpegxl_lossy_d20",
+      "site_key": "source_8__J3__A1170538__F08__4",
+      "shape": [
+        5,
+        1024,
+        1024
+      ],
+      "dtype": "uint16",
+      "generated_files": {
+        ".zarray": {
+          "bytes": 569,
+          "sha256": "604ee9d95c94287991de5c6a774713db1c6d83be138cf14a0ba8e96ea59a879e"
+        },
+        ".zattrs": {
+          "bytes": 2,
+          "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+        },
+        "0.0.0": {
+          "bytes": 28804,
+          "sha256": "d63aaf9aab787e3072319a763f53dfc1556eed0933c1d3a81e315a0339940335"
+        }
+      },
+      "exact_attestation_match": true,
+      "exact_reference_match": true,
+      "source_roundtrip_exact": false,
+      "mean_absolute_error": 317.17055435180663,
+      "max_absolute_error": 33234
+    }
+  ],
+  "summary": {
+    "generated_site_arrays": 24,
+    "exact_attested_array_trees": 24,
+    "lossless_roundtrips": 6,
+    "canonical_arrays_compared": 24,
+    "exact_canonical_array_trees": 24
+  },
+  "local_report_sha256": "5181e314fae27c5776859efd5232476f6e0358a2277f2ca2771d429f53fff809",
+  "public_download_validation": {
+    "completed_at": "2026-09-02T03:23:22.899649+00:00",
+    "command": "just dataset-smoke <site-index> data/generated/dataset-smoke/validation-20260901-public-v1",
+    "downloaded_tiff_count": 30,
+    "downloaded_tiff_bytes": 71186977,
+    "summary": {
+      "generated_site_arrays": 24,
+      "exact_attested_array_trees": 24,
+      "lossless_roundtrips": 6,
+      "canonical_arrays_compared": 0,
+      "exact_canonical_array_trees": 0
+    },
+    "local_report_sha256": "db9c7a59708e5f3817ef0199527a8f34a1be8733896a14693cbd5cbee6a1635e"
+  }
+}

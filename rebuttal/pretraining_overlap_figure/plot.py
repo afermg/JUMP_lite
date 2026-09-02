@@ -69,13 +69,17 @@ def validate_inputs() -> pd.DataFrame:
     if len(frame) != 6:
         raise RuntimeError(f"expected six MorphEM contrasts, found {len(frame)}")
     if set(frame["subset"]) != set(SUBSET_ORDER):
-        raise RuntimeError("figure data must contain only the two MorphEM-defined exclusions")
+        raise RuntimeError(
+            "figure data must contain only the two MorphEM-defined exclusions"
+        )
     if set(frame["comparator"]) != set(COMPARATOR_ORDER):
         raise RuntimeError("unexpected comparator set")
     if frame.groupby("subset").size().to_dict() != {name: 3 for name in SUBSET_ORDER}:
         raise RuntimeError("each exclusion must contain three learned-model contrasts")
     if not ((frame["ci_low"] > 0) & (frame["ci_high"] > frame["ci_low"])).all():
-        raise RuntimeError("all frozen intervals must support MorphEM over the comparator")
+        raise RuntimeError(
+            "all frozen intervals must support MorphEM over the comparator"
+        )
     if not (frame["holm_p"] <= 0.05).all():
         raise RuntimeError("all six displayed contrasts must remain Holm-supported")
     if set(frame["bootstrap_replicates"]) != {50_000}:
@@ -83,7 +87,9 @@ def validate_inputs() -> pd.DataFrame:
 
     subsets = pd.read_csv(SUBSETS)
     if set(subsets["subset"]) != set(SUBSET_ORDER) or len(subsets) != 2:
-        raise RuntimeError("subset summary must contain only two MorphEM-defined exclusions")
+        raise RuntimeError(
+            "subset summary must contain only two MorphEM-defined exclusions"
+        )
     expected_wells = {
         "morphem_same_acquisition_wells_excluded": 109_790,
         "morphem_same_acquisition_plates_excluded": 74_137,
@@ -175,9 +181,10 @@ def render(frame: pd.DataFrame, pdf_path: Path, png_path: Path) -> None:
     plt.close(fig)
 
 
-def generate() -> None:
+def generate(output_dir: Path | None = None) -> None:
+    output_dir = OUTPUT_DIR if output_dir is None else output_dir
     frame = validate_inputs()
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="pretraining-overlap-figure-") as tmp_name:
         tmp = Path(tmp_name)
         pdf = tmp / ARTIFACTS[0]
@@ -193,7 +200,8 @@ def generate() -> None:
                 "No OpenPhenom-specific exclusion is constructed because no image- or plate-level membership manifest is available."
             ),
             "frozen_inputs": {
-                name: {"sha256": digest} for name, digest in EXPECTED_INPUT_HASHES.items()
+                name: {"sha256": digest}
+                for name, digest in EXPECTED_INPUT_HASHES.items()
             },
             "archived_parent_sources": {
                 "sensitivity_pairwise.csv": {
@@ -209,28 +217,34 @@ def generate() -> None:
             json.dumps(provenance, indent=2, sort_keys=True) + "\n", encoding="utf-8"
         )
         for name in ARTIFACTS:
-            shutil.copy2(tmp / name, OUTPUT_DIR / name)
+            shutil.copy2(tmp / name, output_dir / name)
 
-    checksums = {name: sha256(OUTPUT_DIR / name) for name in ARTIFACTS}
-    (OUTPUT_DIR / "artifact_checksums.json").write_text(
+    checksums = {name: sha256(output_dir / name) for name in ARTIFACTS}
+    (output_dir / "artifact_checksums.json").write_text(
         json.dumps(checksums, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
 
 
-def verify() -> None:
+def verify(output_dir: Path | None = None) -> None:
+    output_dir = OUTPUT_DIR if output_dir is None else output_dir
     validate_inputs()
-    checksum_path = OUTPUT_DIR / "artifact_checksums.json"
+    checksum_path = output_dir / "artifact_checksums.json"
     if not checksum_path.is_file():
         raise RuntimeError("missing artifact_checksums.json")
     expected = json.loads(checksum_path.read_text(encoding="utf-8"))
     if set(expected) != set(ARTIFACTS):
         raise RuntimeError("unexpected output checksum inventory")
     for name, digest in expected.items():
-        path = OUTPUT_DIR / name
+        path = output_dir / name
         if not path.is_file() or sha256(path) != digest:
             raise RuntimeError(f"output drift: {path}")
-    provenance = json.loads((OUTPUT_DIR / "provenance.json").read_text(encoding="utf-8"))
-    if "OpenPhenom-specific exclusion is constructed" not in provenance["exclusion_policy"]:
+    provenance = json.loads(
+        (output_dir / "provenance.json").read_text(encoding="utf-8")
+    )
+    if (
+        "OpenPhenom-specific exclusion is constructed"
+        not in provenance["exclusion_policy"]
+    ):
         raise RuntimeError("missing OpenPhenom provenance limitation")
     print("Verified two frozen inputs and three figure artifacts.")
 
@@ -238,12 +252,19 @@ def verify() -> None:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--verify-only", action="store_true")
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=OUTPUT_DIR,
+        help="Figure bundle directory (defaults to the committed reference bundle).",
+    )
     args = parser.parse_args()
+    output_dir = args.output_dir.resolve()
     if args.verify_only:
-        verify()
+        verify(output_dir)
     else:
-        generate()
-        verify()
+        generate(output_dir)
+        verify(output_dir)
 
 
 if __name__ == "__main__":

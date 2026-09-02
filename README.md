@@ -83,13 +83,37 @@ public JUMP TIFFs
 The generation and analysis resources remain part of this repository:
 
 - [Bootstrap and source-data preparation](prep/README.md), including the [deterministic site-selection query](prep/build_jl_index.sql)
-- [Image compression implementation](src/compress_tif.py) and [embedding driver](prep/aliby_featurize.py)
+- [Validated release image compressor](src/compress_tif_release.py) and [embedding driver](prep/aliby_featurize.py)
 - [Release metadata, validation, and CPG layout](cpg_upload/README.md)
 - [Complete dataset specification and model provenance](cpg_upload/JUMP_LITE_README.md)
 - [Target-2 masks, object-feature, and compact-profile artifact specification](cpg_upload/TARGET2_ARTIFACTS_README.md)
 - [Technical analysis pipeline](PIPELINE.md) and [paper reproduction guide](REPRODUCE.md)
 
-Run `nix develop` followed by `just --list` to inspect the available generation and reproduction recipes.
+## Reproducibility
+
+Run `nix develop` followed by `just --list` to inspect the generation and
+reproduction recipes. The bounded source-stratified dataset check validates the
+complete 655,101-site release index and reproduces one five-channel site from
+each of the six release sources under all four published image codecs:
+
+```bash
+just dataset-smoke jump_lite_metadata/jump_lite_site_index.parquet
+```
+
+It writes only below `data/generated/dataset-smoke/` and refuses existing or
+symlinked output paths. Maintainers can use `just dataset-smoke-local` to compare
+every generated Zarr metadata/chunk file with canonical release stores. The
+2026-09-01 public-download and local-reference validations each reproduced
+24/24 sampled arrays byte-for-byte and verified six lossless Zstd round trips;
+their portable hashes and environment are retained
+in [`reproducibility/validation/dataset-smoke-20260901.json`](reproducibility/validation/dataset-smoke-20260901.json).
+
+For figures and tables, `just artifacts-list` inventories active-paper and
+supporting bundles, `just artifacts-verify` performs non-mutating checksum and
+provenance verification, and `just paper-artifacts-verify` checks the exact 39
+figures and three generated tables in the final manuscript. Full commands,
+inputs, safety rules, known external snapshots, and validation scope are in
+[REPRODUCE.md](REPRODUCE.md).
 
 ## Citation
 

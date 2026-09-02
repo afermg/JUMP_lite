@@ -62,6 +62,8 @@ output/
 tmp/
 *.log
 *.csv
+# Compact, checksum-bound final-paper renderer inputs are versioned.
+!/paper_artifacts/**/*.csv
 *.html
 logs/
 

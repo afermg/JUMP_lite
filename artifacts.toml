@@ -1,0 +1,200 @@
+schema_version = 1
+default_output_root = "data/generated/artifacts"
+paper_lock = "paper_artifacts.lock.json"
+
+# `producer` values are resolved through a hard-coded allowlist in
+# scripts/manage_artifacts.py. This file never supplies arbitrary shell.
+
+[[bundle]]
+id = "target-overlap"
+description = "Final target-overlap figure and its summary tables"
+producer = "target_overlap"
+scope = "active-paper"
+runtime = "seconds"
+reference_root = ""
+regeneratable = true
+verify_mode = "render-and-compare"
+expected_outputs = [
+  "target_all_sources_filtered_supervenn.png:6462f09d4e17e4cc4f0cf3b9652f78b24adb62bfddc24a4a0f5c03908a7d3f66",
+  "target_all_sources_filtered_supervenn.pdf:32b7cabe29cbbe507d325e36c77ed796e0e939be9ce524a8517625d6edf5d2dc",
+  "set_summary.csv:7eb94cc8ccba36a4848065b8429fce206907e752c6578dbbcf5daaf33d5f14dc",
+  "intersection_summary.csv:dcf32e9b97ce9d0fc6607e7c2058381cb5254cd7b6fc58aa99fd723be16c3174",
+  "provenance.json:3da0a9cd59acdde728834d12a7208fe7a6db3bf5145732e97d9d3e43cf543a7c",
+]
+
+[[bundle]]
+id = "strict-heldout"
+description = "Final five-seed strict held-out PA/PC figure from frozen N=5 summaries"
+producer = "strict_heldout"
+scope = "active-paper"
+runtime = "seconds"
+reference_root = ""
+regeneratable = true
+verify_mode = "render-and-compare"
+expected_outputs = [
+  "strict_selection_heldout_pa_pc.pdf:8b0edd705774d2c6d4b4ad2123aa2e8cf995a91d1fe6ab5643221d2e5f08d4d2",
+  "strict_selection_heldout_pa_pc.png:6d302386a3e0984c62cb3e0e8f7059ecb94d081f87248d2010132c59adcea74a",
+]
+
+[[bundle]]
+id = "compression-order-robustness"
+description = "Compression-order robustness figure, tables, manifests, and checkpoint audit"
+producer = "compression_order"
+scope = "supporting-analysis"
+runtime = "hours"
+reference_root = "rebuttal/compression_order_robustness/outputs/release_v1"
+regeneratable = true
+verify_mode = "producer"
+availability_paths = ["/work/datasets/JUMP-lite-wacv"]
+
+[[bundle]]
+id = "mq-d2e8-effort"
+description = "Approximate HQ/E3 effort sensitivity bundle"
+producer = "mq_effort"
+scope = "supporting-analysis"
+runtime = "minutes"
+reference_root = "rebuttal/mq_d2e8_explanation/effort_sensitivity/outputs"
+regeneratable = true
+verify_mode = "producer"
+availability_paths = ["/work/datasets/JUMP-lite-wacv"]
+
+[[bundle]]
+id = "mq-d2e8-fixed-recipe"
+description = "Fixed-Zstd-recipe MQ versus D2-E8 bootstrap bundle"
+producer = "mq_fixed_recipe"
+scope = "supporting-analysis"
+runtime = "minutes"
+reference_root = "rebuttal/mq_d2e8_explanation/fixed_recipe_bootstrap/outputs/release_v1"
+regeneratable = true
+verify_mode = "producer"
+availability_paths = ["/work/datasets/JUMP-lite-wacv"]
+
+[[bundle]]
+id = "mq-d2e8-normalization"
+description = "MQ/D2-E8 normalization-interaction bundle"
+producer = "mq_normalization"
+scope = "supporting-analysis"
+runtime = "minutes"
+reference_root = "rebuttal/mq_d2e8_explanation/normalization_interactions/outputs/release_v1"
+regeneratable = true
+verify_mode = "producer"
+availability_paths = ["/work/datasets/JUMP-lite-wacv"]
+
+[[bundle]]
+id = "mq-d2e8-paired-recipes"
+description = "Matched-recipe MQ versus D2-E8 audit bundle"
+producer = "mq_paired"
+scope = "supporting-analysis"
+runtime = "minutes"
+reference_root = "rebuttal/mq_d2e8_explanation/paired_recipes/outputs/release_v1"
+regeneratable = true
+verify_mode = "producer"
+availability_paths = ["/work/datasets/JUMP-lite-wacv"]
+
+[[bundle]]
+id = "mq-d2e8-plate-influence"
+description = "Target-2 leave-one-plate/unit influence bundle"
+producer = "mq_plate"
+scope = "supporting-analysis"
+runtime = "minutes"
+reference_root = "rebuttal/mq_d2e8_explanation/plate_unit_influence/outputs/release_v1"
+regeneratable = true
+verify_mode = "producer"
+availability_paths = ["/work/datasets/JUMP-lite-wacv"]
+
+[[bundle]]
+id = "mq-d2e8-synthesis"
+description = "Active SI MQ/D2-E8 synthesis figure and plotted data"
+producer = "mq_synthesis"
+scope = "active-paper"
+runtime = "seconds"
+reference_root = "rebuttal/mq_d2e8_explanation/synthesis/outputs/release_v1"
+regeneratable = true
+verify_mode = "producer"
+
+[[bundle]]
+id = "pretraining-overlap-legacy"
+description = "Earlier MorphEM-specific overlap forest plot retained as supporting evidence"
+producer = "pretraining_legacy"
+scope = "supporting-analysis"
+runtime = "seconds"
+reference_root = "rebuttal/pretraining_overlap_figure/outputs"
+regeneratable = true
+verify_mode = "producer"
+
+[[bundle]]
+id = "figure5-subsampling"
+description = "Full-cohort repeated-subsampling data and historical uncertainty figures"
+producer = "unmanaged"
+scope = "active-paper-source"
+runtime = "hours"
+reference_root = "rebuttal/figure5_s14_bootstrap/results"
+regeneratable = false
+verify_mode = "external-snapshot"
+notes = "This ignored machine-local bundle is not part of a clean checkout. The active manuscript renderer also uses the later Cellpose-count package; preserve its exact branch/source receipt."
+
+[[bundle]]
+id = "heldout-figure5-uncertainty"
+description = "Held-out Figure-5-style sensitivity data and figure"
+producer = "unmanaged"
+scope = "supporting-analysis"
+runtime = "hours"
+reference_root = "rebuttal/heldout_figure5_uncertainty/results"
+regeneratable = false
+verify_mode = "external-snapshot"
+notes = "This accepted result bundle is currently ignored/machine-local rather than published in the repository."
+
+[[bundle]]
+id = "paper-post-sweep"
+description = "Original paper figures and tables regenerated from canonical sweep/evaluation checkpoints"
+producer = "unmanaged"
+scope = "active-paper"
+runtime = "about 55 minutes"
+reference_root = "data/results"
+regeneratable = false
+verify_mode = "external-checkpoints"
+notes = "Use `just reproduce` after `just reproduce-check`; canonical sweep trees remain read-only."
+
+[[bundle]]
+id = "cluster-selection-coverage"
+description = "Active cluster/annotation-coverage figure from reviewed Harmony snapshots"
+producer = "unmanaged"
+scope = "active-paper"
+runtime = "seconds from frozen snapshots"
+reference_root = ""
+regeneratable = false
+verify_mode = "external-snapshot"
+notes = "Generator commit 65aee62; frozen inputs/results are recorded in the rebuttal artifact ledger."
+
+[[bundle]]
+id = "cellpose-count-subsampling"
+description = "Active Raw/MQ repeated-subsampling figure with measured MQ Cellpose Counts"
+producer = "unmanaged"
+scope = "active-paper"
+runtime = "hours for scoring; seconds for render-only"
+reference_root = ""
+regeneratable = false
+verify_mode = "external-snapshot"
+notes = "Generator line ends at code commit 0db1ff4; final data are in the accepted Cellpose-count result package."
+
+[[bundle]]
+id = "nonlite-pa-pc"
+description = "Active preliminary non-JUMP-lite PA and secondary PC figure"
+producer = "unmanaged"
+scope = "active-paper"
+runtime = "seconds from frozen summaries"
+reference_root = ""
+regeneratable = false
+verify_mode = "external-snapshot"
+notes = "Presentation generator and plotted-source CSV are frozen in the manuscript staging receipt."
+
+[[bundle]]
+id = "pretraining-overlap-end-to-end"
+description = "Active five-seed CHAMMI-inventory exclusion figure"
+producer = "unmanaged"
+scope = "active-paper"
+runtime = "seconds from five seed packages"
+reference_root = ""
+regeneratable = false
+verify_mode = "external-snapshot"
+notes = "Scientific generator commit dcc1e0c; active N5 snapshot hash is locked by the paper manifest."

@@ -24,6 +24,10 @@ was rerun to make this figure.
 python rebuttal/pretraining_overlap_figure/plot.py
 python rebuttal/pretraining_overlap_figure/plot.py --verify-only
 python rebuttal/pretraining_overlap_figure/test_plot.py
+
+# Preferred safe interface (isolated output, no tracked-file overwrite):
+just artifacts-regenerate pretraining-overlap-legacy
+just artifacts-verify pretraining-overlap-legacy
 ```
 
 The figure is descriptive and conditional on the archived normalized profiles,

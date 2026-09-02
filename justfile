@@ -64,7 +64,7 @@ cp_codecs_target2    := "zstd jpegxl_lossy_hq jpegxl_lossy_mq jpegxl_lossy_lq jp
 lite_codecs_dl       := "jpegxl_lossy_mq jpegxl_lossy_d20 jpegxl_lossy_hq"
 
 # All compression codecs (superset used for image compression)
-all_codecs           := "zstd jpegxl_lossy_hq jpegxl_lossy_mq jpegxl_lossy_mq_new jpegxl_lossy_lq jpegxl_lossy_d2_e8 jpegxl_lossy_d10 jpegxl_lossy_d15 jpegxl_lossy_d30 jpegxl_lossy_effort_3"
+all_codecs           := "zstd jpegxl_lossy_hq jpegxl_lossy_mq jpegxl_lossy_mq_new jpegxl_lossy_lq jpegxl_lossy_d2_e8 jpegxl_lossy_d10 jpegxl_lossy_d15 jpegxl_lossy_d20 jpegxl_lossy_d20_e2 jpegxl_lossy_d30 jpegxl_lossy_effort_3"
 
 # ─── Threading ────────────────────────────────────────────────
 omp_threads          := "12"
@@ -120,9 +120,26 @@ metadata output_dir="metadata/":
 # Section 4: Image Compression
 # ═══════════════════════════════════════════════════════════════
 
+# Reproduce one deterministic site from every JUMP-Lite release source.
+# Downloads 30 original TIFFs and writes 24 isolated Zarr site arrays.
+dataset-smoke site_index output_root="data/generated/dataset-smoke/source-stratified":
+    uv run python scripts/reproduce_dataset_sample.py \
+        --site-index {{ site_index }} \
+        --output-root {{ output_root }}
+
+# Run the same source-stratified test from local TIFFs and compare every
+# generated site tree byte-for-byte with the canonical local release stores.
+dataset-smoke-local site_index source_tiffs jxl_reference zstd_reference output_root="data/generated/dataset-smoke/source-stratified-local":
+    uv run python scripts/reproduce_dataset_sample.py \
+        --site-index {{ site_index }} \
+        --source-tiff-root {{ source_tiffs }} \
+        --jxl-reference-root {{ jxl_reference }} \
+        --zstd-reference-root {{ zstd_reference }} \
+        --output-root {{ output_root }}
+
 # Compress target2 images with a single codec
 compress-target2 codec="jpegxl_lossy_mq" jobs="16":
-    uv run python src/compress_tif.py \
+    uv run python src/compress_tif_release.py \
         --input {{ raw_images_target2 }} \
         --output {{ compressed_target2 }} \
         --codec {{ codec }} \
@@ -130,7 +147,7 @@ compress-target2 codec="jpegxl_lossy_mq" jobs="16":
 
 # Compress jump_lite images with a single codec
 compress-lite codec="jpegxl_lossy_mq" jobs="16":
-    uv run python src/compress_tif.py \
+    uv run python src/compress_tif_release.py \
         --input {{ raw_images_lite }} \
         --output {{ compressed_lite }} \
         --codec {{ codec }} \
@@ -142,7 +159,7 @@ compress-target2-all jobs="16":
     set -euo pipefail
     for codec in {{ all_codecs }}; do
         echo "=== Compressing target2 with ${codec} === $(date)"
-        uv run python src/compress_tif.py \
+        uv run python src/compress_tif_release.py \
             --input {{ raw_images_target2 }} \
             --output {{ compressed_target2 }} \
             --codec "${codec}" \
@@ -156,7 +173,7 @@ compress-lite-all jobs="16":
     set -euo pipefail
     for codec in {{ all_codecs }}; do
         echo "=== Compressing jump_lite with ${codec} === $(date)"
-        uv run python src/compress_tif.py \
+        uv run python src/compress_tif_release.py \
             --input {{ raw_images_lite }} \
             --output {{ compressed_lite }} \
             --codec "${codec}" \
@@ -187,14 +204,15 @@ quality-sharpness n_samples="100" exclude="jpegxl_lossy_mq_new jpegxl_lossy_d50"
         --exclude-codecs {{ exclude }} \
         --output-dir {{ intermediate_dir }}/image_quality
 
-# Regenerate quality violin plots from existing quality_metrics.csv.
-# Final PNGs (incl. supplementary ssim_violin.png) copied to data/results/figures/image_quality/.
-quality-figures:
+# Regenerate quality violin plots from a read-only quality_metrics.csv checkpoint.
+# The CSV is copied into the result directory because figures-only mode reads and
+# writes one directory; canonical/symlinked intermediates are never modified.
+quality-figures metrics_csv=(intermediate_dir + "/image_quality/quality_metrics.csv"):
+    mkdir -p {{ results_figures }}/image_quality
+    cp {{ metrics_csv }} {{ results_figures }}/image_quality/quality_metrics.csv
     uv run python analysis/image_quality/compare_codecs.py \
         --figures-only \
-        --output-dir {{ intermediate_dir }}/image_quality
-    mkdir -p {{ results_figures }}/image_quality
-    cp {{ intermediate_dir }}/image_quality/*.png {{ results_figures }}/image_quality/
+        --output-dir {{ results_figures }}/image_quality
 
 # ═══════════════════════════════════════════════════════════════
 # Section 6: Segmentation Comparison
@@ -238,33 +256,33 @@ segmentation-iou-ablation:
         --results-dir {{ intermediate_dir }}/segmentation_comparison/detailed_results \
         --output-dir {{ results_figures }}
 
-# Rank stability: Spearman rho of model rankings across compression levels
-rank-stability:
+# Rank stability: Spearman rho of model rankings across compression levels.
+# Reads the isolated summary emitted by results-v11-lite, never the sweep tree.
+rank-stability input=(results_summaries + "/sweep_v11_lite.csv"):
     uv run python analysis/rank_stability.py \
-        --input {{ intermediate_dir }}/sweep_summaries/sweep_results_v11_lite_full.csv \
+        --input {{ input }} \
         --output-dir {{ results_figures }}/rank_stability
 
 # Saturation analysis: proper (normalize after subsampling, zero leakage)
 saturation-proper:
-    cd src/norm_3 && pixi run python ../../analysis/saturation_analysis_proper.py
+    cd src/norm_3 && pixi run python ../../analysis/saturation_analysis_proper.py \
+        --output-dir ../../{{ intermediate_dir }}/saturation_proper
     mkdir -p {{ results_figures }}/saturation_proper
-    cp analysis/output/saturation_proper/saturation_proper_PA_mean_nap.png {{ results_figures }}/saturation_proper/
+    cp {{ intermediate_dir }}/saturation_proper/saturation_proper_PA_mean_nap.png {{ results_figures }}/saturation_proper/
 
 # Saturation analysis: proper - pilot (2 models, 3 configs, 3 seeds)
 saturation-proper-pilot:
     cd src/norm_3 && pixi run python ../../analysis/saturation_analysis_proper.py \
-        --models morphem cellprofiler --n-configs 3 --n-seeds 3
+        --models morphem cellprofiler --n-configs 3 --n-seeds 3 \
+        --output-dir ../../{{ intermediate_dir }}/saturation_proper_pilot
     mkdir -p {{ results_figures }}/saturation_proper
-    cp analysis/output/saturation_proper/saturation_proper_PA_mean_nap.png {{ results_figures }}/saturation_proper/saturation_proper_pilot.png
+    cp {{ intermediate_dir }}/saturation_proper_pilot/saturation_proper_PA_mean_nap.png {{ results_figures }}/saturation_proper/saturation_proper_pilot.png
 
-# Saturation analysis: per-group best-config replot from existing saturation-proper outputs
-# Reads analysis/output/saturation_proper/saturation_results_<group>.csv files
-# and emits per-group curves keeping only the best config per (model, n, seed),
-# with shaded variance across seeds.
-saturation-plot-bestconfig:
-    cd src/norm_3 && pixi run python ../../analysis/plot_saturation_bestconfig.py \
-        --input-dir ../../{{ intermediate_dir }}/analysis/saturation_proper \
-        --output-dir ../../{{ results_figures }}/saturation_proper
+# Saturation analysis: per-group best-config replot from existing saturation-proper outputs.
+saturation-plot-bestconfig input_dir=(intermediate_dir + "/saturation_proper"):
+    uv run python analysis/plot_saturation_bestconfig.py \
+        --input-dir {{ input_dir }} \
+        --output-dir {{ results_figures }}/saturation_proper
 
 # ═══════════════════════════════════════════════════════════════
 # Section 7: Feature Extraction
@@ -358,11 +376,19 @@ feature-correlation-cp:
 # feature-correlation-raw:
 #    uv run python analysis/feature_similarity/correlate_vs_raw_cp.py
 
+# Compute matched-cell feature preservation used by the cross-well comparison.
+feature-codec-correlation mappings_dir=(intermediate_dir + "/segmentation_comparison/instance_mappings") output=(intermediate_dir + "/feature_correlation/codec_feature_correlation.png"):
+    uv run python analysis/feature_similarity/compare_codec_features.py \
+        --mappings-dir {{ mappings_dir }} \
+        --features-base {{ aliby_output }}/cp_measure/jump_target2_4plate \
+        --output {{ output }} \
+        --site-level
+
 # Cross-well feature consistency for same-treatment replicates
 # Intermediate CSVs → data/intermediate/feature_correlation/
 # Final PNGs (incl. supplementary replicate_vs_codec_correlation.png) copied to
 # data/results/figures/feature_correlation/.
-feature-cross-well metadata="metadata/metadata.parquet" codec_corr_csv="analysis/output/codec_feature_correlation.csv":
+feature-cross-well metadata="metadata/metadata_dataset_filtered_4reps.parquet" codec_corr_csv=(intermediate_dir + "/feature_correlation/codec_feature_correlation.csv"):
     uv run python analysis/feature_similarity/compare_cross_well_features.py \
         --features-base {{ aliby_output }}/cp_measure/jump_target2_4plate \
         --metadata {{ metadata }} \
@@ -729,27 +755,52 @@ sweep-v11-lite:
 # Section 10: Results Aggregation & Figures
 # ═══════════════════════════════════════════════════════════════
 
-# Reproduce all final figures + tables from intermediate checkpoints under
-# data/intermediate/. Assumes the sweeps (data/intermediate/sweep_v11_lite/,
-# data/features/variance_first_v11/) and the MOTIVE eval
-# (data/intermediate/motive_eval/large_strict/) are already populated —
-# those upstream stages are NOT re-run here.
-reproduce: results-v11-lite results-v11 results-v11-lite-best-avg results-v11-best-avg
+# Validate canonical counts, hashes, sentinels, and non-empty inputs before writing.
+reproduce-check:
+    uv run python scripts/check_reproduce_inputs.py
+
+# Reproduce all final figures + tables from read-only intermediate checkpoints.
+# Upstream compression, feature extraction, sweeps, and MOTIVE evaluation are
+# intentionally not rerun here.
+reproduce: reproduce-check results-v11-lite results-v11 results-v11-lite-best-avg results-v11-best-avg
     just motive-plot       data/intermediate/motive_eval/large_strict {{ results_figures }}/motive_large_strict
     just motive-plot-delta {{ results_figures }}/motive_large_strict
     just motive-table-delta {{ results_figures }}/motive_large_strict
     just motive-plot-cross {{ results_figures }}/motive_large_strict
-    just model-task-rank   {{ results_figures }}/motive_large_strict
-    just combined-codec-delta-table
-    just rank-stability
+    just model-task-rank   {{ results_figures }}/motive_large_strict {{ results_summaries }}/sweep_v11_lite_best_avg_codec.csv
+    just combined-codec-delta-table {{ results_summaries }}/sweep_v11_lite_best_avg_codec.csv {{ results_figures }}/motive_large_strict/motive_sweep_summary.csv
+    just rank-stability {{ results_summaries }}/sweep_v11_lite.csv
     just segmentation-cell-iou
     just segmentation-iou-ablation
+    just feature-codec-correlation
     just feature-cross-well
     just feature-correlation-cp
     just quality-figures
     just saturation-plot-bestconfig
     @echo
     @echo "DONE. Final outputs under {{ results_figures }}/ and {{ results_tables }}/"
+
+# Stage the sweep directories produced by the Hydra configs at the read-only
+# post-sweep paths used by `reproduce`. Existing non-matching paths are refused.
+stage-local-sweep-outputs:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    link_one() {
+      local source="$1" destination="$2"
+      [ -d "$source" ] || { echo "Missing produced sweep: $source" >&2; exit 1; }
+      mkdir -p "$(dirname "$destination")"
+      if [ -L "$destination" ]; then
+        [ "$(readlink -f "$destination")" = "$(readlink -f "$source")" ] || {
+          echo "Refusing non-matching sweep symlink: $destination" >&2; exit 1;
+        }
+      elif [ -e "$destination" ]; then
+        echo "Refusing existing sweep path: $destination" >&2; exit 1
+      else
+        ln -s "$(realpath --relative-to="$(dirname "$destination")" "$source")" "$destination"
+      fi
+    }
+    link_one "src/norm_3/data/features/variance_first_v11_lite" "{{ sweep_v11_lite_dir }}"
+    link_one "src/norm_3/data/features/variance_first_v11" "{{ sweep_v11_dir }}"
 
 # End-to-end from compressed images → final paper figures.
 # PREREQUISITES (run `just <recipe>` from the bootstrap section below if missing):
@@ -775,14 +826,18 @@ produce-paper:
     # Stage 3: Normalization sweep (multi-GPU, long-running)
     just sweep-v11-lite
     just sweep-v11
+    just stage-local-sweep-outputs
+    # Build the isolated lite summary required for top-config selection.
+    just results-v11-lite
     # Stage 4: Motive curate + eval
     just motive-curate-strict
-    just motive-run-top
-    # Stage 5: Segmentation comparison (produces instance_mappings + detailed_results
-    # under data/intermediate/segmentation_comparison/, required by reproduce's
-    # segmentation-cell-iou and segmentation-iou-ablation)
+    just motive-run-top {{ results_summaries }}/sweep_v11_lite.csv
+    # Stage 5: Derived checkpoints required by the post-sweep renderers.
+    just quality-metrics
+    just saturation-proper
+    # Segmentation comparison produces instance_mappings + detailed_results.
     just segmentation-compare
-    # Stage 6: Aggregate, plot, and produce all paper figures
+    # Stage 6: Aggregate, plot, and produce all paper figures.
     just reproduce
 
 # Remove everything under data/results/ so `just reproduce` regenerates cleanly.
@@ -790,19 +845,24 @@ clean-results:
     rm -rf {{ results_figures }} {{ results_tables }} {{ results_summaries }}
     mkdir -p {{ results_figures }} {{ results_tables }} {{ results_summaries }}
 
-# Aggregate target2 v11 sweep results with plots
+# Aggregate target2 v11 sweep results with plots. The summary is written outside
+# the (possibly symlinked) canonical sweep tree.
 results-v11:
+    mkdir -p {{ results_summaries }}
     cd {{ norm3_dir }} && pixi run python gather_sweep_results.py \
         --sweep-dir ../../{{ sweep_v11_dir }} \
+        --output ../../{{ results_summaries }}/sweep_v11.csv \
         --plot-dir ../../{{ results_figures }}/sweep_v11 \
         --plot --filter-degenerate \
         --best-metric nap_balanced \
         --exclude-codecs mq_new d20_e2 d50
 
-# Aggregate jump_lite v11_lite sweep results with plots
+# Aggregate jump_lite v11_lite sweep results with plots.
 results-v11-lite:
+    mkdir -p {{ results_summaries }}
     cd {{ norm3_dir }} && pixi run python gather_sweep_results.py \
         --sweep-dir ../../{{ sweep_v11_lite_dir }} \
+        --output ../../{{ results_summaries }}/sweep_v11_lite.csv \
         --plot-dir ../../{{ results_figures }}/sweep_v11_lite \
         --plot --filter-degenerate \
         --best-metric nap_balanced
@@ -810,8 +870,10 @@ results-v11-lite:
 # Same as results-v11 but with --best-selection best_avg_codec
 # (produces the `*_best_avg_codec_*` suffix variants used in fig5/6/supplementary).
 results-v11-best-avg:
+    mkdir -p {{ results_summaries }}
     cd {{ norm3_dir }} && pixi run python gather_sweep_results.py \
         --sweep-dir ../../{{ sweep_v11_dir }} \
+        --output ../../{{ results_summaries }}/sweep_v11_best_avg_codec.csv \
         --plot-dir ../../{{ results_figures }}/sweep_v11 \
         --plot --filter-degenerate \
         --best-metric nap_balanced \
@@ -820,27 +882,35 @@ results-v11-best-avg:
 
 # Same as results-v11-lite but with --best-selection best_avg_codec.
 results-v11-lite-best-avg:
+    mkdir -p {{ results_summaries }}
     cd {{ norm3_dir }} && pixi run python gather_sweep_results.py \
         --sweep-dir ../../{{ sweep_v11_lite_dir }} \
+        --output ../../{{ results_summaries }}/sweep_v11_lite_best_avg_codec.csv \
         --plot-dir ../../{{ results_figures }}/sweep_v11_lite \
         --plot --filter-degenerate \
         --best-metric nap_balanced \
         --best-selection best_avg_codec
 
-# Generic sweep results aggregation
-results sweep_dir metric="nap_balanced":
+# Generic sweep results aggregation. `sweep_dir` is interpreted from src/norm_3;
+# the summary path is repository-relative and remains outside the input tree.
+results sweep_dir metric="nap_balanced" output=(results_summaries + "/custom_sweep_results.csv"):
+    mkdir -p {{ results_summaries }}
     cd {{ norm3_dir }} && pixi run python gather_sweep_results.py \
         --sweep-dir {{ sweep_dir }} \
+        --output ../../{{ output }} \
+        --plot-dir ../../{{ results_figures }}/custom_sweep \
         --plot --filter-degenerate \
         --best-metric {{ metric }}
 
 # Aggregate restricted to 5 families (cp_measure + dinov2 + morphem + openphenom + subcell__clip01)
 # and 6 codecs (hq, e3, d2_e8, mq, lq, d10) — i.e. cp_measure's codec lineup minus d15/d30.
-# Output goes to <sweep_dir>/plots_5fam_cp_codecs/ to keep separate from the default plots/.
-results-5fam-cp-codecs sweep_dir:
+# Outputs remain under data/results rather than mutating <sweep_dir>.
+results-5fam-cp-codecs sweep_dir output=(results_summaries + "/sweep_5fam_cp_codecs.csv"):
+    mkdir -p {{ results_summaries }}
     cd {{ norm3_dir }} && pixi run python gather_sweep_results.py \
         --sweep-dir {{ sweep_dir }} \
-        --plot-dir {{ sweep_dir }}/plots_5fam_cp_codecs \
+        --output ../../{{ output }} \
+        --plot-dir ../../{{ results_figures }}/sweep_5fam_cp_codecs \
         --plot --filter-degenerate \
         --best-metric nap_balanced \
         --exclude-families cell_count dinov2_random \
@@ -983,19 +1053,20 @@ motive-plot-cross plot_dir selection="best_avg_codec":
 # rows = models sorted by mean per-task-normalised score. RefChem CSV uses
 # the script's default path (variance_first_v11_lite/sweep_results.csv);
 # `selection` mirrors gather_sweep_results --best-selection.
-model-task-rank plot_dir selection="best_avg_codec":
+model-task-rank plot_dir refchem_csv=(results_summaries + "/sweep_v11_lite_best_avg_codec.csv") selection="best_avg_codec":
     uv run python analysis/plot_model_task_rank.py \
+        --refchem-csv {{ refchem_csv }} \
         --motive-csv {{ plot_dir }}/motive_sweep_summary.csv \
         --output-dir {{ plot_dir }} \
         --best-selection {{ selection }} \
         --codecs raw,hq,mq,d20
 
-# Combined RefCam (PA/PC NAP) + MOTIVE (CC/GG/CG -> CRISPR) codec-delta
-# table. Reads sweep_results.csv from JUMP_core/.../variance_first_v11_lite
-# and motive_sweep_summary.csv from motive_large_strict. Writes both the
-# full table and a summary-only variant.
-combined-codec-delta-table:
-    uv run python analysis/generate_combined_codec_delta_table.py
+# Combined RefChem (PA/PC NAP) + MOTIVE (CC/GG/CG -> CRISPR) codec-delta table.
+combined-codec-delta-table refchem_csv=(results_summaries + "/sweep_v11_lite_best_avg_codec.csv") motive_csv=(results_figures + "/motive_large_strict/motive_sweep_summary.csv"):
+    uv run python analysis/generate_combined_codec_delta_table.py \
+        --refchem-csv {{ refchem_csv }} \
+        --motive-csv {{ motive_csv }} \
+        --output-dir {{ results_tables }}/combined_codec_delta
 
 # Run MOTIVE evaluation across every output.parquet under a sweep dir.
 # Idempotent — skips a config if its metrics.json already exists.
@@ -1040,8 +1111,8 @@ motive-eval-sweep sweep_dir output_dir="" jobs="4" annotations="metadata/motive_
 # filter top-N -> eval full ann -> eval strict ann -> plot both. Override
 # SWEEP_DIR / TOP_N / METRIC / JOBS / etc. via env vars at invocation
 # (see scripts/run_motive_top.sh for the full list).
-motive-run-top:
-    bash scripts/run_motive_top.sh
+motive-run-top sweep_results=(results_summaries + "/sweep_v11_lite.csv"):
+    SWEEP_RESULTS={{ sweep_results }} bash scripts/run_motive_top.sh
 
 # End-to-end MOTIVE eval on EVERY config under a sweep dir (fills in the
 # non-top-N remainder; idempotent against an existing motive-run-top run).
@@ -1049,7 +1120,28 @@ motive-run-all:
     bash scripts/run_motive_all.sh
 
 # ═══════════════════════════════════════════════════════════════
-# Section 11: Auxiliary
+# Section 11: Reproducible artifact registry
+# ═══════════════════════════════════════════════════════════════
+
+# List active-paper and supporting figure/data bundles without reading datasets.
+artifacts-list:
+    uv run python scripts/manage_artifacts.py list
+
+# Verify all locally available committed bundles; external checkpoints are reported as skips.
+artifacts-verify bundle="all":
+    uv run python scripts/manage_artifacts.py verify {{ bundle }}
+
+# Regenerate one explicitly named bundle under data/generated/artifacts/.
+# Existing destinations, symlinked parents, and paths outside that root are refused.
+artifacts-regenerate bundle output_root="data/generated/artifacts":
+    uv run python scripts/manage_artifacts.py regenerate {{ bundle }} --output-root {{ output_root }}
+
+# Verify all active figures and generated tables in the exact final manuscript commit.
+paper-artifacts-verify manuscript_root:
+    uv run python scripts/manage_artifacts.py verify-paper --manuscript-root {{ manuscript_root }}
+
+# ═══════════════════════════════════════════════════════════════
+# Section 12: Auxiliary
 # ═══════════════════════════════════════════════════════════════
 
 # ═══════════════════════════════════════════════════════════════

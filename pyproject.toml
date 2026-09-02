@@ -53,5 +53,6 @@ dependencies = [
 [dependency-groups]
 dev = [
     "jupyter>=1.1.1",
+    "pytest>=9.0.0",
     "ruff>=0.14.6",
 ]
