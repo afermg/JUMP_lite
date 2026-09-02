@@ -1,0 +1,316 @@
+"""Identity and configuration primitives for candidate full-JUMP compression."""
+
+from __future__ import annotations
+
+from dataclasses import asdict, dataclass
+import hashlib
+import json
+import os
+from pathlib import Path
+from typing import Any, Mapping
+
+CHANNELS = ("AGP", "DNA", "ER", "Mito", "RNA")
+SOURCE_15_CHANNELS = ("AGP", "DNA", "ER", "Mito")
+CODECS = {
+    "jpegxl_lossy_hq": {"distance": 1.0, "lossless": False, "numthreads": 1},
+    "jpegxl_lossy_mq": {"distance": 3.0, "lossless": False, "numthreads": 1},
+}
+IDENTITY_COLUMNS = (
+    "Metadata_Source",
+    "Metadata_Batch",
+    "Metadata_Plate",
+    "Metadata_Well",
+    "Metadata_Site",
+)
+LIVE_CANDIDATE_PARENT = Path(
+    "/work/datasets/jump_lite/images/compressed/.jump_full_candidate"
+)
+LIVE_PRODUCTION_PARENT = Path(
+    "/work/datasets/jump_lite/images/compressed/.jump_full_production"
+)
+LIVE_STATE_PARENT = Path("/work/datasets/jump_lite/full_jump_compression_state/v1.0")
+PRODUCTION_ID = "full-jump-hq-mq-v1"
+PRODUCTION_TRANCHE_SIZE = 256
+COMPRESSION_CPUS = tuple(range(64, 81))
+INITIAL_WORKERS = 4
+MAX_WORKERS = 16
+MAX_CANDIDATE_ROWS = 256
+MAX_CUMULATIVE_ERRORS = 1_000_000
+MAX_RUNTIME_TASKS = 24
+THREAD_ENV = (
+    "OMP_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "BLIS_NUM_THREADS",
+    "VECLIB_MAXIMUM_THREADS",
+    "NUMEXPR_NUM_THREADS",
+    "TBB_NUM_THREADS",
+    "ARROW_NUM_THREADS",
+    "POLARS_MAX_THREADS",
+    "RAYON_NUM_THREADS",
+)
+
+
+def runtime_task_count() -> int:
+    task_root = Path("/proc/self/task")
+    if not task_root.is_dir():
+        raise RuntimeError("Linux task telemetry unavailable")
+    return sum(1 for _ in task_root.iterdir())
+
+
+def assert_runtime_task_ceiling(additional_tasks: int = 0) -> int:
+    observed = runtime_task_count()
+    if observed > MAX_RUNTIME_TASKS or observed + additional_tasks > MAX_RUNTIME_TASKS:
+        raise RuntimeError(
+            f"runtime task ceiling exceeded: observed={observed} "
+            f"additional={additional_tasks} ceiling={MAX_RUNTIME_TASKS}"
+        )
+    return observed
+
+
+def canonical_json(value: Any) -> bytes:
+    return json.dumps(
+        value, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode()
+
+
+def digest_json(value: Any) -> str:
+    return hashlib.sha256(canonical_json(value)).hexdigest()
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        while block := stream.read(1024 * 1024):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def fsync_dir(path: Path) -> None:
+    descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def atomic_json(path: Path, value: Mapping[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f"{path.name}.partial.{os.getpid()}")
+    data = json.dumps(value, sort_keys=True, indent=2).encode() + b"\n"
+    with tmp.open("xb") as stream:
+        stream.write(data)
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.replace(tmp, path)
+    fsync_dir(path.parent)
+
+
+def channels_for_source(source: str) -> tuple[str, ...]:
+    return SOURCE_15_CHANNELS if source == "source_15" else CHANNELS
+
+
+def site_key(row: Mapping[str, Any]) -> str:
+    values = [str(row[column]) for column in IDENTITY_COLUMNS]
+    if any(
+        not value
+        or value in {"None", "nan"}
+        or "__" in value
+        or "/" in value
+        or "\\" in value
+        for value in values
+    ):
+        raise ValueError(f"malformed identity: {values}")
+    return "__".join(values)
+
+
+def assert_no_symlinks(path: Path, boundary: Path) -> None:
+    """Reject symlinks in every existing component between boundary and path."""
+    absolute = path.absolute()
+    limit = boundary.absolute()
+    if absolute != limit and limit not in absolute.parents:
+        raise ValueError(f"path escapes boundary: {absolute} not under {limit}")
+    current = limit
+    for part in absolute.relative_to(limit).parts:
+        current = current / part
+        if current.is_symlink():
+            raise ValueError(f"symlink candidate component rejected: {current}")
+
+
+@dataclass(frozen=True)
+class CandidateConfig:
+    candidate_id: str
+    manifest: Path
+    audit_report: Path
+    output_root: Path
+    state_root: Path
+    inventory_digest: str
+    manifest_sha256: str
+    manifest_size: int
+    batch_size: int = 4
+    max_workers: int = MAX_WORKERS
+    test_mode: bool = False
+
+    def validate(self) -> None:
+        if not self.candidate_id or any(
+            c not in "abcdefghijklmnopqrstuvwxyz0123456789-_" for c in self.candidate_id
+        ):
+            raise ValueError(
+                "candidate-id must use lowercase letters, digits, '-' or '_'"
+            )
+        for value in (self.inventory_digest, self.manifest_sha256):
+            if len(value) != 64 or any(c not in "0123456789abcdef" for c in value):
+                raise ValueError("identity digests must be lowercase SHA-256")
+        if (
+            self.manifest_size < 1
+            or self.batch_size < 1
+            or self.max_workers != MAX_WORKERS
+        ):
+            raise ValueError("invalid manifest size/batch/max-workers contract")
+        if not self.manifest.is_file() or self.manifest.is_symlink():
+            raise ValueError("manifest must be a regular non-symlink file")
+        if self.test_mode:
+            if not self.candidate_id.startswith("test-"):
+                raise ValueError("test-mode candidate ids must start with test-")
+            output_boundary, state_boundary = (
+                self.output_root.parent,
+                self.state_root.parent,
+            )
+        else:
+            expected_output = LIVE_CANDIDATE_PARENT / self.candidate_id
+            expected_state = LIVE_STATE_PARENT / self.candidate_id
+            if (
+                self.output_root.absolute() != expected_output.absolute()
+                or self.state_root.absolute() != expected_state.absolute()
+            ):
+                raise ValueError(
+                    "live candidate output/state path must be literal expected paths"
+                )
+            if LIVE_CANDIDATE_PARENT.is_symlink() or LIVE_STATE_PARENT.is_symlink():
+                raise ValueError("live candidate parents cannot be symlinks")
+            if (
+                LIVE_CANDIDATE_PARENT.exists()
+                and LIVE_CANDIDATE_PARENT.resolve() != LIVE_CANDIDATE_PARENT.absolute()
+            ):
+                raise ValueError("resolved live output parent drift")
+            if (
+                LIVE_STATE_PARENT.exists()
+                and LIVE_STATE_PARENT.resolve() != LIVE_STATE_PARENT.absolute()
+            ):
+                raise ValueError("resolved live state parent drift")
+            output_boundary, state_boundary = LIVE_CANDIDATE_PARENT, LIVE_STATE_PARENT
+        assert_no_symlinks(self.output_root, output_boundary)
+        assert_no_symlinks(self.state_root, state_boundary)
+        if self.output_root.name == "jump_full" or "cellpainting-gallery" in str(
+            self.output_root
+        ):
+            raise ValueError("candidate cannot target final/CPG paths")
+
+    @property
+    def digest(self) -> str:
+        payload = asdict(self)
+        for key in ("manifest", "audit_report", "output_root", "state_root"):
+            payload[key] = str(Path(payload[key]).absolute())
+        return digest_json(payload)
+
+
+@dataclass(frozen=True)
+class ProductionConfig:
+    production_id: str
+    manifest: Path
+    audit_report: Path
+    build_report: Path
+    exclusion_policy: Path
+    damaged_objects: Path
+    damaged_sites: Path
+    qc_plates: Path
+    output_root: Path
+    state_root: Path
+    inventory_digest: str
+    manifest_sha256: str
+    manifest_size: int
+    audit_sha256: str
+    build_report_sha256: str
+    exclusion_policy_sha256: str
+    damaged_objects_sha256: str
+    damaged_sites_sha256: str
+    qc_plates_sha256: str
+    site_count: int
+    tranche_size: int = PRODUCTION_TRANCHE_SIZE
+    max_workers: int = MAX_WORKERS
+    test_mode: bool = False
+
+    @property
+    def candidate_id(self) -> str:
+        """Compatibility identity consumed by the existing governor contract."""
+        return self.production_id
+
+    def validate(self) -> None:
+        if self.production_id != (
+            "test-production" if self.test_mode else PRODUCTION_ID
+        ):
+            raise ValueError("production-id contract drift")
+        digests = (
+            self.inventory_digest,
+            self.manifest_sha256,
+            self.audit_sha256,
+            self.build_report_sha256,
+            self.exclusion_policy_sha256,
+            self.damaged_objects_sha256,
+            self.damaged_sites_sha256,
+            self.qc_plates_sha256,
+        )
+        if any(
+            len(value) != 64 or any(c not in "0123456789abcdef" for c in value)
+            for value in digests
+        ):
+            raise ValueError("production identity digests must be lowercase SHA-256")
+        if (
+            self.manifest_size < 1
+            or self.site_count < 1
+            or self.tranche_size != PRODUCTION_TRANCHE_SIZE
+            or self.max_workers != MAX_WORKERS
+        ):
+            raise ValueError("production size/tranche/worker contract drift")
+        for path in (
+            self.manifest,
+            self.audit_report,
+            self.build_report,
+            self.exclusion_policy,
+            self.damaged_objects,
+            self.damaged_sites,
+            self.qc_plates,
+        ):
+            if not path.is_file() or path.is_symlink():
+                raise ValueError(f"production identity file invalid: {path}")
+        if self.test_mode:
+            output_boundary, state_boundary = (
+                self.output_root.parent,
+                self.state_root.parent,
+            )
+        else:
+            expected_output = LIVE_PRODUCTION_PARENT / self.production_id
+            expected_state = LIVE_STATE_PARENT / self.production_id
+            if self.output_root.absolute() != expected_output.absolute():
+                raise ValueError("live production output path drift")
+            if self.state_root.absolute() != expected_state.absolute():
+                raise ValueError("live production state path drift")
+            for boundary in (LIVE_PRODUCTION_PARENT, LIVE_STATE_PARENT):
+                if boundary.is_symlink() or (
+                    boundary.exists() and boundary.resolve() != boundary.absolute()
+                ):
+                    raise ValueError("live production parent redirect rejected")
+            output_boundary, state_boundary = LIVE_PRODUCTION_PARENT, LIVE_STATE_PARENT
+        assert_no_symlinks(self.output_root, output_boundary)
+        assert_no_symlinks(self.state_root, state_boundary)
+
+    @property
+    def digest(self) -> str:
+        payload = asdict(self)
+        for key, value in tuple(payload.items()):
+            if isinstance(value, Path):
+                payload[key] = str(value.absolute())
+        payload["codecs"] = CODECS
+        payload["compression_cpus"] = COMPRESSION_CPUS
+        payload["max_runtime_tasks"] = MAX_RUNTIME_TASKS
+        return digest_json(payload)

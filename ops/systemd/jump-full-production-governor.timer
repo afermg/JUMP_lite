@@ -1,0 +1,11 @@
+[Unit]
+Description=Review full-JUMP production compression allocation every three hours
+
+[Timer]
+OnCalendar=*-*-* 00/3:00:00
+Persistent=true
+RandomizedDelaySec=0
+Unit=jump-full-production-governor.service
+
+[Install]
+WantedBy=timers.target
