@@ -1,6 +1,6 @@
 # MQ/D2-E8 synthesis
 
-This directory combines five independently generated, committed Target-2 analyses to explain the pooled Figure 3c MQ/D2-E8 ordering. The active supplementary figure presents the two analyses that address Figure 3c most directly: exact matched representation--recipe contrasts and fixed-recipe paired-bootstrap uncertainty. The normalization-interaction, plate/laboratory, and encoder-effort analyses remain verified supporting sensitivities summarized in the report and manuscript text.
+This directory combines five independently generated, committed Target-2 analyses to explain the pooled Figure 3c MQ/D2-E8 ordering. The active supplementary figure retains only the fixed-recipe paired-bootstrap panel, showing that D2-E8 is not consistently higher than MQ. The exact matched-recipe, normalization-interaction, plate/laboratory, and encoder-effort analyses remain verified supporting sensitivities summarized in the report.
 
 `analyze.py` reads only pinned sibling release CSVs. It does not read canonical datasets and does not rerun compression, extraction, normalization, retrieval, or bootstrapping. Every input is checked by exact size and SHA-256 before use. Generation is transactional and deterministic.
 

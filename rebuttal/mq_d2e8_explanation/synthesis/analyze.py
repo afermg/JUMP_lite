@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the fail-closed two-panel explanation of Figure 3c."""
+"""Build the fail-closed fixed-recipe explanation of Figure 3c."""
 from __future__ import annotations
 
 import argparse
@@ -15,6 +15,7 @@ from typing import Any
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
 import numpy as np
 import pandas as pd
 
@@ -77,9 +78,6 @@ def load_data(paths: dict[str,Path]) -> dict[str,pd.DataFrame]:
     if d["coverage"].dropped_for_common.sum()!=1: raise AnalysisError("common-population coverage drift")
     return d
 
-def panel_label(ax,label:str)->None:
-    ax.text(-.14,1.02,label,transform=ax.transAxes,fontweight="bold",fontsize=12,va="bottom")
-
 def forest(ax:Any, frame:pd.DataFrame, point:str, low:str, high:str, support:str, xlabel:str, title:str)->None:
     frame=frame.set_index("family").loc[FAMILY_ORDER].reset_index(); y=np.arange(5)
     x=frame[point].to_numpy(); lo=x-frame[low].to_numpy(); hi=frame[high].to_numpy()-x
@@ -92,51 +90,18 @@ def forest(ax:Any, frame:pd.DataFrame, point:str, low:str, high:str, support:str
     ax.set_xlabel(xlabel,fontsize=7); ax.set_title(title,fontsize=8,fontweight="bold"); ax.tick_params(axis="x",labelsize=7); ax.grid(axis="x",alpha=.2)
 
 def make_figure(d:dict[str,pd.DataFrame], png:Path, pdf:Path)->None:
-    fig,axes=plt.subplots(1,2,figsize=(7.15,3.65),gridspec_kw={"width_ratios":[1.08,1.0]})
-    fig.subplots_adjust(left=.09,right=.98,top=.76,bottom=.22,wspace=.40)
-
-    # A: direct descriptive explanation of the pooled Figure 3c ordering.
-    ax=axes[0]; p=d["paired"].copy(); order=[FAMILY_LABEL[f] for f in FAMILY_ORDER]
-    canon={"cp_measure":"cp_measure","DINOv2":"DINOv2","MorphEM":"MorphEM","OpenPhenom":"OpenPhenom","SubCell":"SubCell"}
-    p["display"]=p.family.map(canon)
-    rng=np.random.default_rng(20260818)
-    for i,family in enumerate(order):
-        vals=p.loc[p.display==family,"delta_nap_product"].to_numpy(); jitter=rng.uniform(-.16,.16,len(vals))
-        ax.scatter(i+jitter,vals,s=9,alpha=.40,color="#4C78A8",edgecolors="none")
-        ax.plot([i-.22,i+.22],[np.median(vals)]*2,color="#D55E00",lw=2.2)
-        ax.scatter(i,np.mean(vals),marker="D",s=20,color="black",zorder=3)
-    pooled=d["pooled"].iloc[0]
-    ax.axhline(0,color="black",lw=.8)
-    ax.set_ylim(-.0215,.0092)
-    ax.set_xticks(range(5),order,rotation=25,ha="right",fontsize=7.5)
-    ax.tick_params(axis="y",labelsize=7.5)
-    ax.set_ylabel("Matched NAP-product difference\n(MQ − D2-E8)",fontsize=8)
-    ax.set_title("Matched MQ − D2-E8 contrasts",fontsize=9,fontweight="bold")
-    ax.text(
-        .02,.98,
-        "Figure 3c pooled medians:\n"
-        f"MQ {pooled.mq_marginal_product_median:.5f} > D2-E8 {pooled.d2e8_marginal_product_median:.5f}\n"
-        f"Matched median {pooled.paired_product_median_delta:+.5f}; MQ higher in {pooled.paired_product_mq_greater_fraction*100:.0f}%",
-        transform=ax.transAxes,va="top",fontsize=6.8,
-        bbox={"facecolor":"white","edgecolor":"none","alpha":.82,"pad":1.5},
-    )
-    ax.text(.99,.02,"orange: median   ◆: mean",transform=ax.transAxes,ha="right",va="bottom",fontsize=6.4)
-    panel_label(ax,"A")
-
-    # B: inferential fixed-recipe sensitivity requested by reviewers.
-    ax=axes[1]
+    fig,ax=plt.subplots(figsize=(4.5,3.25))
+    fig.subplots_adjust(left=.25,right=.98,top=.82,bottom=.24)
     forest(
         ax,d["fixed"],"product_delta_mq_minus_d2e8","product_delta_ci_low",
         "product_delta_ci_high","product_supported_direction",
         "NAP-product difference (MQ − D2-E8)",
-        "Fixed-recipe bootstrap contrasts\n50,000 draws; * = Holm-supported",
+        "Fixed-recipe contrasts; 50,000 draws\n* = Holm-supported",
     )
-    ax.text(.01,-.24,"D2-E8 higher  ←",transform=ax.transAxes,ha="left",fontsize=6.5)
-    ax.text(.99,-.24,"→  MQ higher",transform=ax.transAxes,ha="right",fontsize=6.5)
-    panel_label(ax,"B")
-
-    fig.suptitle("Explaining Figure 3c",fontsize=12,fontweight="bold",y=.96)
-    fig.text(.5,.875,"The pooled MQ median does not imply a consistent codec advantage",ha="center",fontsize=9)
+    ax.xaxis.set_major_locator(MaxNLocator(5))
+    ax.text(.01,-.23,"D2-E8 higher  ←",transform=ax.transAxes,ha="left",fontsize=6.5)
+    ax.text(.99,-.23,"→  MQ higher",transform=ax.transAxes,ha="right",fontsize=6.5)
+    fig.suptitle("D2-E8 is not consistently higher than MQ",fontsize=10,fontweight="bold",y=.96)
     frozen_time=dt.datetime(2026,8,18,tzinfo=dt.timezone.utc)
     metadata={"Creator":"JUMP-lite mq_d2e8 synthesis","CreationDate":frozen_time,"ModDate":frozen_time}
     fig.savefig(pdf,metadata=metadata,bbox_inches="tight")
@@ -145,8 +110,6 @@ def make_figure(d:dict[str,pd.DataFrame], png:Path, pdf:Path)->None:
 
 def build_figure_data(d:dict[str,pd.DataFrame])->pd.DataFrame:
     rows=[]
-    for _,r in d["paired"].iterrows():
-        rows.append({"panel":"A","family":r.family,"unit":"matched_family_recipe","point":r.delta_nap_product,"low":np.nan,"high":np.nan,"detail":r.config})
     for _,r in d["fixed"].iterrows():
         rows.append({"panel":"B","family":r.family,"unit":"fixed_recipe_bootstrap","point":r.product_delta_mq_minus_d2e8,"low":r.product_delta_ci_low,"high":r.product_delta_ci_high,"detail":r.product_supported_direction})
     return pd.DataFrame(rows)
@@ -154,7 +117,7 @@ def build_figure_data(d:dict[str,pd.DataFrame])->pd.DataFrame:
 def caption_text()->str:
     return """# Supplementary Figure caption
 
-**Explaining Figure 3c.** **(A)** MQ-minus-D2-E8 NAP-product differences for 240 exactly matched family–recipe cells (five families by 48 deterministic recipes). Orange bars show family medians and black diamonds show means; the pooled medians in Figure 3c are 0.02406 for MQ and 0.02250 for D2-E8. Recipe cells are sensitivity settings, not biological replicates. **(B)** MQ-minus-D2-E8 contrasts after selecting one recipe per family using Zstd alone and fixing it across codecs. Points and bars show estimates and pointwise 95% intervals from 50,000 shared-weight paired cluster-bootstrap draws over 306 PA compounds and 201 PC targets; the asterisk denotes support after Holm adjustment across five families. Only MorphEM supports D2-E8 over MQ. PA and PC margins were resampled independently, omitting their unknown covariance; the intervals are conditional, and non-support is not equivalence.
+**D2-E8 is not consistently higher than MQ.** Fixed-recipe MQ-minus-D2-E8 contrasts with pointwise 95% paired-bootstrap intervals. Only MorphEM favors D2-E8 after Holm correction; the other four contrasts are unresolved.
 """
 
 def report_text(d:dict[str,pd.DataFrame])->str:
@@ -163,7 +126,7 @@ def report_text(d:dict[str,pd.DataFrame])->str:
 
 The apparent pooled inversion in Figure 3c is an aggregation result, not a general paired codec advantage. The pooled MQ and D2-E8 medians are {p.mq_marginal_product_median:.8f} and {p.d2e8_marginal_product_median:.8f}, while the median exact paired delta across 240 family/recipe cells is {p.paired_product_median_delta:+.8f}. Only MorphEM has a Holm-supported fixed-recipe product contrast, favoring D2-E8 ({fixed.loc['morphem','product_delta_mq_minus_d2e8']:+.5f}, pointwise 95% interval [{fixed.loc['morphem','product_delta_ci_low']:+.5f}, {fixed.loc['morphem','product_delta_ci_high']:+.5f}]).
 
-The active figure presents the two analyses that most directly explain Figure 3c: exact matched recipe cells and fixed-recipe uncertainty. Supporting archived analyses remain part of this verified synthesis: normalization effects are family-dependent (only 1/48 aligned recipe structures has a unanimous sign), plate/laboratory omission changes several signs, and the HQ/E3 comparison cannot identify effort because the historical default is unpinned and the codec grid is not factorial. Together these results support small-cohort aggregation and analysis-pipeline sensitivity, not denoising or biological improvement.
+The active figure presents only the fixed-recipe uncertainty analysis. Supporting archived analyses remain part of this verified synthesis: normalization effects are family-dependent (only 1/48 aligned recipe structures has a unanimous sign), plate/laboratory omission changes several signs, and the HQ/E3 comparison cannot identify effort because the historical default is unpinned and the codec grid is not factorial. Together these results support small-cohort aggregation and analysis-pipeline sensitivity, not denoising or biological improvement.
 """
 
 def write_json(path:Path,obj:Any)->None: path.write_text(json.dumps(obj,indent=2,sort_keys=True)+"\n")
@@ -191,7 +154,7 @@ def generate(input_root:Path,output:Path)->None:
         make_figure(d,stage/"mq_d2e8_synthesis.png",stage/"mq_d2e8_synthesis.pdf")
         build_figure_data(d).to_csv(stage/"figure_data.csv",index=False,float_format="%.12g",lineterminator="\n")
         (stage/"CAPTION.md").write_text(caption_text()); (stage/"REPORT.md").write_text(report_text(d))
-        write_json(stage/"provenance.json",{"analysis":"mq_d2e8_synthesis","protocol_version":2,"active_panels":["A_matched_family_recipe","B_fixed_recipe_bootstrap"],"inputs":records,"canonical_datasets_read":False,"family_order":FAMILY_ORDER,"qualifications":["recipe cells are deterministic sensitivities, not biological replicates","plate and laboratory are confounded","PA and PC bootstrap margins use a working-independence approximation","historical default effort is unpinned and the codec grid is not factorial","no denoising or biological improvement is inferred"]})
+        write_json(stage/"provenance.json",{"analysis":"mq_d2e8_synthesis","protocol_version":3,"active_panels":["B_fixed_recipe_bootstrap"],"inputs":records,"canonical_datasets_read":False,"family_order":FAMILY_ORDER,"qualifications":["recipe cells are deterministic sensitivities, not biological replicates","plate and laboratory are confounded","PA and PC bootstrap margins use a working-independence approximation","historical default effort is unpinned and the codec grid is not factorial","no denoising or biological improvement is inferred"]})
         write_checksums(stage); verify_release(stage)
         backup=output.with_name(output.name+".backup")
         if backup.exists(): shutil.rmtree(backup)
