@@ -1,0 +1,406 @@
+schema_version = 2
+package_version = "1.0"
+analysis_code_release = "v1.1"
+manuscript_commit = "20a1fdaf32a425b6e20c1e18fa12bbf193405518"
+manuscript_tree = "c1326175399d1f3253c42603cb5e3fb52e149778"
+cohort_label = "corrected JUMP-Lite v1.0 paper cohort"
+cohort_wells = 163776
+cohort_sites = 655101
+cohort_digest = "4ea6ea3f5457c33a1412a80a89d8696d4f8e77474cf449e75db7ce6ba98685e2"
+
+# repo:// paths resolve against the checkout containing the builder. Absolute
+# preparation paths are removed from the portable registry deposited in the
+# package. Multi-file groups are closed by a sorted path+size+SHA-256 digest.
+
+[[source]]
+id = "jump-lite-sweep-summary"
+role = "direct active-figure input: corrected JUMP-Lite sweep plotting table"
+cohort = "corrected-jump-lite"
+closure = "single-pinned"
+root = "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite/sweep_results.csv"
+destination = "compact/sweeps/jump_lite/sweep_results.csv"
+expected_sha256 = "305a9a09bbc9b1f403efa541b5e76e014b46280f96c66c978b44cbf7172dceec"
+expected_bytes = 10874858
+expected_rows = 7285
+
+[[source]]
+id = "target2-sweep-summary"
+role = "direct active-figure input: separate four-plate Target-2 sweep plotting table"
+cohort = "target2-four-plate"
+closure = "single-pinned"
+root = "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11/sweep_results.csv"
+destination = "compact/sweeps/target2/sweep_results.csv"
+expected_sha256 = "08923c7bd27bca54c0a3f484429ced31d1b48ad097c974773591a89ac63eb53a"
+expected_bytes = 1096114
+expected_rows = 2860
+
+[[source]]
+id = "strict-motive-summary"
+role = "direct active-figure input: strict MOTIVE eight-task plotting table"
+cohort = "strict-motive-evaluation"
+closure = "single-pinned"
+root = "/work/users/jfredinh/projects/cleaning-JUMP_CORE/aux_figures/motive_large_strict/motive_sweep_summary.csv"
+destination = "compact/motive/motive_sweep_summary.csv"
+expected_sha256 = "eb73b4bec7fe1ea20a77c01c8166ff31b71e8ef58a9e4c1b06fc11be62889ccb"
+expected_bytes = 8042437
+expected_rows = 58240
+expected_distinct_keys = 7280
+expected_tasks_per_key = 8
+key_columns = ["family", "codec", "config"]
+task_column = "task"
+
+[[source]]
+id = "mq-heatmap-final-presentation"
+role = "direct final main-text MQ heatmap presentation data and validation receipt; locked PNG excluded"
+cohort = "corrected-jump-lite"
+closure = "curated-subset"
+root = "/home/amunoz/Documents/broad/drafts/papers/jump-lite-wacv-figure-staging/s12-mq-codec-only-20260828-v1"
+destination = "compact/heatmaps/mq_final_presentation"
+files = ["README.md", "SHA256SUMS", "baseline_full_raw_values.csv", "layout_audit.json", "mq_retained_normalized_values.csv", "mq_retained_raw_values.csv", "mq_retained_task_max.csv", "validate.py", "validation.json"]
+subset_checksum_manifest = "SHA256SUMS"
+receipt_file = "validation.json"
+expected_json_values = { status = "PASS", "outputs.png.sha256" = "714f7ef0eb9f4ad6a62d19882e57dc830a455660d2c78540cd5ceb36cbbd3bf9", "inputs.refchem.sha256" = "305a9a09bbc9b1f403efa541b5e76e014b46280f96c66c978b44cbf7172dceec", "inputs.motive.sha256" = "eb73b4bec7fe1ea20a77c01c8166ff31b71e8ef58a9e4c1b06fc11be62889ccb" }
+lock_artifact_hashes = { "main/figures/main/fig5_heatmap/model_task_rank_best_avg_codec_mq.png" = "714f7ef0eb9f4ad6a62d19882e57dc830a455660d2c78540cd5ceb36cbbd3bf9" }
+expected_file_count = 9
+expected_bytes = 15548
+expected_inventory_sha256 = "b4e3cbae22c27ca35394dea88f6c1fb78cf884fb17de0e6299ad0cecb5d99979"
+
+[[source]]
+id = "analysis-metadata"
+role = "direct active-figure input: separate Target-2 and strict-MOTIVE annotations"
+cohort = "target2-and-strict-motive"
+closure = "curated-subset"
+root = "/work/users/jfredinh/projects/cleaning-JUMP_CORE/metadata"
+destination = "compact/analysis_metadata"
+files = ["metadata_dataset_filtered_4reps.parquet", "motive_annotations_strict.parquet"]
+expected_file_count = 2
+expected_bytes = 11752529
+expected_inventory_sha256 = "0331583ff5b328d18ee8c2ec6421b30962e88bc0e1c524d56fb876cef371de9c"
+
+[[source]]
+id = "image-quality"
+role = "direct active-figure input: Target-2 image-quality metrics"
+cohort = "target2-four-plate"
+closure = "single-pinned"
+root = "/work/users/jfredinh/projects/cleaning-JUMP_CORE/analysis/image_quality/output/quality_metrics.csv"
+destination = "compact/image_quality/quality_metrics.csv"
+expected_sha256 = "1bac02ffc9190dc8dab4ef2ec6a01dc2b02240b03211bfc7560bc1ab583483eb"
+expected_bytes = 224818
+
+[[source]]
+id = "segmentation-dataframes"
+role = "direct active-figure input: Target-2 cell/nuclei segmentation data"
+cohort = "target2-four-plate"
+closure = "curated-subset"
+root = "/work/users/jfredinh/projects/cleaning-JUMP_CORE/analysis/segmentation/output/segmentation_comparison"
+destination = "compact/segmentation"
+include = ["*.csv", "detailed_results/*.csv", "instance_mappings/*.parquet"]
+expected_file_count = 31
+expected_bytes = 600063999
+expected_inventory_sha256 = "e3cb652db05f24acfe865b44698043296df51d05253139978fee29ff8f4ec163"
+
+[[source]]
+id = "feature-similarity"
+role = "direct active-figure input: Target-2 cell/nuclei feature-similarity data"
+cohort = "target2-four-plate"
+closure = "curated-subset"
+root = "/work/users/jfredinh/projects/cleaning-JUMP_CORE/analysis/feature_similarity/output"
+destination = "compact/feature_similarity"
+include = ["cell/*.csv", "nuclei/*.csv", "feature_correlations.parquet", "raw_cp_spearman_correlation_results.parquet"]
+expected_file_count = 18
+expected_bytes = 171754971
+expected_inventory_sha256 = "5f50013825c56173650e3d6e361f69af5b3d3451dcf0a454e002c2287e953eea"
+
+[[source]]
+id = "codec-feature-correlation"
+role = "supporting/reusable Target-2 codec feature-correlation tables; selected active plots use this group"
+cohort = "target2-four-plate"
+closure = "curated-subset"
+root = "/work/users/jfredinh/projects/cleaning-JUMP_CORE/analysis/output"
+destination = "compact/codec_feature_correlation"
+files = ["codec_feature_correlation.csv", "codec_feature_correlation_site.csv", "codec_feature_correlation_feature_ranking.csv", "codec_feature_correlation_cell_site_large_diff_jpegxl_lossy_d10.csv", "codec_feature_correlation_cell_site_large_diff_jpegxl_lossy_lq.csv", "codec_feature_correlation_cell_site_large_diff_jpegxl_lossy_d2_e8.csv", "codec_feature_correlation_cell_site_large_diff_jpegxl_lossy_effort_3.csv", "codec_feature_correlation_cell_site_large_diff_jpegxl_lossy_hq.csv", "codec_feature_correlation_cell_site_large_diff_jpegxl_lossy_mq.csv"]
+expected_file_count = 9
+expected_bytes = 583015
+expected_inventory_sha256 = "941cfa7f42dbc22da441962e887ae6779dd89e5765fc5bda83c76aad069626cd"
+
+[[source]]
+id = "rank-stability"
+role = "supporting/reusable derived rank-stability tables; active plot maps to the JUMP-Lite sweep summary"
+cohort = "corrected-jump-lite"
+closure = "curated-subset"
+root = "/work/users/jfredinh/projects/cleaning-JUMP_CORE/analysis/output/rank_stability"
+destination = "compact/rank_stability"
+include = ["*.csv"]
+expected_file_count = 4
+expected_bytes = 200084
+expected_inventory_sha256 = "28a28e6888213969c506154039c52db2402f3b9cdf3abf636b939cd75fb41785"
+
+[[source]]
+id = "saturation-proper"
+role = "supporting/reusable persisted saturation tables; not a locked active-figure dependency"
+cohort = "target2-four-plate"
+closure = "curated-subset"
+root = "/work/users/jfredinh/projects/cleaning-JUMP_CORE/analysis/output/saturation_proper"
+destination = "compact/saturation"
+files = ["saturation_results.csv", "saturation_results_group_crispr.csv", "saturation_results_group_high.csv", "saturation_results_group_low.csv", "saturation_results_group_orf.csv"]
+expected_file_count = 5
+expected_bytes = 658682
+expected_inventory_sha256 = "636c2fd88db8034b296ddf441f739fdd2ab72f2a6b891a99d355e0f845449db4"
+
+[[source]]
+id = "cellpose-count"
+role = "direct active-figure scientific scores; intentionally excludes jobs, logs, old manuscript presentation, and upstream whole-run checksum"
+cohort = "corrected-jump-lite"
+closure = "curated-subset"
+root = "/work/scratch/amunoz/jump-lite-s12-cellpose-count-v1/results"
+destination = "compact/cellpose_count/core_scores"
+files = ["REPORT.md", "provenance.json", "expanded_sampling_manifest.parquet", "expanded_sampling_summary.csv", "normalization_denominators.csv", "cellpose_count_coverage.csv", "cellpose_count_task_scores.csv", "s12_revised_full_data_points.csv", "s12_revised_rank_summary.csv", "s12_revised_task_scores.csv"]
+expected_file_count = 10
+expected_bytes = 1418448
+expected_inventory_sha256 = "f1408fbd6b6264a94431bc2e70974262b3c66e9ec0ead188bc4aeba5cc867264"
+
+[[source]]
+id = "cellpose-final-figures"
+role = "direct final-presentation data and receipt for measured MQ Cellpose Counts rebuttal PDFs; rendered PDF/PNG bytes excluded"
+cohort = "corrected-jump-lite"
+closure = "curated-subset"
+root = "/work/scratch/amunoz/jump-lite-si-palette-v1/s12-s17"
+destination = "compact/cellpose_count/final_figures"
+files = ["normalization_denominators.csv", "render_checksums.json", "s12_revised_full_data_points.csv", "s12_revised_rank_summary.csv", "s12_revised_task_scores.csv"]
+receipt_file = "render_checksums.json"
+expected_json_values = { "model_task_rank_80pct_subsampling_mq.pdf" = "a2a0ccb1db5a687b4323e22bba7fb8b02d21e0eccb3ae91f6015142ade1a2d87", "model_task_rank_80pct_subsampling_raw.pdf" = "d94fab5fb9c656a2c03dc461870dd99ada37369b9952652fcba2f49ed713c15f" }
+lock_artifact_hashes = { "main/figures/rebuttal/model_task_rank_80pct_subsampling_mq.pdf" = "a2a0ccb1db5a687b4323e22bba7fb8b02d21e0eccb3ae91f6015142ade1a2d87", "main/figures/rebuttal/model_task_rank_80pct_subsampling_raw.pdf" = "d94fab5fb9c656a2c03dc461870dd99ada37369b9952652fcba2f49ed713c15f" }
+expected_file_count = 5
+expected_bytes = 276361
+expected_inventory_sha256 = "f7324f6626a927bfd61c85cd499e00832a4a13a4d29274071053335cdee517ce"
+
+[[source]]
+id = "cellpose-final-table"
+role = "direct final-presentation measured Cellpose Counts table data and receipt; generated/staging TeX excluded"
+cohort = "corrected-jump-lite"
+closure = "curated-subset"
+root = "/work/scratch/amunoz/jump-lite-si-palette-v1/manuscript-table"
+destination = "compact/cellpose_count/final_table"
+files = ["detailed_scores.csv", "displayed_winners.csv", "grouped_scores.csv", "render_summary.json"]
+receipt_file = "render_summary.json"
+expected_artifact_checksums = { "detailed_scores.csv" = "a5a81d46b170c792a7ba18173ebcabf6ff25911d286f062b75bd6efadc9c0f19", "displayed_winners.csv" = "7e363dd24ba2ae41e3f2113a850610db20a4937fd8c7b876a02c0f09f8d6ccc4", "grouped_scores.csv" = "461969320428fbf4924cb745107b8122a3185e6c7998bc1a2a9b7b0709cae5a3" }
+expected_json_lists = { mq_models = ["MorphEm", "DINOv2", "SubCell", "OpenPhenom", "ViT-rand", "Cellpose Counts"], raw_models = ["MorphEm", "DINOv2", "SubCell", "OpenPhenom", "ViT-rand", "CellCount", "CellProfiler"] }
+expected_file_count = 4
+expected_bytes = 17440
+expected_inventory_sha256 = "11a242dbb913bae6b0a5463e200d09e21b36fa634485d526f22cde9e53f8ab6e"
+
+[[source]]
+id = "cluster-selection"
+role = "direct active-figure profile-cluster representativeness release tables"
+cohort = "corrected-jump-lite"
+closure = "curated-subset"
+root = "repo://rebuttal/representativeness/outputs/profile_cluster_representativeness_release_v1"
+destination = "compact/cluster_selection"
+include = ["*.csv", "*.parquet", "*.json", "*.md"]
+expected_file_count = 19
+expected_bytes = 4132662
+expected_inventory_sha256 = "07392ca3e51e4269fa91e63d615567cf91c4b75b8f56fbb3bbb353b68e45c702"
+
+[[source]]
+id = "nonlite-pa-pc"
+role = "direct active-figure non-JUMP-lite comparison source and provenance"
+cohort = "broader-jump-currently-usable-nonlite"
+closure = "curated-subset"
+root = "/home/amunoz/Documents/broad/drafts/papers/jump-lite-wacv-figure-staging/s17-center-panel-titles-20260828-v1"
+destination = "compact/nonlite_pa_pc"
+files = ["nonlite_pa_pc_currently_usable_comparison_plotted_source.csv", "nonlite_pa_pc_currently_usable_comparison_provenance.json"]
+expected_file_count = 2
+expected_bytes = 6999
+expected_inventory_sha256 = "934de8d7185e9a5eaeb7819eff29f1189517e083bda4915f3c1ffbf3fc37a104"
+
+[[source]]
+id = "pretraining-overlap-n5"
+role = "direct active-figure complete N5 CHAMMI-exclusion aggregate snapshot"
+cohort = "strict-heldout-five-seed"
+closure = "complete-checksum-ledger"
+root = "/work/scratch/amunoz/jump-lite-chammi-exclusion-end-to-end-v1/aggregate-snapshots/N5"
+destination = "compact/pretraining_overlap_n5"
+include = ["*"]
+checksum_manifest = "SHA256SUMS"
+checksum_unlisted = ["completion.json"]
+expected_file_count = 13
+expected_bytes = 196819
+expected_inventory_sha256 = "2a40afa332d3304a3c0f152b7714a751438206cf71ca28dadd06871e1e18781b"
+
+[[source]]
+id = "target-overlap"
+role = "direct active-figure corrected JUMP-Lite cohort target-overlap inputs"
+cohort = "corrected-jump-lite"
+closure = "curated-subset"
+root = "repo://"
+destination = "compact/target_overlap"
+files = ["metadata/jump_lite_v1_perturbation_metadata.parquet", "data/refchemdb/refchemdb_conf_jump_matched.parquet"]
+expected_file_count = 2
+expected_bytes = 1565908
+expected_inventory_sha256 = "47b50c53c44b27693fceca36e4facc495c2ece0c418276f95f2383f3b59e8e6e"
+
+[[source]]
+id = "strict-heldout"
+role = "direct active-figure strict held-out plotting inputs"
+cohort = "strict-heldout-five-seed"
+closure = "curated-subset"
+root = "repo://paper_artifacts/strict_heldout/inputs"
+destination = "compact/strict_heldout"
+include = ["*.csv"]
+expected_file_count = 3
+expected_bytes = 9664
+expected_inventory_sha256 = "59e13777a55779ac9f08ded778ec43dc27e763fd639e4d2394bd73d4f44b105d"
+
+[[source]]
+id = "mq-d2e8-synthesis"
+role = "direct active-figure MQ/D2-E8 synthesis data and complete checksum closure"
+cohort = "corrected-jump-lite"
+closure = "complete-checksum-ledger"
+root = "repo://rebuttal/mq_d2e8_explanation/synthesis/outputs/release_v1"
+destination = "compact/mq_d2e8_synthesis"
+include = ["*"]
+json_checksum_manifest = "artifact_checksums.json"
+expected_file_count = 7
+expected_bytes = 114430
+expected_inventory_sha256 = "9d0fdaf2ed2099fc1de02c479f282d272b113b173f927b22af37f5363fd675e9"
+
+[[sweep]]
+id = "jump-lite-full-sweep"
+role = "curated complete corrected-cohort JUMP-Lite normalization sweep"
+cohort = "corrected-jump-lite"
+root = "/work/datasets/JUMP-lite-wacv/sweeps/variance_first_v11_lite"
+destination = "full_sweeps/jump_lite"
+expected_configs = 7285
+expected_outputs = 7284
+expected_summary_rows = 7285
+expected_summary_sha256 = "305a9a09bbc9b1f403efa541b5e76e014b46280f96c66c978b44cbf7172dceec"
+expected_configuration_sha256 = "ffd3fcec4832936f9110a15d238262fa1394e1afe18c46479cd5f48ddef68b17"
+expected_inventory_sha256 = "30a61e81b6b9737bd48a30022d977645e795ef3baa9e07da8171a52d06c250eb"
+expected_file_count = 77335
+expected_bytes = 1254027359298
+allowed_results = { "batch_effects.json" = 7285, "metrics.json" = 7285, "phenotypic_activity_group_summary.csv" = 7285, "phenotypic_activity_map.csv" = 7285, "phenotypic_activity_per_compound.csv" = 7285, "phenotypic_consistency_group_summary.csv" = 7285, "phenotypic_consistency_per_target.csv" = 7285, "phenotypic_consistency_replicable_group_summary.csv" = 5885, "phenotypic_consistency_replicable_per_target.csv" = 5885 }
+allowed_missing_output = ["morphem_jump_lite_updated_jpegxl_lossy_mq_raw_features/robustmad_ctrl__tvn_efaar_e0.2_c256"]
+
+[[sweep]]
+id = "target2-full-sweep"
+role = "curated complete separate four-plate Target-2 normalization sweep"
+cohort = "target2-four-plate"
+root = "/work/datasets/JUMP-lite-wacv/sweeps/MAIN_RESULTS__figure_4_variance_first_v11"
+destination = "full_sweeps/target2"
+expected_configs = 2860
+expected_outputs = 2860
+expected_summary_rows = 2860
+expected_summary_sha256 = "08923c7bd27bca54c0a3f484429ced31d1b48ad097c974773591a89ac63eb53a"
+expected_configuration_sha256 = "260e7afe537cc8455586bedd2438f6317f981bd14f008f0c5c53d7308d50233a"
+expected_inventory_sha256 = "d59284878ab8c5502b64c64ead87f6f5bfb3c23d9b842fdbdfcf6ef887df8c6c"
+expected_file_count = 19761
+expected_bytes = 4501923487
+allowed_results = { "metrics.json" = 2860, "phenotypic_activity_map.csv" = 2860, "phenotypic_activity_per_compound.csv" = 2860, "phenotypic_consistency_per_target.csv" = 2860, "phenotypic_consistency_replicable_per_target.csv" = 2600 }
+allowed_missing_output = []
+
+# Each mode=generated lock entry is mapped independently or in a narrow,
+# scientifically identical pair. Supporting groups need not appear here.
+[[figure_map]]
+producer = "paper-post-sweep"
+artifacts = ["main/figures/main/fig3_segmentation_correlation/codec_balanced_absolute_boxen_y0.png"]
+source_ids = ["codec-feature-correlation", "feature-similarity"]
+
+[[figure_map]]
+producer = "paper-post-sweep"
+artifacts = ["main/figures/main/fig3_segmentation_correlation/correlation_boxenplot_greenlist.png"]
+source_ids = ["codec-feature-correlation", "feature-similarity"]
+
+[[figure_map]]
+producer = "paper-post-sweep"
+artifacts = ["main/figures/main/fig3_segmentation_correlation/segmentation_ap_iou50_combined.png", "main/figures/main/fig3_segmentation_correlation/segmentation_iou_cell_level_tp_only.png", "main/figures/rebuttal/iou_ablation_accuracy.png"]
+source_ids = ["segmentation-dataframes"]
+
+[[figure_map]]
+producer = "paper-post-sweep"
+artifacts = ["main/figures/main/fig4_codec_delta/codec_delta_from_raw_groups_abs_only_3x2.png"]
+source_ids = ["analysis-metadata", "target2-sweep-summary"]
+
+[[figure_map]]
+producer = "paper-post-sweep"
+artifacts = ["main/figures/main/fig5_heatmap/model_task_rank_best_avg_codec_mq.png"]
+source_ids = ["jump-lite-sweep-summary", "mq-heatmap-final-presentation", "strict-motive-summary"]
+
+[[figure_map]]
+producer = "paper-post-sweep"
+artifacts = ["main/figures/main/fig5_heatmap/model_task_rank_best_avg_codec_raw.png"]
+source_ids = ["jump-lite-sweep-summary", "strict-motive-summary"]
+
+[[figure_map]]
+producer = "paper-post-sweep"
+artifacts = ["main/figures/main/fig6_full_jumplite_sweep/motive_cross_task_at_1pct_best_avg_codec_raw_mq_noORF.png", "main/figures/rebuttal/motive_codec_delta_from_raw_groups_abs_only_1pct_noORF.png", "main/figures/rebuttal/motive_sweep_recall_at_1pct_noORF.png"]
+source_ids = ["jump-lite-sweep-summary", "strict-motive-summary"]
+
+[[figure_map]]
+producer = "paper-post-sweep"
+artifacts = ["main/figures/main/fig6_full_jumplite_sweep/sweep_nap_pa_vs_pc_panel_a_best_avg_codec_raw_mq.png", "main/figures/rebuttal/sweep_group_nap_compact_best_avg_codec.png"]
+source_ids = ["jump-lite-sweep-summary"]
+
+[[figure_map]]
+producer = "cluster-selection-coverage"
+artifacts = ["main/figures/rebuttal/figure_s16_umap_cluster_annotation_coverage.pdf"]
+source_ids = ["cluster-selection"]
+
+[[figure_map]]
+producer = "cellpose-count-subsampling"
+artifacts = ["main/figures/rebuttal/model_task_rank_80pct_subsampling_mq.pdf", "main/figures/rebuttal/model_task_rank_80pct_subsampling_raw.pdf"]
+source_ids = ["cellpose-count", "cellpose-final-figures"]
+
+[[figure_map]]
+producer = "cellpose-count-subsampling"
+artifacts = ["main/sections/figures/figure5_s16_subsampling_scores.tex"]
+source_ids = ["cellpose-count", "cellpose-final-table"]
+
+[[figure_map]]
+producer = "mq-d2e8-synthesis"
+artifacts = ["main/figures/rebuttal/mq_d2e8_synthesis.pdf"]
+source_ids = ["mq-d2e8-synthesis"]
+
+[[figure_map]]
+producer = "nonlite-pa-pc"
+artifacts = ["main/figures/rebuttal/nonlite_pa_pc_currently_usable_comparison.pdf"]
+source_ids = ["nonlite-pa-pc"]
+
+[[figure_map]]
+producer = "pretraining-overlap-end-to-end"
+artifacts = ["main/figures/rebuttal/pretraining_overlap_sensitivity.pdf"]
+source_ids = ["pretraining-overlap-n5"]
+
+[[figure_map]]
+producer = "paper-post-sweep"
+artifacts = ["main/figures/rebuttal/rank_stability_correlation_scatter_all_configs.png"]
+source_ids = ["jump-lite-sweep-summary"]
+
+[[figure_map]]
+producer = "strict-heldout"
+artifacts = ["main/figures/rebuttal/strict_selection_heldout_pa_pc.pdf"]
+source_ids = ["strict-heldout"]
+
+[[figure_map]]
+producer = "paper-post-sweep"
+artifacts = ["main/figures/supplementary/replicate_vs_codec_correlation.png"]
+source_ids = ["feature-similarity"]
+
+[[figure_map]]
+producer = "paper-post-sweep"
+artifacts = ["main/figures/supplementary/ssim_violin.png"]
+source_ids = ["image-quality"]
+
+[[figure_map]]
+producer = "paper-post-sweep"
+artifacts = ["main/figures/supplementary/sweep_nap_pa_vs_pc_combined_best_avg_codec_including_d15_d30.png"]
+source_ids = ["analysis-metadata", "target2-sweep-summary"]
+
+[[figure_map]]
+producer = "target-overlap"
+artifacts = ["main/figures/supplementary/target_all_sources_filtered_supervenn.png"]
+source_ids = ["target-overlap"]
+
+[[figure_map]]
+producer = "paper-post-sweep"
+artifacts = ["main/tables/combined_codec_delta_pct_table_summary.tex", "main/tables/performance_delta_table_combined_full.tex"]
+source_ids = ["analysis-metadata", "jump-lite-sweep-summary", "strict-motive-summary", "target2-sweep-summary"]

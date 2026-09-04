@@ -116,9 +116,11 @@ in [`reproducibility/validation/dataset-smoke-20260901.json`](reproducibility/va
 For figures and tables, `just artifacts-list` inventories active-paper and
 supporting bundles, `just artifacts-verify` performs non-mutating checksum and
 provenance verification, and `just paper-artifacts-verify` checks the exact 39
-figures and three generated tables in the final manuscript. Full commands,
-inputs, safety rules, known external snapshots, and validation scope are in
-[REPRODUCE.md](REPRODUCE.md).
+figures and three generated tables in the final manuscript. Maintainers can run
+`just cpg-reproducibility-plan` to validate the closed local two-tier publication
+inventory (compact plotting inputs plus path/size-pinned curated full sweeps)
+without copying or uploading data. Full commands, inputs, safety rules, known external snapshots,
+and validation scope are in [REPRODUCE.md](REPRODUCE.md).
 
 ## Citation
 

@@ -105,9 +105,72 @@ complete finalization checklist is below.
   per-site object features, and canonical compact profiles, then writes
   deterministic, source-stat-bound manifests and provenance without
   regenerating any analysis output.
+- `build_paper_reproducibility_release.py` and
+  `paper_reproducibility_sources.toml`: local-only, no-upload preparation of the
+  compact plot-data package and curated JUMP-Lite/Target-2 scientific sweeps.
+  The builder is create-only: its default auto mode reflinks same-filesystem
+  inputs, copies only cross-filesystem compact inputs, and publishes only after
+  complete local verification and an atomic rename.
 - `upload_target2_artifacts_to_staging.py`: dry-run-by-default, checkpointed
   Target-2 uploader. It withholds package metadata until data upload and exact
   remote key/size/SHA-256 verification complete.
+
+## Local paper-data package (no upload)
+
+The paper-data builder is deliberately separate from every uploader in this
+directory. Planning hashes and closes 147 compact inputs (813,005,786 bytes),
+validates the exact 7,285 and 2,860 configuration/path-size closures and
+allowlisted result-leaf counts, and records the one declared JUMP-Lite
+configuration without a retained `output.parquet`. It does not hash or copy the
+approximately 1.25 TB full-sweep payloads:
+
+```bash
+just cpg-reproducibility-plan
+```
+
+After review, build into the absent default destination and verify every byte:
+
+```bash
+just cpg-reproducibility-build
+just cpg-reproducibility-verify
+```
+
+Metadata is deterministic: an explicit `source_date_epoch` recipe argument wins,
+then inherited `SOURCE_DATE_EPOCH`, then the committed Git `HEAD` timestamp.
+Verification optionally accepts `expected_manifest_sha256=<sha256>` as an
+external attestation. The package embeds the manuscript lock and a portable,
+root-redacted source registry. Manifest field `analysis_code_release` names the
+published v1.1 analysis release, while `packaging_code_git_commit` names the
+exact later commit containing the packaging implementation. Build requires the
+builder and registry bytes to be committed unchanged at that `HEAD`.
+
+The final destination must be a new path below
+`/work/datasets/jump_lite/cpg_release`; custom basenames round-trip through the
+verifier. The builder refuses symlinks and overlap, opens sources with
+`O_NOFOLLOW`, binds copying to the validated descriptor, and preflights each
+selected mode/source-filesystem pair with distinct inodes and exact content.
+Default `copy_mode=auto` reflinks same-filesystem inputs and ordinarily copies
+only cross-filesystem compact inputs; it refuses a cross-filesystem full sweep.
+Strict `copy_mode=reflink` refuses every cross-filesystem input, while physically
+copying all inputs requires explicit `copy_mode=copy`. Compact table metadata,
+row contracts, and manifest record shapes are validated before the build lock,
+temporary tree, or payload materialization. The builder checks descriptor and
+pathname identity after materialization, records lock/temp device
+and inode identities, fsyncs, fully verifies, and publishes with Linux
+`renameat2(RENAME_NOREPLACE)`. Failed-run temp/lock cleanup is identity-checked,
+best-effort hygiene rather than a security boundary; the final output path is
+never overwritten or deleted. The builder never merges, resumes, contacts a
+network, or uploads.
+
+The strict-MOTIVE plotting CSV is the accepted 58,240-row table with 7,280
+`(family, codec, config)` keys and eight task rows per key; 1,055 describes the
+separate retained metrics tree, not this table. Corrected JUMP-Lite, four-plate
+Target-2, held-out, and broader-JUMP/nonlite cohorts remain explicitly labeled.
+Cellpose core scores exclude old presentation files. Final measured-Cellpose
+figure receipts/data and measured manuscript-table CSV/JSON are packaged from
+the accepted `jump-lite-si-palette-v1` snapshots; the stale caret-marker source
+and staging/final TeX are excluded. A separate closed main-text MQ heatmap subset
+retains the receipt proving its omitted PNG hash matches the manuscript lock.
 
 ## 1. Reconcile site sets when inputs change
 

@@ -73,6 +73,14 @@ losslessly and matched all 24 canonical site trees byte-for-byte, including Zarr
 metadata and compressed chunks. The portable source/output hashes, public-download receipt, and environment are retained in
 `reproducibility/validation/dataset-smoke-20260901.json`; the ignored local run
 report is `data/generated/dataset-smoke/validation-20260901-v4/reproduction_report.json`.
+The attestation's whole-`justfile` SHA-256 remains the immutable record of the
+exact file used for that execution. Compatibility checks locate that retained
+Git blob and require the current `dataset-smoke` and `dataset-smoke-local` recipe
+headers and bodies to remain byte-identical, while permitting unrelated public
+recipes to be added. The called Python sources and `uv.lock` remain bound by
+their original whole-file hashes. Therefore unrelated recipe additions do not
+claim a new smoke execution or require one; a changed smoke recipe, called
+source, or lock still fails closed and requires fresh public and local runs.
 This source-stratified test covers every release source, channel, and published
 image codec, but it is a structural smoke test rather than a statistically
 representative biological sample or a replacement for whole-release validation.
@@ -178,7 +186,10 @@ Canonical sweep archives are read-only inputs. The known local archive roots are
 
 The production strict MOTIVE tree has historically lived in a collaborator
 checkout and still needs a stable public archive. Do not substitute the reduced
-60-file public smoke tree for the 1,055-file production top-config tree.
+60-file public smoke tree for the 1,055-file retained evaluation tree. That
+1,055-file count describes retained metrics, not the accepted plotted-summary
+cardinality: the pinned summary has 58,240 rows, 7,280 distinct
+`(family, codec, config)` keys, and exactly eight task rows per key.
 
 Example staging:
 
@@ -227,7 +238,87 @@ those isolated summaries explicitly.
 It writes to `data/results/` and to new derived subdirectories under
 `data/intermediate/`; it does not modify the staged sweep or evaluation roots.
 
-## 5. Full production
+## 5. Prepare the two-tier CPG paper-data package
+
+This maintainer-only workflow packages the direct plotting data for all 28
+`mode=generated` manuscript assets and curated scientific contents from both
+normalization sweeps. It never invokes a producer or uploader. First perform the
+read-only production inventory:
+
+```bash
+just cpg-reproducibility-plan
+```
+
+Planning validates pinned sweep summaries, all closed compact source
+inventories, exact 7,285 JUMP-Lite and 2,860 Target-2 configuration sets, and
+the sole declared JUMP-Lite metrics-without-output configuration. It hashes the
+147 compact files (813,005,786 bytes) but does not hash approximately 1.25 TB of
+full-sweep payloads. The sweeps instead fail closed on sorted configuration and
+relative-path/size digests, total files/bytes, and exact allowlisted result-leaf
+counts. Orphan results, renamed configurations, missing auxiliary results,
+backups, or logs under `results/` are errors.
+
+The strict-MOTIVE compact input retains accepted SHA-256
+`eb73b4bec7fe1ea20a77c01c8166ff31b71e8ef58a9e4c1b06fc11be62889ccb`
+and is checked for 58,240 rows, 7,280 distinct `(family, codec, config)` keys,
+and eight rows per key. The separate 1,055-metrics retained tree is not used as
+this table's cardinality.
+
+Only after reviewing the plan, create the absent destination and rehash it:
+
+```bash
+# By default, package metadata uses the committed HEAD timestamp.
+just cpg-reproducibility-build
+# Optional explicit deterministic epoch:
+just cpg-reproducibility-build source_date_epoch=1788547200
+just cpg-reproducibility-verify
+# Optional external manifest attestation:
+just cpg-reproducibility-verify expected_manifest_sha256=<sha256>
+```
+
+`SOURCE_DATE_EPOCH` is also honored when no recipe argument is supplied; if
+neither is set, the committed Git `HEAD` timestamp is used. The package embeds
+the manuscript lock and a portable source registry with preparation-host roots
+removed. Its `analysis_code_release` is the published `v1.1` analysis release;
+`packaging_code_git_commit` separately identifies the exact later commit that
+implemented this packaging workflow. Build refuses to run unless the builder and
+source registry bytes are present unchanged in that `HEAD` commit. Compact CSV/Parquet schema and row metadata are recomputed by the
+verifier. Full sweeps include `output.parquet` when retained,
+`pipeline_config.yaml`, and only explicitly allowlisted `results/*` scientific
+leaves; pipeline caches, plots, backup summaries, logs, and transient state are
+excluded.
+
+The compact package labels corrected JUMP-Lite, four-plate Target-2,
+strict-MOTIVE, strict-heldout, and broader-JUMP/nonlite cohorts separately.
+Saturation and unconsumed codec/rank tables are supporting reusable data, not
+claimed active-figure dependencies. Cellpose scientific scores are separate from
+the final measured-Cellpose figure data/receipt in
+`jump-lite-si-palette-v1/s12-s17` and measured manuscript-table CSV/JSON receipt.
+The old caret-marker presentation is excluded, as are staging/final TeX bytes.
+The main-text MQ heatmap has its own closed CSV/JSON/README/validation subset;
+its receipt binds the omitted PNG hash
+`714f7ef0eb9f4ad6a62d19882e57dc830a455660d2c78540cd5ceb36cbbd3bf9`
+to the manuscript lock.
+
+The final path must be new and below
+`/work/datasets/jump_lite/cpg_release`; custom basenames are supported. Existing
+paths, symlink components, nonregular sources, collisions, traversal, source
+mutation, and source/output overlap fail closed. Default `copy_mode=auto`
+reflinks same-filesystem files and copies only cross-filesystem compact inputs;
+it refuses to copy a cross-filesystem full sweep. Strict `copy_mode=reflink`
+refuses any cross-filesystem source, and physical copying of every input requires
+explicit `copy_mode=copy`. Every selected mode/source-filesystem pair is
+preflighted for independent inodes and exact content. Compact table metadata,
+row contracts, and manifest record shapes are validated before the build lock,
+temporary tree, or payload materialization. Build uses descriptor-bound inputs,
+create-exclusive lock/temp identities,
+fsync, complete self-verification, and Linux
+`renameat2(RENAME_NOREPLACE)`. Failed-run temp/lock cleanup performs a
+best-effort device/inode identity check; it is hygiene, not a security boundary.
+The final output path is never overwritten or deleted, and builds never merge or
+resume.
+
+## 6. Full production
 
 Only use this path when the raw inputs, storage, GPUs, model servers, and runtime
 have been planned:
@@ -251,7 +342,7 @@ just aliby-featurize     # requires the external Aliby/Nahual GPU deployment
 The full path is operational production, not a smoke test. It can write hundreds
 of GB and use multiple GPUs.
 
-## 6. Rebuttal-derived active figures
+## 7. Rebuttal-derived active figures
 
 Later WACV analyses are self-contained under `rebuttal/` and are registered in
 `artifacts.toml`. Managed bundles expose both isolated regeneration and
@@ -274,7 +365,7 @@ as external snapshots and `paper_artifacts.lock.json` still verifies their exact
 published bytes. They should be promoted into managed repository bundles before
 claiming a fully public clean-checkout regeneration of every active figure.
 
-## 7. Validation and caveats
+## 8. Validation and caveats
 
 - Never silently intersect incomplete Target-2 codec outputs.
 - Keep canonical raw features, sweep trees, and accepted checkpoints read-only.

@@ -65,6 +65,7 @@
                 uv
                 pixi
                 pkgs.gcc
+                pkgs.git
                 pkgs.pixi
                 duckdb
               ]

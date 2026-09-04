@@ -1140,6 +1140,30 @@ artifacts-regenerate bundle output_root="data/generated/artifacts":
 paper-artifacts-verify manuscript_root:
     uv run python scripts/manage_artifacts.py verify-paper --manuscript-root {{ manuscript_root }}
 
+# Plan the local two-tier paper-data package without copying sweep payloads.
+cpg-reproducibility-plan:
+    uv run python cpg_upload/build_paper_reproducibility_release.py plan
+
+# Build once, locally, below the guarded CPG release root. No upload is performed.
+cpg-reproducibility-build output="/work/datasets/jump_lite/cpg_release/paper_artifacts/v1.0" copy_mode="auto" source_date_epoch="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    args=(build --output {{ quote(output) }} --copy-mode {{ quote(copy_mode) }})
+    if [[ -n {{ quote(source_date_epoch) }} ]]; then
+        args+=(--source-date-epoch {{ quote(source_date_epoch) }})
+    fi
+    uv run python cpg_upload/build_paper_reproducibility_release.py "${args[@]}"
+
+# Read-only complete hash and closure verification of a prepared package.
+cpg-reproducibility-verify root="/work/datasets/jump_lite/cpg_release/paper_artifacts/v1.0" expected_manifest_sha256="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    args=(verify --root {{ quote(root) }})
+    if [[ -n {{ quote(expected_manifest_sha256) }} ]]; then
+        args+=(--expected-manifest-sha256 {{ quote(expected_manifest_sha256) }})
+    fi
+    uv run python cpg_upload/build_paper_reproducibility_release.py "${args[@]}"
+
 # ═══════════════════════════════════════════════════════════════
 # Section 12: Auxiliary
 # ═══════════════════════════════════════════════════════════════

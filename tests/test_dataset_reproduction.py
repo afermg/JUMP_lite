@@ -4,6 +4,7 @@ import hashlib
 import importlib.util
 import json
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -212,6 +213,57 @@ def test_release_d20_codec_is_exposed() -> None:
     assert "jpegxl_lossy_d20" in compress.available_compressors()
 
 
+def historical_git_file_with_sha256(relative: str, expected: str) -> bytes:
+    commits = subprocess.run(
+        ["git", "-C", str(REPO), "log", "--all", "--format=%H", "--", relative],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    for commit in commits:
+        result = subprocess.run(
+            ["git", "-C", str(REPO), "show", f"{commit}:{relative}"],
+            check=False,
+            capture_output=True,
+        )
+        if (
+            result.returncode == 0
+            and hashlib.sha256(result.stdout).hexdigest() == expected
+        ):
+            return result.stdout
+    raise AssertionError(f"attested historical Git file is unavailable: {relative}")
+
+
+def just_recipe_contract(text: str, recipe: str) -> str:
+    lines = text.splitlines()
+    prefix = f"{recipe}"
+    for index, line in enumerate(lines):
+        if line.startswith(prefix) and line[len(prefix) : len(prefix) + 1] in {
+            ":",
+            " ",
+        }:
+            body = [line]
+            pending_blank: list[str] = []
+            for candidate in lines[index + 1 :]:
+                if not candidate.strip():
+                    pending_blank.append(candidate)
+                elif candidate.startswith((" ", "\t")):
+                    body.extend(pending_blank)
+                    pending_blank.clear()
+                    body.append(candidate)
+                else:
+                    break
+            return "\n".join(body) + "\n"
+    raise AssertionError(f"just recipe is unavailable: {recipe}")
+
+
+def test_just_recipe_contract_includes_blank_separated_commands() -> None:
+    text = "dataset-smoke:\n    echo first\n\n    echo second\nnext-recipe:\n    true\n"
+    assert just_recipe_contract(text, "dataset-smoke") == (
+        "dataset-smoke:\n    echo first\n\n    echo second\n"
+    )
+
+
 def test_recorded_dataset_smoke_attestation_matches_implementation() -> None:
     path = REPO / "reproducibility/validation/dataset-smoke-20260901.json"
     attestation = json.loads(path.read_text())
@@ -229,8 +281,18 @@ def test_recorded_dataset_smoke_attestation_matches_implementation() -> None:
     for relative in (
         "src/compress_tif_release.py",
         "scripts/reproduce_dataset_sample.py",
-        "justfile",
         "uv.lock",
     ):
         expected = attestation["implementation"][f"{relative}_sha256"]
         assert smoke.sha256_file(REPO / relative) == expected
+
+    # Preserve the whole-file digest as the exact execution-time record, while
+    # allowing unrelated public recipes to be added later. The retained Git blob
+    # must still exist, and both smoke entry points must remain byte-identical.
+    expected = attestation["implementation"]["justfile_sha256"]
+    historical = historical_git_file_with_sha256("justfile", expected).decode()
+    current = (REPO / "justfile").read_text()
+    for recipe in ("dataset-smoke", "dataset-smoke-local"):
+        assert just_recipe_contract(current, recipe) == just_recipe_contract(
+            historical, recipe
+        )
