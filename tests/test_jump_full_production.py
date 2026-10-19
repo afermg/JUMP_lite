@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
+from dataclasses import replace
+from functools import partial
+import io
 import json
 import os
 from pathlib import Path
@@ -13,6 +17,7 @@ from unittest import mock
 
 import numpy as np
 from PIL import Image
+from botocore.exceptions import ClientError, EndpointConnectionError
 import polars as pl
 
 from jump_full_compression.model import (
@@ -20,7 +25,8 @@ from jump_full_compression.model import (
     ProductionConfig,
     sha256_file,
 )
-from jump_full_compression.pipeline import STOP
+from jump_full_compression.pipeline import STOP, read_source
+from jump_full_compression.incidents import SourceIncidentError, load_incidents
 from jump_full_compression.production import (
     ManifestSnapshot,
     _load_producer,
@@ -29,11 +35,13 @@ from jump_full_compression.production import (
     _validate_identity,
     _verify_receipt_signature,
     acknowledge_production_errors,
+    acknowledge_production_source_incidents,
     authorize_continuous,
     bootstrap_production,
     finalize_validation,
     migrate_producer,
     run_production,
+    production_status,
     verify_tranche,
 )
 
@@ -148,6 +156,760 @@ class ProductionRunnerTests(unittest.TestCase):
             "feature_processes_mutated": False,
         }
         (config.state_root / "control.json").write_text(json.dumps(control))
+
+    def _remote_config(self, sites=1, *, policy="stop", max_missing_fraction=0.05):
+        self.source_payloads = [
+            Path(uri.removeprefix("file://")).read_bytes() for uri in self.images
+        ]
+        self.images = [
+            f"s3://cellpainting-gallery/public/site-0/channel-{index}.tif"
+            for index in range(5)
+        ]
+        config = self._config(sites)
+        rows = pl.read_parquet(config.manifest).to_dicts()
+        for row in rows:
+            for key in row:
+                if key.startswith("URL_"):
+                    row[key] = row[key].replace(
+                        "site-0/", f"site-{row['Metadata_Site']}/"
+                    )
+        pl.DataFrame(rows).write_parquet(config.manifest)
+        return replace(
+            config,
+            manifest_sha256=sha256_file(config.manifest),
+            manifest_size=config.manifest.stat().st_size,
+            missing_source_policy=policy,
+            max_missing_fraction=max_missing_fraction,
+        )
+
+    @contextmanager
+    def _source_reads(
+        self,
+        missing=(1, 3),
+        *,
+        missing_sites=None,
+        error_code="NoSuchKey",
+        http_status=404,
+        head_error_code="NotFound",
+        head_status=404,
+        head_present=False,
+    ):
+        def get_object(**kwargs):
+            index = int(kwargs["Key"].rsplit("-", 1)[1].split(".")[0])
+            site = int(kwargs["Key"].split("site-")[1].split("/")[0])
+            if index in missing and (missing_sites is None or site in missing_sites):
+                raise ClientError(
+                    {
+                        "Error": {
+                            "Code": error_code,
+                            "Message": "SECRET signed-url?X-Amz-Signature=PRIVATE",
+                        },
+                        "ResponseMetadata": {
+                            "HTTPStatusCode": http_status,
+                            "RetryAttempts": 2,
+                            "RequestId": "SECRET",
+                            "HTTPHeaders": {"authorization": "PRIVATE"},
+                        },
+                    },
+                    "GetObject",
+                )
+            payload = self.source_payloads[index]
+            return {
+                "Body": io.BytesIO(payload),
+                "ContentLength": len(payload),
+                "ETag": '"etag"',
+            }
+
+        def head_object(**kwargs):
+            if head_present:
+                return {"ContentLength": 100}
+            raise ClientError(
+                {
+                    "Error": {"Code": head_error_code, "Message": "SECRET"},
+                    "ResponseMetadata": {
+                        "HTTPStatusCode": head_status,
+                        "RetryAttempts": 0,
+                    },
+                },
+                "HeadObject",
+            )
+
+        client = mock.Mock(
+            get_object=mock.Mock(side_effect=get_object),
+            head_object=mock.Mock(side_effect=head_object),
+        )
+        with (
+            mock.patch(
+                "jump_full_compression.pipeline._s3_client", return_value=client
+            ),
+            mock.patch(
+                "jump_full_compression.production._s3_client", return_value=client
+            ),
+            mock.patch(
+                "jump_full_compression.pipeline.read_source",
+                partial(read_source, sleep=lambda _: None),
+            ),
+        ):
+            yield client
+
+    def _source_incident(self, config):
+        with (
+            self._identity_patch(),
+            self._source_reads(),
+            self.assertRaises(SourceIncidentError),
+        ):
+            run_production(config, 1, True)
+        return load_incidents(config)
+
+    def _ack_sources(self, config, ledger, apply=True):
+        with self._identity_patch():
+            return acknowledge_production_source_incidents(
+                config,
+                ledger["count"],
+                ledger["list_sha256"],
+                apply,
+            )
+
+    def test_missing_source_receipt_preserves_checkpoint_and_groups_channels(self):
+        config = self._remote_config()
+        self._bootstrap(config)
+        checkpoint_path = config.state_root / "checkpoint.json"
+        before = checkpoint_path.read_bytes()
+        ledger = self._source_incident(config)
+        self.assertEqual(checkpoint_path.read_bytes(), before)
+        self.assertEqual(ledger["count"], 1)
+        self.assertEqual(ledger["unacknowledged_count"], 1)
+        receipt_bytes = (
+            config.state_root / "source-incidents/00000001.json"
+        ).read_bytes()
+        receipt = json.loads(receipt_bytes)
+        self.assertEqual(receipt["checkpoint_sha256"], sha256_file(checkpoint_path))
+        self.assertEqual(receipt["boundary"]["next_index"], 0)
+        self.assertEqual(receipt["boundary"]["completed_tranches"], 0)
+        self.assertEqual(receipt["object_count"], 2)
+        site = receipt["sites"][0]
+        self.assertEqual(site["manifest_index"], 0)
+        self.assertEqual(site["site_key"], "source_1__Batch1__P0001__A01__0")
+        self.assertEqual(
+            [failure["channel"] for failure in site["failures"]], ["DNA", "Mito"]
+        )
+        for failure, index in zip(site["failures"], (1, 3)):
+            self.assertEqual(failure["uri"], self.images[index])
+            self.assertEqual(failure["attempt_count"], 5)
+            self.assertEqual(
+                [a["attempt"] for a in failure["attempts"]], list(range(1, 6))
+            )
+            self.assertEqual(
+                [a["retry_delay_seconds"] for a in failure["attempts"]],
+                [0.5, 1.0, 2.0, 4.0, 0.0],
+            )
+            self.assertTrue(
+                all(
+                    a["error_code"] == "NoSuchKey"
+                    and a["http_status"] == 404
+                    and a["sdk_retry_attempts"] == 2
+                    for a in failure["attempts"]
+                )
+            )
+        self.assertNotIn(b"SECRET", receipt_bytes)
+        self.assertNotIn(b"PRIVATE", receipt_bytes)
+        self.assertNotIn(b"Signature", receipt_bytes)
+        self.assertFalse(list((config.output_root / "tranches").iterdir()))
+        self.assertFalse(list((config.output_root / ".staging").iterdir()))
+        self.assertFalse(list((config.output_root / "codecs").glob("*/*")))
+
+    def test_source_incident_ack_is_exact_and_never_skips(self):
+        config = self._remote_config()
+        self._bootstrap(config)
+        ledger = self._source_incident(config)
+        for count, digest in (
+            (0, ledger["list_sha256"]),
+            (2, ledger["list_sha256"]),
+            (1, "0" * 64),
+        ):
+            with (
+                self._identity_patch(),
+                self.assertRaisesRegex(RuntimeError, "exact source incident"),
+            ):
+                acknowledge_production_source_incidents(config, count, digest, True)
+        # Neither a fresh governor control nor the generic counter ACK bypasses it.
+        with self._identity_patch():
+            acknowledge_production_errors(config, 0, True)
+        self._unpause(config)
+        with (
+            self._identity_patch(),
+            mock.patch("jump_full_compression.production.decode_stack") as decode,
+        ):
+            with self.assertRaises(SourceIncidentError):
+                run_production(config, 1, True)
+            decode.assert_not_called()
+        self.assertEqual(
+            self._ack_sources(config, ledger, False)["status"],
+            "would-acknowledge-source-incidents",
+        )
+        self.assertFalse(
+            (config.state_root / "source-incidents/acknowledgement.json").exists()
+        )
+        self.assertEqual(
+            self._ack_sources(config, ledger)["status"], "acknowledged-paused"
+        )
+        with self._identity_patch(), self._source_reads(missing=()) as client:
+            self.assertEqual(run_production(config, 1, True)["status"], "paused")
+            client.get_object.assert_not_called()
+            self._unpause(config)
+            self.assertEqual(run_production(config, 1, True)["status"], "complete")
+        checkpoint = json.loads((config.state_root / "checkpoint.json").read_text())
+        self.assertEqual(
+            (checkpoint["next_index"], checkpoint["created"], checkpoint["skipped"]),
+            (1, 1, 0),
+        )
+        self.assertEqual(checkpoint["cumulative_errors"], 0)
+        self.assertEqual(load_incidents(config)["unacknowledged_count"], 0)
+        self.assertEqual(
+            json.loads((config.state_root / "compression.json").read_text())[
+                "source_incident_count"
+            ],
+            1,
+        )
+
+    def test_same_source_failure_on_retry_requires_new_acknowledgement(self):
+        config = self._remote_config()
+        self._bootstrap(config)
+        before = (config.state_root / "checkpoint.json").read_bytes()
+        first = self._source_incident(config)
+        self._ack_sources(config, first)
+        self._unpause(config)
+        second = self._source_incident(config)
+        self.assertEqual((second["count"], second["unacknowledged_count"]), (2, 1))
+        self.assertNotEqual(first["list_sha256"], second["list_sha256"])
+        with self.assertRaises(RuntimeError):
+            self._ack_sources(config, first)
+        self.assertEqual((config.state_root / "checkpoint.json").read_bytes(), before)
+
+    def test_source_errors_collect_entire_worker_batch_in_manifest_order(self):
+        config = self._remote_config(5)
+        self._bootstrap(config)
+        with (
+            self._source_reads() as client,
+            self._identity_patch(),
+            self.assertRaises(SourceIncidentError),
+        ):
+            run_production(config, 1, True)
+        receipt = json.loads(
+            (config.state_root / "source-incidents/00000001.json").read_text()
+        )
+        self.assertEqual([s["manifest_index"] for s in receipt["sites"]], [0, 1, 2, 3])
+        self.assertEqual(receipt["object_count"], 8)
+        self.assertEqual(client.get_object.call_count, 4 * (2 * 5 + 3))
+
+    def test_source_incident_tamper_symlink_and_interrupted_append_block_resume(self):
+        config = self._remote_config()
+        self._bootstrap(config)
+        ledger = self._source_incident(config)
+        root = config.state_root / "source-incidents"
+        receipt = root / "00000001.json"
+        original = receipt.read_bytes()
+        for action in ("tamper", "delete", "symlink", "partial", "oversize"):
+            with self.subTest(action=action):
+                if action == "tamper":
+                    receipt.write_text("{}")
+                elif action == "delete":
+                    receipt.unlink()
+                elif action == "symlink":
+                    copy = self.root / "receipt-copy.json"
+                    copy.write_bytes(original)
+                    receipt.unlink()
+                    receipt.symlink_to(copy)
+                elif action == "oversize":
+                    with receipt.open("wb") as stream:
+                        stream.truncate(256 * 1024 + 1)
+                else:
+                    (root / "index.json.partial.1").write_text("{}")
+                with (
+                    self._identity_patch(),
+                    mock.patch(
+                        "jump_full_compression.production.decode_stack"
+                    ) as decode,
+                ):
+                    with self.assertRaises((RuntimeError, OSError)):
+                        run_production(config, 1, True)
+                    decode.assert_not_called()
+                receipt.unlink(missing_ok=True)
+                receipt.write_bytes(original)
+                (root / "index.json.partial.1").unlink(missing_ok=True)
+        self._ack_sources(config, ledger)
+        moved = self.root / "moved-incidents"
+        root.rename(moved)
+        self._unpause(config)
+        with (
+            self._identity_patch(),
+            self.assertRaisesRegex(RuntimeError, "ledger missing"),
+        ):
+            run_production(config, 1, True)
+        moved.rename(root)
+
+    def test_incident_index_write_failure_does_not_change_checkpoint(self):
+        from jump_full_compression.model import atomic_json
+
+        config = self._remote_config()
+        self._bootstrap(config)
+        before = (config.state_root / "checkpoint.json").read_bytes()
+
+        def fail_index(path, value):
+            if path.name == "index.json":
+                raise OSError("injected disk failure")
+            return atomic_json(path, value)
+
+        with mock.patch(
+            "jump_full_compression.incidents.atomic_json", side_effect=fail_index
+        ):
+            with (
+                self._identity_patch(),
+                self._source_reads(),
+                self.assertRaises(SourceIncidentError),
+            ):
+                run_production(config, 1, True)
+        self.assertEqual((config.state_root / "checkpoint.json").read_bytes(), before)
+        self.assertTrue(
+            (config.state_root / "source-incidents/00000001.json").is_file()
+        )
+        with self._identity_patch(), self.assertRaises(OSError):
+            run_production(config, 1, True)
+
+    def test_source_failure_after_committed_tranche_preserves_chain(self):
+        config = self._remote_config(257)
+        self._bootstrap(config)
+        with self._identity_patch(), self._source_reads(missing=()):
+            self.assertEqual(run_production(config, 1, True)["next_index"], 256)
+        checkpoint_path = config.state_root / "checkpoint.json"
+        before = checkpoint_path.read_bytes()
+        chain_record = config.output_root / "tranches/00000000.json"
+        chain_before = chain_record.read_bytes()
+        ledger = self._source_incident(config)
+        self.assertEqual(checkpoint_path.read_bytes(), before)
+        self.assertEqual(chain_record.read_bytes(), chain_before)
+        receipt = json.loads(
+            (config.state_root / "source-incidents/00000001.json").read_text()
+        )
+        self.assertEqual(receipt["sites"][0]["manifest_index"], 256)
+        self.assertEqual(receipt["boundary"]["next_index"], 256)
+        self.assertEqual(receipt["boundary"]["completed_tranches"], 1)
+        self.assertEqual(
+            receipt["boundary"]["chain_head"], json.loads(before)["chain_head"]
+        )
+        self._ack_sources(config, ledger)
+        self._unpause(config)
+        with self._identity_patch(), self._source_reads(missing=()):
+            self.assertEqual(run_production(config, 1, True)["next_index"], 257)
+        self.assertEqual(chain_record.read_bytes(), chain_before)
+
+    def test_interrupted_source_ack_remains_paused_and_requires_ack(self):
+        from jump_full_compression.incidents import _write
+
+        config = self._remote_config()
+        self._bootstrap(config)
+        ledger = self._source_incident(config)
+
+        def fail_ack(path, value, maximum):
+            if path.name == "acknowledgement.json":
+                raise OSError("injected acknowledgement write failure")
+            return _write(path, value, maximum)
+
+        with (
+            mock.patch("jump_full_compression.incidents._write", side_effect=fail_ack),
+            self.assertRaises(OSError),
+        ):
+            self._ack_sources(config, ledger)
+        control = json.loads((config.state_root / "control.json").read_text())
+        self.assertTrue(control["paused"])
+        self.assertTrue(control["governor_evaluation_required"])
+        self.assertEqual(load_incidents(config)["unacknowledged_count"], 1)
+        self._unpause(config)
+        with self._identity_patch(), self.assertRaises(SourceIncidentError):
+            run_production(config, 1, True)
+        self._ack_sources(config, ledger)
+        self.assertEqual(load_incidents(config)["unacknowledged_count"], 0)
+
+    def test_source_failure_telemetry_write_error_preserves_checkpoint(self):
+        from jump_full_compression.production import Heartbeat
+
+        config = self._remote_config()
+        self._bootstrap(config)
+        before = (config.state_root / "checkpoint.json").read_bytes()
+        write = Heartbeat.write
+
+        def fail_error(heartbeat, **changes):
+            if changes.get("state") == "error":
+                raise OSError("injected telemetry failure")
+            return write(heartbeat, **changes)
+
+        with mock.patch.object(Heartbeat, "write", fail_error):
+            with (
+                self._identity_patch(),
+                self._source_reads(),
+                self.assertRaises((OSError, SourceIncidentError)),
+            ):
+                run_production(config, 1, True)
+        self.assertEqual((config.state_root / "checkpoint.json").read_bytes(), before)
+        self.assertEqual(load_incidents(config)["unacknowledged_count"], 1)
+        with self._identity_patch(), self.assertRaises(SourceIncidentError):
+            run_production(config, 1, True)
+
+    def test_source_ack_refuses_active_compressor_lock(self):
+        from jump_full_compression.production import _lock
+
+        config = self._remote_config()
+        self._bootstrap(config)
+        ledger = self._source_incident(config)
+        with _lock(config), self.assertRaises(BlockingIOError):
+            self._ack_sources(config, ledger)
+        self.assertEqual(load_incidents(config)["unacknowledged_count"], 1)
+
+    def test_record_and_skip_continues_without_ack_and_reports_denominators(self):
+        config = self._remote_config(
+            5, policy="record-and-skip", max_missing_fraction=0.2
+        )
+        self._bootstrap(config)
+        with self._identity_patch(), self._source_reads(missing_sites={1}) as client:
+            with self.assertLogs("jump_full_compression.production", level="WARNING"):
+                result = run_production(config, 1, True)
+            self.assertEqual(result["status"], "complete")
+            self.assertEqual(result["available_sites"], 4)
+            self.assertEqual(result["excluded_missing_sites"], 1)
+            self.assertEqual(client.head_object.call_count, 2)
+            verified = finalize_validation(config)
+            status = production_status(config)
+        self.assertEqual(verified["sites"], 5)
+        self.assertEqual(verified["available_sites"], 4)
+        self.assertEqual(verified["excluded_missing_sites"], 1)
+        self.assertEqual(verified["excluded_missing_objects"], 2)
+        self.assertTrue(
+            all(count == 4 for count in verified["codec_site_counts"].values())
+        )
+        self.assertEqual(
+            status["counts"],
+            {
+                "manifest_sites": 5,
+                "processed_manifest_sites": 5,
+                "available_sites": 4,
+                "excluded_missing_sites": 1,
+            },
+        )
+        self.assertEqual(load_incidents(config)["count"], 0)
+        self.assertFalse((config.state_root / "source-incidents").exists())
+        receipts = list((config.output_root / "receipts/00000000").glob("*.json"))
+        missing = [
+            json.loads(p.read_text())
+            for p in receipts
+            if json.loads(p.read_text()).get("status") == "excluded-missing-source"
+        ]
+        self.assertEqual(len(missing), 1)
+        self.assertEqual(missing[0]["manifest_index"], 1)
+        self.assertEqual(
+            [f["channel"] for f in missing[0]["missing_sources"]], ["DNA", "Mito"]
+        )
+        self.assertNotIn("SECRET", json.dumps(missing))
+        self.assertNotIn("PRIVATE", json.dumps(missing))
+        for codec in verified["codec_site_counts"]:
+            self.assertFalse(
+                (
+                    config.output_root
+                    / "codecs"
+                    / f"{codec}.zarr"
+                    / missing[0]["site_key"]
+                ).exists()
+            )
+        checkpoint = json.loads((config.state_root / "checkpoint.json").read_text())
+        self.assertEqual(
+            (
+                checkpoint["created"],
+                checkpoint["skipped"],
+                checkpoint["excluded_missing"],
+            ),
+            (4, 0, 1),
+        )
+
+    def test_record_and_skip_restart_reuses_exclusion_without_rereading(self):
+        config = self._remote_config(
+            5, policy="record-and-skip", max_missing_fraction=0.2
+        )
+        self._bootstrap(config)
+
+        def fail_before_commit(point):
+            if point == "before_tranche_validation":
+                raise RuntimeError("injected pre-commit crash")
+
+        with (
+            self._identity_patch(),
+            self._source_reads(missing_sites={1}),
+            mock.patch(
+                "jump_full_compression.production.FAULT_HOOK", fail_before_commit
+            ),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "injected pre-commit"):
+                run_production(config, 1, True)
+        exclusion_path = (
+            config.output_root
+            / "receipts/00000000/source_1__Batch1__P0001__A01__1.json"
+        )
+        original = exclusion_path.read_bytes()
+        with self._identity_patch():
+            acknowledge_production_errors(config, 1, True)
+        self._unpause(config, 1)
+        with self._identity_patch(), self._source_reads(missing=()) as client:
+            result = run_production(config, 1, True)
+            client.get_object.assert_not_called()
+            client.head_object.assert_not_called()
+            self.assertEqual(finalize_validation(config)["available_sites"], 4)
+        self.assertEqual(result["excluded_missing_sites"], 1)
+        self.assertEqual(exclusion_path.read_bytes(), original)
+        checkpoint = json.loads((config.state_root / "checkpoint.json").read_text())
+        self.assertEqual(
+            (
+                checkpoint["created"],
+                checkpoint["skipped"],
+                checkpoint["excluded_missing"],
+            ),
+            (0, 4, 1),
+        )
+
+    def test_record_and_skip_ahead_record_adoption_keeps_excluded_count(self):
+        config = self._remote_config(
+            5, policy="record-and-skip", max_missing_fraction=0.2
+        )
+        self._bootstrap(config)
+
+        def fail_after_record(point):
+            if point == "after_tranche_record":
+                raise RuntimeError("injected ahead record")
+
+        with (
+            self._identity_patch(),
+            self._source_reads(missing_sites={1}),
+            mock.patch(
+                "jump_full_compression.production.FAULT_HOOK", fail_after_record
+            ),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "injected ahead"):
+                run_production(config, 1, True)
+        with self._identity_patch():
+            acknowledge_production_errors(config, 1, True)
+        self._unpause(config, 1)
+        with self._identity_patch(), self._source_reads(missing=()) as client:
+            result = run_production(config, 1, True)
+            client.get_object.assert_not_called()
+            self.assertEqual(result["next_index"], 5)
+            self.assertEqual(result["excluded_missing_sites"], 1)
+            self.assertEqual(finalize_validation(config)["available_sites"], 4)
+
+    def test_record_and_skip_access_denied_is_fatal_not_missing(self):
+        config = self._remote_config(policy="record-and-skip", max_missing_fraction=1.0)
+        self._bootstrap(config)
+        before = (config.state_root / "checkpoint.json").read_bytes()
+        with (
+            self._identity_patch(),
+            self._source_reads(error_code="AccessDenied", http_status=403) as client,
+        ):
+            with self.assertRaises(SourceIncidentError):
+                run_production(config, 1, True)
+            client.head_object.assert_not_called()
+        self.assertEqual((config.state_root / "checkpoint.json").read_bytes(), before)
+        self.assertFalse(list((config.output_root / "receipts").glob("*/*.json")))
+        self.assertEqual(load_incidents(config)["unacknowledged_count"], 1)
+
+    def test_record_and_skip_persistent_network_failure_never_becomes_exclusion(self):
+        config = self._remote_config(policy="record-and-skip", max_missing_fraction=1.0)
+        self._bootstrap(config)
+        before = (config.state_root / "checkpoint.json").read_bytes()
+        with self._identity_patch(), self._source_reads() as client:
+            client.get_object.side_effect = EndpointConnectionError(
+                endpoint_url="https://SECRET:PRIVATE@example.invalid"
+            )
+            with self.assertRaises(SourceIncidentError):
+                run_production(config, 1, True)
+            client.head_object.assert_not_called()
+        self.assertFalse(list((config.output_root / "receipts").glob("*/*.json")))
+        self.assertEqual((config.state_root / "checkpoint.json").read_bytes(), before)
+        record = (config.state_root / "source-incidents/00000001.json").read_text()
+        self.assertNotIn("SECRET", record)
+        self.assertNotIn("PRIVATE", record)
+        self.assertIn("EndpointConnectionError", record)
+
+    def test_record_and_skip_default_five_percent_boundary_is_allowed(self):
+        config = self._remote_config(20, policy="record-and-skip")
+        self._bootstrap(config)
+        with self._identity_patch(), self._source_reads(missing_sites={19}):
+            result = run_production(config, 1, True)
+            self.assertEqual(finalize_validation(config)["available_sites"], 19)
+        self.assertEqual(result["excluded_missing_sites"], 1)
+        self.assertEqual(result["next_index"], 20)
+        self.assertEqual(load_incidents(config)["count"], 0)
+
+    def test_record_and_skip_decimal_boundary_is_exact(self):
+        # Binary float multiplication gives 0.29 * 100 == 28.999999999999996.
+        # The configured decimal boundary must still admit exactly 29 sites.
+        config = self._remote_config(
+            100, policy="record-and-skip", max_missing_fraction=0.29
+        )
+        self._bootstrap(config)
+        with self._identity_patch(), self._source_reads(missing_sites=set(range(29))):
+            result = run_production(config, 1, True)
+            final = finalize_validation(config)
+            status = production_status(config)
+        self.assertEqual(result["status"], "complete")
+        self.assertEqual(result["excluded_missing_sites"], 29)
+        self.assertEqual(final["available_sites"], 71)
+        self.assertEqual(status["counts"]["processed_manifest_sites"], 100)
+        self.assertEqual(load_incidents(config)["count"], 0)
+
+    def test_record_and_skip_decimal_limit_still_blocks_above_boundary(self):
+        config = self._remote_config(
+            100, policy="record-and-skip", max_missing_fraction=0.29
+        )
+        self._bootstrap(config)
+        before = (config.state_root / "checkpoint.json").read_bytes()
+        with (
+            self._identity_patch(),
+            self._source_reads(missing_sites=set(range(30))),
+            self.assertRaises(SourceIncidentError),
+        ):
+            run_production(config, 1, True)
+        self.assertEqual((config.state_root / "checkpoint.json").read_bytes(), before)
+        self.assertEqual(load_incidents(config)["unacknowledged_count"], 1)
+        self.assertFalse(list((config.output_root / "tranches").glob("*.json")))
+
+    def test_record_and_skip_head_access_denied_blocks_exclusion(self):
+        config = self._remote_config(policy="record-and-skip", max_missing_fraction=1.0)
+        self._bootstrap(config)
+        with (
+            self._identity_patch(),
+            self._source_reads(head_error_code="AccessDenied", head_status=403),
+        ):
+            with self.assertRaises(SourceIncidentError):
+                run_production(config, 1, True)
+        record = json.loads(
+            (config.state_root / "source-incidents/00000001.json").read_text()
+        )
+        self.assertEqual(
+            record["sites"][0]["failures"][0]["head_confirmation"]["error_code"],
+            "AccessDenied",
+        )
+        self.assertFalse(list((config.output_root / "receipts").glob("*/*.json")))
+
+    def test_record_and_skip_reappearing_object_is_not_excluded(self):
+        config = self._remote_config(policy="record-and-skip", max_missing_fraction=1.0)
+        self._bootstrap(config)
+        with (
+            self._identity_patch(),
+            self._source_reads(head_present=True),
+            self.assertRaises(SourceIncidentError),
+        ):
+            run_production(config, 1, True)
+        self.assertFalse(list((config.output_root / "receipts").glob("*/*.json")))
+        self.assertEqual(load_incidents(config)["unacknowledged_count"], 1)
+
+    def test_record_and_skip_limit_pauses_and_ack_cannot_bypass_it(self):
+        config = self._remote_config(
+            5, policy="record-and-skip", max_missing_fraction=0.1
+        )
+        self._bootstrap(config)
+        before = (config.state_root / "checkpoint.json").read_bytes()
+        with (
+            self._identity_patch(),
+            self._source_reads(missing_sites={1}),
+            self.assertRaises(SourceIncidentError),
+        ):
+            run_production(config, 1, True)
+        self.assertEqual((config.state_root / "checkpoint.json").read_bytes(), before)
+        record = json.loads(
+            (config.state_root / "source-incidents/00000001.json").read_text()
+        )
+        self.assertEqual(record["reason"], "missing-source-rate-exceeded")
+        self.assertEqual(
+            record["missing_limit"],
+            {"excluded_sites": 1, "tranche_sites": 5, "max_missing_fraction": 0.1},
+        )
+        self.assertFalse(list((config.output_root / "tranches").glob("*.json")))
+        self._ack_sources(config, load_incidents(config))
+        self._unpause(config)
+        with (
+            self._identity_patch(),
+            self._source_reads(missing=()),
+            self.assertRaises(SourceIncidentError),
+        ):
+            run_production(config, 1, True)
+        self.assertEqual(load_incidents(config)["count"], 2)
+        self.assertEqual((config.state_root / "checkpoint.json").read_bytes(), before)
+
+    def test_record_and_skip_can_represent_empty_output_only_with_explicit_limit(self):
+        config = self._remote_config(
+            2, policy="record-and-skip", max_missing_fraction=1.0
+        )
+        self._bootstrap(config)
+        with self._identity_patch(), self._source_reads():
+            result = run_production(config, 1, True)
+            final = finalize_validation(config)
+        self.assertEqual(
+            (result["available_sites"], result["excluded_missing_sites"]), (0, 2)
+        )
+        self.assertEqual(final["excluded_missing_objects"], 4)
+        self.assertTrue(
+            all(count == 0 for count in final["codec_site_counts"].values())
+        )
+
+    def test_record_and_skip_receipt_outputs_and_count_tampering_fail_closed(self):
+        config = self._remote_config(
+            5, policy="record-and-skip", max_missing_fraction=0.2
+        )
+        self._bootstrap(config)
+        with self._identity_patch(), self._source_reads(missing_sites={1}):
+            run_production(config, 1, True)
+        receipt = (
+            config.output_root
+            / "receipts/00000000/source_1__Batch1__P0001__A01__1.json"
+        )
+        original = receipt.read_bytes()
+        value = json.loads(original)
+        value["missing_sources"][0]["head_confirmation"]["http_status"] = 403
+        receipt.write_text(json.dumps(value))
+        with self._identity_patch(), self.assertRaises(RuntimeError):
+            verify_tranche(config, 0)
+        receipt.write_bytes(original)
+        synthetic = (
+            config.output_root
+            / "codecs/jpegxl_lossy_hq.zarr/source_1__Batch1__P0001__A01__1"
+        )
+        synthetic.mkdir()
+        with (
+            self._identity_patch(),
+            self.assertRaisesRegex(RuntimeError, "unexpectedly has image output"),
+        ):
+            verify_tranche(config, 0)
+        synthetic.rmdir()
+        checkpoint_path = config.state_root / "checkpoint.json"
+        value = json.loads(checkpoint_path.read_text())
+        value["created"] += 1
+        value["excluded_missing"] -= 1
+        checkpoint_path.write_text(json.dumps(value))
+        with self._identity_patch(), self.assertRaises(RuntimeError):
+            run_production(config, 1, True)
+
+    def test_missing_source_policy_and_limit_are_validated_and_identity_bound(self):
+        config = self._config(1)
+        self.assertEqual(config.missing_source_policy, "record-and-skip")
+        self.assertEqual(config.max_missing_fraction, 0.05)
+        config.validate()
+        self.assertNotEqual(
+            replace(config, missing_source_policy="stop").digest, config.digest
+        )
+        self.assertNotEqual(
+            replace(config, max_missing_fraction=0.1).digest, config.digest
+        )
+        for fraction in (True, -1, 1.1, float("nan"), float("inf"), "0.05"):
+            with self.subTest(fraction=fraction), self.assertRaises(ValueError):
+                replace(config, max_missing_fraction=fraction).validate()
+        with self.assertRaises(ValueError):
+            replace(config, missing_source_policy="ignore").validate()
 
     def _acceptance_artifacts(self, config: ProductionConfig, digest: str):
         predecessor = json.loads((config.output_root / "producer.json").read_text())
@@ -355,8 +1117,10 @@ class ProductionRunnerTests(unittest.TestCase):
             verify_tranche(config, 0)
         receipt.write_bytes(original)
 
-        chunk = next(
-            (config.output_root / "codecs/jpegxl_lossy_hq.zarr").glob("*/0.0.0")
+        # Select a site from tranche 0 explicitly; directory iteration order is
+        # filesystem-dependent (tmpfs may yield the newest tranche first).
+        chunk = (
+            config.output_root / "codecs/jpegxl_lossy_hq.zarr" / receipt.stem / "0.0.0"
         )
         original = chunk.read_bytes()
         chunk.write_bytes(original + b"tamper")

@@ -6,8 +6,10 @@ import base64
 from concurrent.futures import ThreadPoolExecutor
 import fcntl
 import hashlib
+from fractions import Fraction
 from itertools import islice
 import json
+import logging
 import os
 from pathlib import Path
 import re
@@ -29,6 +31,21 @@ from .inventory import (
     _physical_order_key,
     inventory_digest_from_report,
 )
+from .incidents import (
+    SiteSourceReadError,
+    SourceIncidentError,
+    acknowledge_incidents,
+    load_incidents,
+    record_incident,
+)
+from .missing_sources import (
+    MISSING_RECEIPT_FORMAT,
+    confirm_missing_sources,
+    confirmed_missing,
+    publish_missing_receipt,
+    read_receipt,
+    validate_missing_receipt,
+)
 from .model import (
     CODECS,
     COMPRESSION_CPUS,
@@ -46,6 +63,7 @@ from .pipeline import (
     STOP,
     _control,
     _fsync_tree,
+    _s3_client,
     _write_staged,
     decode_stack,
     now,
@@ -53,9 +71,10 @@ from .pipeline import (
     validate_site,
 )
 
-CHECKPOINT_FORMAT = "full-jump-production-checkpoint-v1"
+LOGGER = logging.getLogger(__name__)
+CHECKPOINT_FORMAT = "full-jump-production-checkpoint-v2"
 RECEIPT_FORMAT = "full-jump-production-site-receipt-v1"
-TRANCHE_FORMAT = "full-jump-production-tranche-v1"
+TRANCHE_FORMAT = "full-jump-production-tranche-v2"
 STATE_FORMAT = "full-jump-compression-state-v2"
 PRODUCER_FORMAT = "full-jump-production-producer-v1"
 ZERO_CHAIN = "0" * 64
@@ -271,6 +290,7 @@ def _validate_structure(config: ProductionConfig) -> None:
             "control.json",
             "continuous-authorization.json",
             "governor_snapshots",
+            "source-incidents",
             ".lock",
         },
     )
@@ -495,6 +515,7 @@ def _initial_checkpoint(config: ProductionConfig) -> dict[str, Any]:
         "last_site_key": None,
         "created": 0,
         "skipped": 0,
+        "excluded_missing": 0,
         "cumulative_errors": 0,
         "complete": False,
         "updated_at": now(),
@@ -518,6 +539,7 @@ def _load_checkpoint(config: ProductionConfig) -> dict[str, Any]:
         "last_site_key",
         "created",
         "skipped",
+        "excluded_missing",
         "cumulative_errors",
         "complete",
         "updated_at",
@@ -532,7 +554,11 @@ def _load_checkpoint(config: ProductionConfig) -> dict[str, Any]:
         or int(value.get("completed_tranches", -1))
         != (int(value.get("next_index", -1)) + config.tranche_size - 1)
         // config.tranche_size
-        or int(value.get("created", -1)) + int(value.get("skipped", -1))
+        or any(
+            type(value.get(k)) is not int or value[k] < 0
+            for k in ("created", "skipped", "excluded_missing")
+        )
+        or sum(value.get(k, -1) for k in ("created", "skipped", "excluded_missing"))
         != int(value.get("next_index", -1))
         or not 0 <= int(value.get("cumulative_errors", -1)) <= MAX_CUMULATIVE_ERRORS
         or value.get("complete") is not (value.get("next_index") == config.site_count)
@@ -554,13 +580,14 @@ def _site_path(config: ProductionConfig, codec: str, site: str) -> Path:
 
 
 def _rows_from(snapshot: ManifestSnapshot, start: int) -> Iterator[dict[str, Any]]:
-    return snapshot.iter_rows(start)
+    for index, row in enumerate(snapshot.iter_rows(start), start):
+        yield {**row, "manifest_index": index}
 
 
 def _rows_slice(
     snapshot: ManifestSnapshot, start: int, count: int
 ) -> list[dict[str, Any]]:
-    return list(islice(snapshot.iter_rows(start), count))
+    return list(islice(_rows_from(snapshot, start), count))
 
 
 def _source_observation_valid(value: dict[str, Any], uri: str, test_mode: bool) -> bool:
@@ -602,7 +629,10 @@ def _validate_site_receipt(
         return False
     if expected_hash is not None and sha256_file(path) != expected_hash:
         raise RuntimeError("committed production receipt hash drift")
-    value = json.loads(path.read_text())
+    value = read_receipt(path)
+    if value.get("format_version") == MISSING_RECEIPT_FORMAT:
+        validate_missing_receipt(value, config, tranche, row, producer_sha256)
+        return True
     required = {
         "format_version",
         "production_not_published",
@@ -714,10 +744,24 @@ def _build_site(
         if _validate_site_receipt(config, tranche, row, producer_sha256):
             return {
                 "site": site,
-                "status": "skipped",
+                "status": (
+                    "excluded-missing-source"
+                    if read_receipt(_receipt_path(config, tranche, site)).get(
+                        "format_version"
+                    )
+                    == MISSING_RECEIPT_FORMAT
+                    else "skipped"
+                ),
                 "receipt_sha256": sha256_file(_receipt_path(config, tranche, site)),
             }
     except Exception:
+        if (
+            config.missing_source_policy == "record-and-skip"
+            and _receipt_path(config, tranche, site).exists()
+        ):
+            # Never erase exclusion evidence (or a damaged receipt masquerading as
+            # it). Review is required before rebuilding an invalid existing receipt.
+            raise
         _remove_uncommitted(config, tranche, site)
     receipt = _receipt_path(config, tranche, site)
     if not receipt.exists() and any(
@@ -730,7 +774,10 @@ def _build_site(
     staging.mkdir()
     try:
         stack, observations = decode_stack(
-            row, config.test_mode, extended_observation=True
+            row,
+            config.test_mode,
+            extended_observation=True,
+            collect_source_errors=True,
         )
         if len(observations) != len(row["urls"]) or any(
             not _source_observation_valid(observation, uri, config.test_mode)
@@ -780,6 +827,37 @@ def _build_site(
         shutil.rmtree(staging, ignore_errors=True)
 
 
+def _site_outcome(config, tranche, row, producer_sha):
+    # Exhaust the bounded in-flight sub-batch even if one worker fails. Returning
+    # exceptions prevents executor.map from hiding other sites' source evidence.
+    try:
+        try:
+            return _build_site(config, tranche, row, producer_sha)
+        except SiteSourceReadError as error:
+            if config.missing_source_policy != "record-and-skip":
+                raise
+            failures = confirm_missing_sources(error.failures, _s3_client)
+            if not confirmed_missing(failures):
+                raise SiteSourceReadError(failures) from None
+            receipt = _receipt_path(config, tranche, row["Metadata_Site_Key"])
+            publish_missing_receipt(
+                receipt, config, tranche, row, producer_sha, failures, now()
+            )
+            LOGGER.warning(
+                "Excluded site %s: %d confirmed missing objects; receipt: %s",
+                row["Metadata_Site_Key"],
+                len(failures),
+                receipt,
+            )
+            return {
+                "site": row["Metadata_Site_Key"],
+                "status": "excluded-missing-source",
+                "receipt_sha256": sha256_file(receipt),
+            }
+    except Exception as error:
+        return error
+
+
 def _record_digest(value: dict[str, Any]) -> str:
     return digest_json({k: value[k] for k in value if k != "tranche_digest"})
 
@@ -806,11 +884,23 @@ def _load_record(config: ProductionConfig, tranche: int) -> dict[str, Any]:
         "previous_tranche_digest",
         "created",
         "skipped",
+        "excluded_missing",
         "completed_at",
         "tranche_digest",
     }
-    if set(value) != required or value.get("tranche_digest") != _record_digest(value):
-        raise RuntimeError(f"tranche record digest/field drift: {tranche}")
+    if (
+        set(value) != required
+        or value.get("tranche_digest") != _record_digest(value)
+        or any(
+            type(value.get(k)) is not int or value[k] < 0
+            for k in ("created", "skipped", "excluded_missing")
+        )
+        or value.get("excluded_missing", 0)
+        > Fraction(str(config.max_missing_fraction)) * value.get("site_count", 0)
+    ):
+        raise RuntimeError(
+            f"tranche record digest/field/missing-limit drift: {tranche}"
+        )
     return value
 
 
@@ -962,6 +1052,7 @@ def _validate_chain(config: ProductionConfig, checkpoint: dict[str, Any]) -> Non
     previous = ZERO_CHAIN
     next_index = 0
     last = None
+    totals = {key: 0 for key in ("created", "skipped", "excluded_missing")}
     for tranche in range(checkpoint["completed_tranches"]):
         value = _load_record(config, tranche)
         count = min(config.tranche_size, config.site_count - next_index)
@@ -979,18 +1070,21 @@ def _validate_chain(config: ProductionConfig, checkpoint: dict[str, Any]) -> Non
             or value.get("site_count") != count
             or value.get("previous_tranche_digest") != previous
             or value.get("producer_sha256") != expected_producer
-            or value.get("created", -1) + value.get("skipped", -1) != count
+            or sum(value.get(key, -1) for key in totals) != count
         ):
             raise RuntimeError(f"tranche chain/index drift: {tranche}")
         previous = value["tranche_digest"]
         next_index += count
         last = value.get("last_site_key")
+        for key in totals:
+            totals[key] += value[key]
     if (
         next_index != checkpoint["next_index"]
         or previous != checkpoint["chain_head"]
         or last != checkpoint["last_site_key"]
+        or any(checkpoint[key] != total for key, total in totals.items())
     ):
-        raise RuntimeError("checkpoint/tranche chain head drift")
+        raise RuntimeError("checkpoint/tranche chain head or counts drift")
 
 
 def _verify_tranche(
@@ -1013,22 +1107,31 @@ def _verify_tranche(
         raise RuntimeError("committed tranche receipt inventory drift")
     row_digest = digest_json([row["source_row_sha256"] for row in rows])
     hashes = []
+    excluded_sites = excluded_objects = 0
     for row in rows:
         path = _receipt_path(config, tranche, row["Metadata_Site_Key"])
         digest = sha256_file(path)
         _validate_site_receipt(config, tranche, row, producer_sha, digest)
+        receipt = read_receipt(path)
+        if receipt.get("format_version") == MISSING_RECEIPT_FORMAT:
+            excluded_sites += 1
+            excluded_objects += receipt["object_count"]
         hashes.append(digest)
     if (
         row_digest != record["manifest_slice_digest"]
         or digest_json(hashes) != record["site_receipt_hash_digest"]
         or rows[0]["Metadata_Site_Key"] != record["first_site_key"]
         or rows[-1]["Metadata_Site_Key"] != record["last_site_key"]
+        or excluded_sites != record["excluded_missing"]
     ):
         raise RuntimeError("committed tranche manifest/receipt digest drift")
     return {
         "status": "valid",
         "tranche": tranche,
         "sites": len(rows),
+        "available_sites": len(rows) - excluded_sites,
+        "excluded_missing_sites": excluded_sites,
+        "excluded_missing_objects": excluded_objects,
         "tranche_digest": record["tranche_digest"],
     }
 
@@ -1216,7 +1319,10 @@ def acknowledge_production_errors(
     config: ProductionConfig, expected: int, apply: bool
 ) -> dict[str, Any]:
     with ManifestSnapshot(config.manifest) as snapshot:
-        return _acknowledge_with_snapshot(config, snapshot, expected, apply)
+        _validate_identity(config, snapshot)
+        _validate_structure(config)
+        with _lock(config):
+            return _acknowledge_with_snapshot(config, snapshot, expected, apply)
 
 
 def _acknowledge_with_snapshot(
@@ -1237,6 +1343,11 @@ def _acknowledge_with_snapshot(
     result = {"status": "would-acknowledge", "expected_count": expected}
     if not apply:
         return result
+    _pause_after_error_acknowledgement(config, expected)
+    return {**result, "status": "acknowledged-paused"}
+
+
+def _pause_after_error_acknowledgement(config: ProductionConfig, expected: int) -> None:
     atomic_json(
         config.state_root / "control.json",
         {
@@ -1256,7 +1367,67 @@ def _acknowledge_with_snapshot(
             "governor_evaluation_required": True,
         },
     )
-    return {**result, "status": "acknowledged-paused"}
+
+
+def _checked_source_incidents(config: ProductionConfig) -> dict[str, Any]:
+    ledger = load_incidents(config)
+    previous_state = json.loads(
+        _read_regular_bytes(
+            config.state_root / "compression.json", "production telemetry"
+        )
+    )
+    previous_count = previous_state.get("source_incident_count", 0)
+    if type(previous_count) is not int or not 0 <= previous_count <= ledger["count"]:
+        raise RuntimeError(
+            "source incident ledger missing or incomplete; review required"
+        )
+    return ledger
+
+
+def acknowledge_production_source_incidents(
+    config: ProductionConfig,
+    expected_count: int,
+    expected_list_sha256: str,
+    apply: bool,
+) -> dict[str, Any]:
+    with ManifestSnapshot(config.manifest) as snapshot:
+        _validate_identity(config, snapshot)
+        _validate_structure(config)
+        with _lock(config):
+            checkpoint = _load_checkpoint(config)
+            _validate_chain(config, checkpoint)
+            _checked_source_incidents(config)
+            ledger = acknowledge_incidents(config, expected_count, expected_list_sha256)
+            result = {"status": "would-acknowledge-source-incidents", **ledger}
+            if not apply:
+                return result
+            # Pause first: a crash cannot publish acknowledgement while retaining
+            # an old unpaused control. A separate governor evaluation is required.
+            _pause_after_error_acknowledgement(config, checkpoint["cumulative_errors"])
+            acknowledge_incidents(
+                config, expected_count, expected_list_sha256, apply=True
+            )
+            Heartbeat(
+                config,
+                {
+                    "state": "paused",
+                    "next_index": checkpoint["next_index"],
+                    "processed": checkpoint["next_index"],
+                    "sites": config.site_count,
+                    "cumulative_errors": checkpoint["cumulative_errors"],
+                    "source_incident_count": ledger["count"],
+                    "unacknowledged_source_incidents": 0,
+                    "excluded_missing_sites": checkpoint["excluded_missing"],
+                    "available_sites": checkpoint["next_index"]
+                    - checkpoint["excluded_missing"],
+                },
+            ).write()
+            return {
+                **result,
+                "status": "acknowledged-paused",
+                "acknowledged_count": ledger["count"],
+                "unacknowledged_count": 0,
+            }
 
 
 def _continuous_authorization_path(config: ProductionConfig) -> Path:
@@ -2216,6 +2387,11 @@ def _run_with_snapshot(
         if checkpoint.get("producer_sha256") != producer_sha:
             raise RuntimeError("checkpoint producer binding drift")
         _validate_chain(config, checkpoint)
+        incidents = _checked_source_incidents(config)
+        if incidents["unacknowledged_count"]:
+            raise SourceIncidentError(
+                "source incidents require exact count/list acknowledgement before resume"
+            )
         transitions = _load_transition_plan(config, producer_sha)
         if transitions and not continuous:
             raise RuntimeError(
@@ -2259,7 +2435,8 @@ def _run_with_snapshot(
                 or record["end_index"] != checkpoint["next_index"] + expected_count
                 or record["site_count"] != expected_count
                 or record["previous_tranche_digest"] != checkpoint["chain_head"]
-                or record["created"] + record["skipped"] != expected_count
+                or record["created"] + record["skipped"] + record["excluded_missing"]
+                != expected_count
             ):
                 raise RuntimeError("ahead tranche identity/chain drift")
             _verify_tranche(config, snapshot, tranche, producer_sha)
@@ -2271,6 +2448,8 @@ def _run_with_snapshot(
                 "last_site_key": record["last_site_key"],
                 "created": checkpoint["created"] + record["created"],
                 "skipped": checkpoint["skipped"] + record["skipped"],
+                "excluded_missing": checkpoint["excluded_missing"]
+                + record["excluded_missing"],
                 "complete": record["end_index"] == config.site_count,
                 "updated_at": now(),
             }
@@ -2283,6 +2462,11 @@ def _run_with_snapshot(
             "processed": checkpoint["next_index"],
             "sites": config.site_count,
             "cumulative_errors": checkpoint["cumulative_errors"],
+            "source_incident_count": incidents["count"],
+            "unacknowledged_source_incidents": 0,
+            "excluded_missing_sites": checkpoint["excluded_missing"],
+            "available_sites": checkpoint["next_index"]
+            - checkpoint["excluded_missing"],
         }
         if control.get("paused") is not False:
             Heartbeat(config, heartbeat_fields).write(state="paused")
@@ -2292,13 +2476,6 @@ def _run_with_snapshot(
                 "next_index": checkpoint["next_index"],
             }
         iterator = _rows_from(snapshot, checkpoint["next_index"])
-        heartbeat_fields = {
-            "state": "running",
-            "next_index": checkpoint["next_index"],
-            "processed": checkpoint["next_index"],
-            "sites": config.site_count,
-            "cumulative_errors": checkpoint["cumulative_errors"],
-        }
         with Heartbeat(config, heartbeat_fields) as heartbeat:
             while checkpoint["next_index"] < config.site_count and (
                 continuous or committed < (max_tranches or 0)
@@ -2332,6 +2509,7 @@ def _run_with_snapshot(
                 _validate_uncommitted_inventory(config, tranche, rows)
                 results = []
                 cursor = 0
+                source_failure = False
                 try:
                     allocation = _production_control(
                         config, checkpoint["cumulative_errors"]
@@ -2365,14 +2543,90 @@ def _run_with_snapshot(
                                     "committed_tranches": committed,
                                 }
                             batch = rows[cursor : cursor + workers]
-                            results.extend(
+                            outcomes = list(
                                 pool.map(
-                                    lambda row: _build_site(
+                                    lambda row: _site_outcome(
                                         config, tranche, row, producer_sha
                                     ),
                                     batch,
                                 )
                             )
+                            missing_count = sum(
+                                isinstance(outcome, dict)
+                                and outcome["status"] == "excluded-missing-source"
+                                for outcome in results + outcomes
+                            )
+                            missing_limit = None
+                            if missing_count > Fraction(
+                                str(config.max_missing_fraction)
+                            ) * len(rows):
+                                missing_limit = {
+                                    "excluded_sites": missing_count,
+                                    "tranche_sites": len(rows),
+                                    "max_missing_fraction": config.max_missing_fraction,
+                                }
+                                LOGGER.error(
+                                    "Missing-site limit exceeded: %s", missing_limit
+                                )
+                            failed_sites = []
+                            for row, outcome in zip(batch, outcomes):
+                                if isinstance(outcome, SiteSourceReadError):
+                                    failures = outcome.failures
+                                elif (
+                                    missing_limit
+                                    and isinstance(outcome, dict)
+                                    and outcome["status"] == "excluded-missing-source"
+                                ):
+                                    failures = read_receipt(
+                                        _receipt_path(
+                                            config, tranche, row["Metadata_Site_Key"]
+                                        )
+                                    )["missing_sources"]
+                                else:
+                                    continue
+                                failed_sites.append(
+                                    {
+                                        "manifest_index": row["manifest_index"],
+                                        "site_key": row["Metadata_Site_Key"],
+                                        "source_row_sha256": row["source_row_sha256"],
+                                        "failures": failures,
+                                    }
+                                )
+                            if failed_sites:
+                                source_failure = True
+                                try:
+                                    incidents = record_incident(
+                                        config,
+                                        checkpoint,
+                                        sha256_file(_checkpoint_path(config)),
+                                        producer_sha,
+                                        failed_sites,
+                                        now(),
+                                        missing_limit=missing_limit,
+                                    )
+                                except Exception:
+                                    heartbeat.write(
+                                        state="error",
+                                        source_incident_count=incidents["count"] + 1,
+                                        unacknowledged_source_incidents=1,
+                                    )
+                                    raise SourceIncidentError(
+                                        "source incident persistence incomplete; manual review required"
+                                    ) from None
+                                heartbeat.write(
+                                    state="error",
+                                    source_incident_count=incidents["count"],
+                                    unacknowledged_source_incidents=incidents[
+                                        "unacknowledged_count"
+                                    ],
+                                )
+                                raise SourceIncidentError(
+                                    "source incident recorded; checkpoint unchanged; acknowledgement required"
+                                ) from None
+                            for outcome in outcomes:
+                                if isinstance(outcome, Exception):
+                                    raise outcome
+                                results.append(outcome)
                             cursor += len(batch)
                             _production_task_check(config, 0)
                             heartbeat.write()
@@ -2419,6 +2673,9 @@ def _run_with_snapshot(
                         "previous_tranche_digest": checkpoint["chain_head"],
                         "created": sum(r["status"] == "created" for r in results),
                         "skipped": sum(r["status"] == "skipped" for r in results),
+                        "excluded_missing": sum(
+                            r["status"] == "excluded-missing-source" for r in results
+                        ),
                         "completed_at": now(),
                     }
                     record["tranche_digest"] = _record_digest(record)
@@ -2432,6 +2689,8 @@ def _run_with_snapshot(
                         "last_site_key": record["last_site_key"],
                         "created": checkpoint["created"] + record["created"],
                         "skipped": checkpoint["skipped"] + record["skipped"],
+                        "excluded_missing": checkpoint["excluded_missing"]
+                        + record["excluded_missing"],
                         "complete": record["end_index"] == config.site_count,
                         "updated_at": now(),
                     }
@@ -2441,8 +2700,19 @@ def _run_with_snapshot(
                         next_index=checkpoint["next_index"],
                         processed=checkpoint["next_index"],
                         state="complete" if checkpoint["complete"] else "running",
+                        excluded_missing_sites=checkpoint["excluded_missing"],
+                        available_sites=checkpoint["next_index"]
+                        - checkpoint["excluded_missing"],
                     )
+                except SourceIncidentError:
+                    # Incident evidence has its own acknowledgement gate. Do not
+                    # change even the error counter/timestamp of the checkpoint.
+                    raise
                 except Exception:
+                    if source_failure:
+                        raise SourceIncidentError(
+                            "source incident reporting failed; checkpoint unchanged; review required"
+                        ) from None
                     checkpoint["cumulative_errors"] += 1
                     checkpoint["updated_at"] = now()
                     atomic_json(_checkpoint_path(config), checkpoint)
@@ -2461,6 +2731,9 @@ def _run_with_snapshot(
                 "next_index": checkpoint["next_index"],
                 "committed_tranches": committed,
                 "completed_tranches": checkpoint["completed_tranches"],
+                "excluded_missing_sites": checkpoint["excluded_missing"],
+                "available_sites": checkpoint["next_index"]
+                - checkpoint["excluded_missing"],
             }
 
 
@@ -2488,23 +2761,28 @@ def finalize_validation(config: ProductionConfig) -> dict[str, Any]:
                 ):
                     raise RuntimeError("unsafe/unknown flat codec-root entry")
                 count += 1
-            if count != config.site_count:
+            if count != config.site_count - checkpoint["excluded_missing"]:
                 raise RuntimeError(f"flat codec-root site count drift: {codec} {count}")
             codec_counts[codec] = count
         staging = config.output_root / ".staging"
         if any(staging.iterdir()):
             raise RuntimeError("final production staging root is not empty")
         transitions = _load_transition_plan(config, producer_sha)
+        excluded_objects = 0
         for tranche in range(checkpoint["completed_tranches"]):
-            _verify_tranche(
+            verified = _verify_tranche(
                 config,
                 snapshot,
                 tranche,
                 _expected_producer(tranche, producer_sha, transitions),
             )
+            excluded_objects += verified["excluded_missing_objects"]
         return {
             "status": "exhaustively-valid",
             "sites": config.site_count,
+            "available_sites": config.site_count - checkpoint["excluded_missing"],
+            "excluded_missing_sites": checkpoint["excluded_missing"],
+            "excluded_missing_objects": excluded_objects,
             "codec_site_counts": codec_counts,
             "tranches": checkpoint["completed_tranches"],
             "chain_head": checkpoint["chain_head"],
@@ -2518,6 +2796,18 @@ def production_status(config: ProductionConfig) -> dict[str, Any]:
         result = {
             "production_id": config.production_id,
             "config_sha256": config.digest,
+        }
+        result["source_incidents"] = load_incidents(config)
+        result["missing_source_policy"] = config.missing_source_policy
+        result["max_missing_fraction"] = config.max_missing_fraction
+        checkpoint = _load_checkpoint(config)
+        _validate_chain(config, checkpoint)
+        result["counts"] = {
+            "manifest_sites": config.site_count,
+            "processed_manifest_sites": checkpoint["next_index"],
+            "available_sites": checkpoint["next_index"]
+            - checkpoint["excluded_missing"],
+            "excluded_missing_sites": checkpoint["excluded_missing"],
         }
         for name in (
             "checkpoint.json",

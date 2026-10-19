@@ -39,6 +39,13 @@ from imagecodecs.numcodecs import Jpegxl
 from PIL import Image, __version__ as PILLOW_VERSION
 
 from .inventory import audit_inventory, candidate_rows, load_audit, normalized_rows
+from .incidents import (
+    MAX_READ_ATTEMPTS,
+    SOURCE_READ_ATTEMPTS,
+    SiteSourceReadError,
+    SourceReadError,
+    retry_evidence,
+)
 from .model import (
     CODECS,
     COMPRESSION_CPUS,
@@ -104,29 +111,38 @@ def _s3_client():
 
 def read_source(
     uri: str,
-    attempts: int = 5,
+    attempts: int = SOURCE_READ_ATTEMPTS,
     *,
     allow_file: bool = False,
     extended_observation: bool = False,
+    collect_source_errors: bool = False,
     sleep=time.sleep,
 ) -> tuple[bytes, dict[str, Any]]:
     parsed = urlparse(uri)
-    if parsed.scheme == "file" and allow_file:
-        payload = Path(parsed.path).read_bytes()
-        return payload, {
-            "uri": uri,
-            "size": len(payload),
-            "etag": hashlib.md5(payload).hexdigest(),
-        }  # noqa: S324
+    local_file = parsed.scheme == "file" and allow_file and not parsed.netloc
     if (
-        parsed.scheme != "s3"
-        or parsed.netloc != "cellpainting-gallery"
+        parsed.query
+        or parsed.fragment
         or not parsed.path
+        or (
+            not local_file
+            and (parsed.scheme != "s3" or parsed.netloc != "cellpainting-gallery")
+        )
     ):
-        raise ValueError(f"source URI outside public allowlist: {uri}")
+        raise ValueError("source URI outside public allowlist or contains request data")
+    if type(attempts) is not int or not 1 <= attempts <= MAX_READ_ATTEMPTS:
+        raise ValueError("source retry budget must be between 1 and 8")
     last: Exception | None = None
+    evidence = []
     for attempt in range(1, attempts + 1):
         try:
+            if local_file:
+                payload = Path(parsed.path).read_bytes()
+                return payload, {
+                    "uri": uri,
+                    "size": len(payload),
+                    "etag": hashlib.md5(payload).hexdigest(),
+                }  # noqa: S324
             response = _s3_client().get_object(
                 Bucket=parsed.netloc, Key=parsed.path.lstrip("/")
             )
@@ -150,22 +166,40 @@ def read_source(
             return payload, observation
         except Exception as error:
             last = error
+            delay = min(8.0, 0.25 * 2**attempt) if attempt < attempts else 0.0
+            if collect_source_errors:
+                evidence.append(retry_evidence(error, attempt, delay))
             if attempt < attempts:
-                sleep(min(8.0, 0.25 * 2**attempt))
+                sleep(delay)
     assert last is not None
+    if collect_source_errors:
+        raise SourceReadError(uri, evidence) from None
     raise last
 
 
 def decode_stack(
-    row: dict[str, Any], test_mode: bool, *, extended_observation: bool = False
+    row: dict[str, Any],
+    test_mode: bool,
+    *,
+    extended_observation: bool = False,
+    collect_source_errors: bool = False,
 ) -> tuple[np.ndarray, list[dict[str, Any]]]:
-    images, observations = [], []
-    for uri in row["urls"]:
-        payload, observation = read_source(
-            uri,
-            allow_file=test_mode,
-            extended_observation=extended_observation,
-        )
+    images, observations, failures = [], [], []
+    for index, uri in enumerate(row["urls"]):
+        try:
+            payload, observation = read_source(
+                uri,
+                allow_file=test_mode,
+                extended_observation=extended_observation,
+                collect_source_errors=collect_source_errors,
+            )
+        except SourceReadError as error:
+            failures.append({"channel": row["channels"][index], **error.failure})
+            continue
+        if failures:
+            # Audit remaining reads in manifest channel order, without decoding or
+            # synthesizing a partial image after the first exhausted source read.
+            continue
         with Image.open(io.BytesIO(payload)) as image:
             array = np.asarray(image)
         if array.ndim != 2 or array.dtype != np.uint16:
@@ -174,6 +208,8 @@ def decode_stack(
             )
         images.append(array)
         observations.append(observation)
+    if failures:
+        raise SiteSourceReadError(failures) from None
     if len({x.shape for x in images}) != 1:
         raise ValueError("channel shapes differ")
     return np.stack(images, axis=0), observations

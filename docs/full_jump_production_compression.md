@@ -16,8 +16,8 @@ are absent; six gray negative-control plates are retained.
 ## Durability
 
 Sites are published codec-by-codec and then receive a production-specific receipt.
-Only a complete ordered 256-site tranche receives a hash-chained tranche record and
-then advances the compact checkpoint. A signal finishes the active worker sub-batch
+Only a complete ordered 256-site tranche (successful or explicitly excluded sites)
+receives a hash-chained tranche record and then advances the compact checkpoint. A signal finishes the active worker sub-batch
 but never commits a partial tranche. Restart validates the complete record chain and
 fully revalidates the most recently committed tranche. It may reuse valid sites only
 in the next uncommitted tranche; committed drift is fatal.
@@ -25,6 +25,119 @@ in the next uncommitted tranche; committed drift is fatal.
 `production-verify-tranche` fully revalidates one selected committed tranche.
 `production-finalize-validation` exhaustively validates every site, receipt, chunk,
 and tranche, and is permitted only after the checkpoint is complete.
+
+## Missing sources: record-and-skip with a rate guard
+
+The production default is `--missing-source-policy record-and-skip` with
+`--max-missing-fraction 0.05`. Both settings are part of the configuration digest and
+must be identical in bootstrap, run, status, validation, and acknowledgement commands.
+`--missing-source-policy stop` retains strict stop-and-review behavior.
+
+A site is excluded only when **all failed channels** have exhausted five read
+attempts with `NoSuchKey` / HTTP 404, and an independent `HeadObject` check also
+confirms each object is absent (HTTP 404 with `NoSuchKey`, `NotFound`, or `404`).
+Mixed retry histories, timeouts, access denial, missing buckets/versions, and unknown
+errors are not missing-object proof. If HEAD succeeds or fails for another reason,
+the site is not excluded: it produces a blocking source incident instead. Each
+request also retains the S3 client's bounded retry policy.
+
+For confirmed missing objects, the runner:
+
+1. Writes `OUTPUT_ROOT/receipts/<tranche>/<site>.json` with format
+   `full-jump-production-excluded-source-v1` and status `excluded-missing-source`.
+2. Records the zero-based manifest index, site identity, all expected channels,
+   failed channels/URIs in manifest order, every GET retry, HEAD confirmation,
+   object count, and production/config/inventory/producer identities.
+3. Logs a warning and excludes the **whole site** from both codecs, then continues
+   without requiring acknowledgement for routine gaps.
+
+There are no partial-channel images or synthetic pixels. Exclusion receipts are
+hash-bound into the ordinary tranche chain. On restart, they are validated and reused
+without new source reads, just like successful site receipts. They represent a frozen
+build decision, not a live view of S3: a later reappearing object is not silently
+reintroduced. Any image output for an excluded site fails validation.
+
+### Missing-site limit
+
+Before starting the next worker sub-batch or committing a tranche, the runner checks
+`excluded_sites / manifest_sites_in_this_tranche <= max_missing_fraction`. The default
+allows at most 12 excluded sites in a full 256-site tranche; the 13th pauses the run.
+The final short tranche uses its actual size, with no grace rounding (e.g. one missing
+site in a 10-site final tranche exceeds 5%). The setting accepts finite values from
+0 to 1; 0 allows no exclusions, and 1 is an explicit decision to allow even an empty
+output tranche. Limits use the decimal setting exactly, so a limit of 0.29 admits
+29 excluded sites out of 100 without binary floating-point rounding. Counts are
+sites, not channels, and include reused exclusion receipts.
+
+A limit breach writes a blocking incident with reason `missing-source-rate-exceeded`
+and the observed count, tranche denominator, and configured limit. It stops before
+tranche commit, leaving the checkpoint unchanged. Valid site/exclusion receipts in
+that uncommitted tranche remain available for review. Acknowledgement does **not**
+bypass the limit: a retry with the same over-limit receipts pauses again. Investigate
+before arranging a reviewed policy/inventory change; do not delete receipts to evade
+the guard or change the configuration of an existing build in place.
+
+### Counts, validation, and compatibility
+
+Checkpoint and tranche formats are now `full-jump-production-checkpoint-v2` and
+`full-jump-production-tranche-v2`. They count `excluded_missing` separately from
+`created` and `skipped` (the latter still means successful outputs reused on restart).
+Their sum equals processed manifest sites. `production-status` reports manifest,
+processed, available, and excluded-site counts; verification/finalization also report
+excluded-object counts. Codec inventories must contain exactly the available sites.
+The legacy `sites` field in verification/finalization remains the manifest denominator,
+**not** the number of usable image sites.
+
+Downstream consumers must use successful receipts/available-site counts and the
+explicit exclusion receipts when defining cohorts and denominators; a missing output
+without a valid exclusion receipt is still an error. This compressor change does not
+rewrite downstream analysis code or publish a dataset.
+
+**This is not a drop-in upgrade of an existing v1 production state.** New policy
+identity and v2 accounting require reviewed migration/new-build approval. Existing
+v1 checkpoints, producer bindings, and pinned continuous approvals are not silently
+rewritten or bypassed. Do not point an active signed deployment at this working tree.
+
+### Blocking source incidents and recovery
+
+Non-missing read failures, rate-limit breaches, or any read failure in `stop` mode
+finish only the current worker sub-batch and write bounded evidence under
+`STATE_ROOT/source-incidents/<sequence>.json`, followed by an atomic `index.json`.
+These receipts include the unchanged checkpoint's SHA-256/tranche boundary and the
+exact site/channel/source/retry evidence. They leave the checkpoint byte-for-byte
+unchanged, including its legacy `cumulative_errors` field. A separate durable gate
+blocks resume regardless of governor control; the governor also refuses unpause while
+source incidents are unacknowledged. Generic non-read errors retain their existing
+error-counter/stop behavior.
+
+After investigating/resolving a blocking incident, stop the compressor and review the
+complete incident list. With the same production identity/policy arguments:
+
+```bash
+python -m jump_full_compression production-status "${ARGS[@]}"
+# Copy count and list_sha256 from the reviewed source_incidents snapshot.
+python -m jump_full_compression production-acknowledge-source-incidents "${ARGS[@]}" \
+  --expected-count N --expected-list-sha256 REVIEWED_LIST_SHA256
+python -m jump_full_compression production-acknowledge-source-incidents "${ARGS[@]}" \
+  --expected-count N --expected-list-sha256 REVIEWED_LIST_SHA256 --apply
+```
+
+`N` counts blocking incident receipts, not routine exclusion receipts or objects.
+Acknowledgement checks the exact count and ordered receipt-name/hash digest under
+the production lock, then leaves control paused for fresh governor evaluation. It
+permits retry, not an override of classification, exclusions, or the missing-site
+limit. Repeated blocking failures require a new acknowledgement; dry-run changes no
+acknowledgement or control. Legacy `production-acknowledge-errors` cannot bypass this
+gate.
+
+All reports are credential-safe: only public allowlisted S3 URIs, sanitized error
+codes/statuses, SDK retry counts, and retry delays are retained. Signed query strings,
+fragments, userinfo, and non-public sources are rejected; raw exception messages,
+headers, endpoints, request IDs, and whole botocore responses are never copied.
+Receipts are limited to 256 KiB; the blocking ledger to 10,000 receipts and a 2 MiB
+index. Unsafe files, hash drift, and interrupted append artifacts fail closed and
+require review. Declared damaged-site exclusions, successful all-zero reads, and
+candidate callers' original read-exception contract remain unchanged.
 
 ## One-tranche gate and continuous authorization
 
@@ -218,7 +331,8 @@ Each live run and validation recomputes the clean checkout, interpreter, depende
 and executable identity and requires exact equality with `producer.json`. Manifest
 authentication and Parquet scans share one open inode snapshot; row-group metadata
 seeks directly near the checkpoint rather than rescanning the prefix. Before a tranche
-record is committed, all 256 receipts and both outputs are decoded and revalidated.
+record is committed, all receipts are revalidated, both outputs of every retained site
+are decoded, and excluded sites are verified to have no outputs.
 
 Error acknowledgement is exact and leaves control paused with governor evaluation
 required. Unknown structural entries, identity drift, stale/malformed control,
