@@ -1,0 +1,66 @@
+{
+  "checked_utc": "2026-10-19T02:23:07.541357+00:00",
+  "scope": "HEAD checks for all direct CPG links in README/access guide, all Croissant distributions, and public Nahual source. Metadata bytes and hashes were verified separately.",
+  "results": [
+    {
+      "url": "https://cellpainting-gallery.s3.amazonaws.com/cpg0016-jump/source_all/images/jump_lite_v1.0/images_compressed/jpegxl_lossy_d20.zarr/.zgroup",
+      "status": 200,
+      "content_length": "22"
+    },
+    {
+      "url": "https://cellpainting-gallery.s3.amazonaws.com/cpg0016-jump/source_all/images/jump_lite_v1.0/images_compressed/jpegxl_lossy_hq.zarr/.zgroup",
+      "status": 200,
+      "content_length": "22"
+    },
+    {
+      "url": "https://cellpainting-gallery.s3.amazonaws.com/cpg0016-jump/source_all/images/jump_lite_v1.0/images_compressed/jpegxl_lossy_mq.zarr/.zgroup",
+      "status": 200,
+      "content_length": "22"
+    },
+    {
+      "url": "https://cellpainting-gallery.s3.amazonaws.com/cpg0016-jump/source_all/images/jump_lite_v1.0/images_compressed/jpegxl_lossy_mq.zarr/source_13__20220914_Run1__CP-CC9-R1-03__O02__1/0.0.0",
+      "status": 200,
+      "content_length": "31114"
+    },
+    {
+      "url": "https://cellpainting-gallery.s3.amazonaws.com/cpg0016-jump/source_all/images/jump_lite_v1.0/images_compressed/zstd.zarr/zarr.json",
+      "status": 200,
+      "content_length": "66"
+    },
+    {
+      "url": "https://cellpainting-gallery.s3.amazonaws.com/cpg0016-jump/source_all/workspace/publication_data/2026_jump_lite/metadata/v1.0/jump_lite_image_index.parquet",
+      "status": 200,
+      "content_length": "8863539"
+    },
+    {
+      "url": "https://cellpainting-gallery.s3.amazonaws.com/cpg0016-jump/source_all/workspace/publication_data/2026_jump_lite/metadata/v1.0/jump_lite_perturbation_metadata.parquet",
+      "status": 200,
+      "content_length": "949745"
+    },
+    {
+      "url": "https://cellpainting-gallery.s3.amazonaws.com/cpg0016-jump/source_all/workspace/publication_data/2026_jump_lite/metadata/v1.0/jump_lite_plate_manifest.parquet",
+      "status": 200,
+      "content_length": "3733"
+    },
+    {
+      "url": "https://cellpainting-gallery.s3.amazonaws.com/cpg0016-jump/source_all/workspace/publication_data/2026_jump_lite/metadata/v1.0/jump_lite_refchem_annotations.parquet",
+      "status": 200,
+      "content_length": "318521"
+    },
+    {
+      "url": "https://cellpainting-gallery.s3.amazonaws.com/cpg0016-jump/source_all/workspace/publication_data/2026_jump_lite/metadata/v1.0/jump_lite_site_index.parquet",
+      "status": 200,
+      "content_length": "6914554"
+    },
+    {
+      "url": "https://cellpainting-gallery.s3.amazonaws.com/cpg0016-jump/source_all/workspace/publication_data/2026_jump_lite/metadata/v1.0/metadata_manifest.json",
+      "status": 200,
+      "content_length": "1798"
+    },
+    {
+      "url": "https://github.com/afermg/nahual",
+      "status": 200,
+      "content_length": null
+    }
+  ]
+}

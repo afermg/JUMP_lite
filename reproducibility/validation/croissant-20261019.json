@@ -1,0 +1,97 @@
+{
+  "mlcroissant_version": "1.1.1",
+  "errors": [],
+  "warnings": [
+    "[Metadata(JUMP-Lite)] Property \"https://schema.org/datePublished\" is recommended, but does not exist."
+  ],
+  "record_extraction": [
+    {
+      "record_set": "sites",
+      "field_count": 11,
+      "fields": [
+        "sites/Metadata_Site_Key",
+        "sites/Metadata_Source",
+        "sites/Metadata_Batch",
+        "sites/Metadata_Plate",
+        "sites/Metadata_Well",
+        "sites/Metadata_Site",
+        "sites/URL_OrigRNA",
+        "sites/URL_OrigMito",
+        "sites/URL_OrigER",
+        "sites/URL_OrigDNA",
+        "sites/URL_OrigAGP"
+      ]
+    },
+    {
+      "record_set": "image-channels",
+      "field_count": 8,
+      "fields": [
+        "image-channels/Metadata_Site_Key",
+        "image-channels/Metadata_Source",
+        "image-channels/Metadata_Batch",
+        "image-channels/Metadata_Plate",
+        "image-channels/Metadata_Well",
+        "image-channels/Metadata_Site",
+        "image-channels/Metadata_Channel",
+        "image-channels/uri"
+      ]
+    },
+    {
+      "record_set": "perturbations",
+      "field_count": 11,
+      "fields": [
+        "perturbations/Metadata_Well_Key",
+        "perturbations/Metadata_Source",
+        "perturbations/Metadata_Batch",
+        "perturbations/Metadata_Plate",
+        "perturbations/Metadata_Well",
+        "perturbations/Metadata_JCP2022",
+        "perturbations/Metadata_broad_sample",
+        "perturbations/Metadata_Symbol",
+        "perturbations/Metadata_pert_type",
+        "perturbations/Metadata_Perturbation_Type",
+        "perturbations/Metadata_Group"
+      ]
+    },
+    {
+      "record_set": "plates",
+      "field_count": 5,
+      "fields": [
+        "plates/Metadata_Source",
+        "plates/Metadata_Batch",
+        "plates/Metadata_Plate",
+        "plates/well_count",
+        "plates/site_count"
+      ]
+    },
+    {
+      "record_set": "refchem-annotations",
+      "field_count": 23,
+      "fields": [
+        "refchem-annotations/C0",
+        "refchem-annotations/Metadata_JCP2022",
+        "refchem-annotations/Metadata_InChI",
+        "refchem-annotations/DTXSID",
+        "refchem-annotations/casrn",
+        "refchem-annotations/name",
+        "refchem-annotations/target",
+        "refchem-annotations/target_type",
+        "refchem-annotations/mode",
+        "refchem-annotations/activity_class",
+        "refchem-annotations/support",
+        "refchem-annotations/in_cmap",
+        "refchem-annotations/Num_Cmpd2Target_Interactions_geq5",
+        "refchem-annotations/Num_Cmpd2Target_Interactions_gt1",
+        "refchem-annotations/Num_TargetByCmpd_Interactions_geq5",
+        "refchem-annotations/Num_TargetByCmpd_Interactions_gt1",
+        "refchem-annotations/CrossModalityTier",
+        "refchem-annotations/WithinModalityTier",
+        "refchem-annotations/Metadata_JCP2022_target",
+        "refchem-annotations/pert_type",
+        "refchem-annotations/modality",
+        "refchem-annotations/modality_clean",
+        "refchem-annotations/cmpd_pert_dir_matched"
+      ]
+    }
+  ]
+}

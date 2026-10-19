@@ -1,0 +1,119 @@
+{
+  "source": "https://cellpainting-gallery.s3.amazonaws.com/cpg0016-jump/source_all/workspace/publication_data/2026_jump_lite/metadata/v1.0/jump_lite_perturbation_metadata.parquet",
+  "sha256": "bbedb37f12fdeb9a09e72abaa166159d286052dc1201166d811c5310db5cd7e1",
+  "queries": {
+    "by_modality": {
+      "sql": "SELECT Metadata_Perturbation_Type modality, count(*) wells, count(DISTINCT Metadata_JCP2022) distinct_jcp_ids, count(DISTINCT CASE WHEN Metadata_Perturbation_Type='compound' THEN Metadata_JCP2022 ELSE Metadata_Symbol END) modality_identities FROM m GROUP BY 1 ORDER BY 1",
+      "rows": [
+        {
+          "modality": "compound",
+          "wells": 33232,
+          "distinct_jcp_ids": 3776,
+          "modality_identities": 3776
+        },
+        {
+          "modality": "crispr",
+          "wells": 48881,
+          "distinct_jcp_ids": 7977,
+          "modality_identities": 7977
+        },
+        {
+          "modality": "orf",
+          "wells": 81663,
+          "distinct_jcp_ids": 15131,
+          "modality_identities": 12603
+        }
+      ]
+    },
+    "by_group": {
+      "sql": "SELECT Metadata_Group, count(*) wells, count(DISTINCT Metadata_JCP2022) jcp_ids, count(DISTINCT (Metadata_Source,Metadata_Batch,Metadata_Plate)) plates FROM m GROUP BY 1 ORDER BY 1",
+      "rows": [
+        {
+          "Metadata_Group": "group_crispr",
+          "wells": 48881,
+          "jcp_ids": 7977,
+          "plates": 142
+        },
+        {
+          "Metadata_Group": "group_high",
+          "wells": 9155,
+          "jcp_ids": 1187,
+          "plates": 84
+        },
+        {
+          "Metadata_Group": "group_low",
+          "wells": 24077,
+          "jcp_ids": 3415,
+          "plates": 100
+        },
+        {
+          "Metadata_Group": "group_orf",
+          "wells": 81663,
+          "jcp_ids": 15131,
+          "plates": 225
+        }
+      ]
+    },
+    "unique_jcp_overall": {
+      "sql": "SELECT count(DISTINCT Metadata_JCP2022) unique_jcp_ids FROM m",
+      "rows": [
+        {
+          "unique_jcp_ids": 26884
+        }
+      ]
+    },
+    "compound_groups": {
+      "sql": "SELECT count(*) compounds_in_multiple_groups FROM (SELECT Metadata_JCP2022,count(DISTINCT Metadata_Group) group_count FROM m WHERE Metadata_Perturbation_Type='compound' GROUP BY 1 HAVING group_count>1)",
+      "rows": [
+        {
+          "compounds_in_multiple_groups": 826
+        }
+      ]
+    },
+    "identity_control_classes": {
+      "sql": "SELECT Metadata_Perturbation_Type modality,Metadata_pert_type control_class,count(DISTINCT CASE WHEN Metadata_Perturbation_Type='compound' THEN Metadata_JCP2022 ELSE Metadata_Symbol END) identities FROM m GROUP BY 1,2 ORDER BY 1,2",
+      "rows": [
+        {
+          "modality": "compound",
+          "control_class": "negcon",
+          "identities": 1
+        },
+        {
+          "modality": "compound",
+          "control_class": "trt",
+          "identities": 3775
+        },
+        {
+          "modality": "crispr",
+          "control_class": "negcon",
+          "identities": 2
+        },
+        {
+          "modality": "crispr",
+          "control_class": "poscon",
+          "identities": 1
+        },
+        {
+          "modality": "crispr",
+          "control_class": "trt",
+          "identities": 7974
+        },
+        {
+          "modality": "orf",
+          "control_class": "negcon",
+          "identities": 4
+        },
+        {
+          "modality": "orf",
+          "control_class": "poscon",
+          "identities": 1
+        },
+        {
+          "modality": "orf",
+          "control_class": "trt",
+          "identities": 12598
+        }
+      ]
+    }
+  }
+}

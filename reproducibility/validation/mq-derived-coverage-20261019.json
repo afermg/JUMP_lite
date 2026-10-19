@@ -1,0 +1,54 @@
+{
+  "scope": "Read-only manifest metadata intersection; object counts do not establish the input image bytes used. No image decoding or output recomputation.",
+  "mask_manifest_sha256": "f860c279e6bf107a040716cbe779f60f901f5b69326ce5dabaaf301bd407eca6",
+  "sql": "SELECT codec,object_type,count(*) mask_records,count(DISTINCT site_key) sites,min(object_count) min_objects,max(object_count) max_objects FROM masks INNER JOIN affected USING(site_key) GROUP BY 1,2 ORDER BY 1,2",
+  "results": [
+    {
+      "codec": "jpegxl_lossy_mq",
+      "object_type": "cell",
+      "mask_records": 113,
+      "sites": 113,
+      "min_objects": 0,
+      "max_objects": 0
+    },
+    {
+      "codec": "jpegxl_lossy_mq",
+      "object_type": "nuclei",
+      "mask_records": 113,
+      "sites": 113,
+      "min_objects": 0,
+      "max_objects": 0
+    },
+    {
+      "codec": "zstd",
+      "object_type": "cell",
+      "mask_records": 113,
+      "sites": 113,
+      "min_objects": 135,
+      "max_objects": 665
+    },
+    {
+      "codec": "zstd",
+      "object_type": "nuclei",
+      "mask_records": 113,
+      "sites": 113,
+      "min_objects": 122,
+      "max_objects": 740
+    }
+  ],
+  "missing_canonical_local_mq_chunks": 119,
+  "derived_input_provenance_resolved": false,
+  "mask_manifest_public_url": "https://cellpainting-gallery.s3.amazonaws.com/cpg0016-jump/source_all/workspace/publication_data/2026_jump_lite/segmentation/2026_jump_lite_v1.0/manifests/masks.parquet",
+  "public_manifest_download_sha256_matches": true,
+  "affected_sites": 119,
+  "affected_sites_with_masks": 113,
+  "affected_sites_without_masks": 6,
+  "affected_wells": 34,
+  "zero_mq_mask_arrays": 226,
+  "status": "Confirmed empty MQ masks in audited public manifest; embedding input provenance unresolved",
+  "target2_mask_manifest_overlap": {
+    "sql": "SELECT count(DISTINCT site_key) FROM pilot JOIN affected USING(site_key)",
+    "affected_sites": 0,
+    "manifest_sha256": "4629e34930470224f8986a39add13b8469a206d6271a48ed832999c487d3266f"
+  }
+}

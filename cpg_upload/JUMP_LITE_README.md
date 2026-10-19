@@ -31,20 +31,24 @@ Included sources are `source_2`, `source_4`, `source_6`, `source_7`, `source_8`,
 and `source_13`.
 
 For benchmark accounting, a perturbation is the combination of modality and
-biological entity (gene or compound). The release contains 3,776 compound
-identities, 7,977 CRISPR-targeted genes, and 12,603 ORF-overexpressed genes, for
-24,356 modality-specific perturbations. ORF overexpression and CRISPR knockout
+biological entity (gene or compound). Including controls, the release contains
+3,776 compound identities, 7,977 CRISPR gene/control identities, and 12,603 ORF
+gene/control identities, for 24,356 modality-specific identities. ORF overexpression and CRISPR knockout
 of the same gene are distinct because these opposing interventions can produce
 different cellular phenotypes.
 
+These totals include 24,347 treatments and nine control identities. The 15,131 ORF JCP reagent IDs map to 12,603 ORF gene/control identities. The two compound groups have 1,187 and 3,415 identifiers, of which 826 occur in both, giving 3,776 distinct compounds. There are 26,884 globally distinct JCP IDs; the manuscript table's 27,710 is a sum of subgroup counts, not a globally distinct total. See the [data card](https://github.com/afermg/JUMP_lite/blob/main/DATA_CARD.md) for definitions and responsible-use guidance.
+
 ## Cell Painting Gallery layout
+
+The objects below are public. The [release audit](https://github.com/afermg/JUMP_lite/blob/main/cpg_upload/PUBLIC_RELEASE_AUDIT.md) records the completed 119-chunk MQ repair and the unresolved provenance check for affected derived outputs.
 
 The release is stored as loose, directly addressable CPG objects under:
 
 ```text
 cpg0016-jump/source_all/
 ├── images/
-│   └── 2026_jump_lite_v1.0/
+│   └── jump_lite_v1.0/
 │       └── images_compressed/
 │           ├── zstd.zarr/
 │           ├── jpegxl_lossy_hq.zarr/
@@ -82,7 +86,7 @@ cpg0016-jump/source_all/
 └── workspace_dl/
     └── embeddings/
         └── <model>-<image-codec>/
-            └── 2026_jump_lite_v1.0/
+            └── jump_lite/v1.0/
                 └── <source>/
                     └── <batch>/
                         └── <plate>/
@@ -162,11 +166,13 @@ and encoded SHA-256 hashes, and producer provenance are recorded in
 `segmentation/2026_jump_lite_v1.0/manifests/masks.parquet` and
 `manifests/provenance.json`.
 
+The mask subset covers 158,168 four-site wells. It leaves 22,429 of the 655,101 image sites without masks; use the manifest's membership rather than silently intersecting datasets. The current mask manifest's `source_image_store` values still name the historical image prefix. The actual image prefix is `images/jump_lite_v1.0/images_compressed/`. The deposited manifest and its hashes remain unchanged; the repository [public path map](https://github.com/afermg/JUMP_lite/blob/main/cpg_upload/PUBLIC_PATHS.md) records the access-path correction.
+
 ## Per-site Parquet outputs
 
-Feature outputs intentionally use one Parquet file per image site. Their file
-stem is identical to the corresponding Zarr site key. Each Parquet is in long
-form with the columns:
+Feature outputs use one file per site, named `embedding.parquet` inside
+`<source>/<batch>/<plate>/<well>-<site>/`. The parent path, not the filename,
+identifies the site. Each Parquet is in long form with the columns:
 
 ```text
 tile, label, branch, metric, value, object, tp
@@ -226,6 +232,8 @@ by resampling:
 - `jump_lite_plate_manifest.parquet`: per-plate well and site counts.
 - `metadata_manifest.json`: counts, channel order, and artifact sizes.
 
+The repository's [Croissant 1.0 file](https://github.com/afermg/JUMP_lite/blob/main/croissant.json) describes these entry points, exact public URLs, schemas, and hashes. It does not enumerate or validate every image, mask, or embedding. The older deposited README remains unchanged. Use this repository specification and its public path map for current access locations.
+
 ## Annotations
 
 `jump_lite_refchem_annotations.parquet` contains the release-relevant subset of
@@ -262,14 +270,14 @@ Painting Gallery upload guidance.
 
 ### Image and site lineage
 
-The release follows this lineage for every site:
+The intended production lineage is shown below. For the 119 repaired MQ image sites, the historical input pixels used by derived masks/embeddings remain under investigation; file presence does not establish that lineage.
 
 ```text
 original JUMP TIFFs in cpg0016-jump/source_<n>/images/
     ↓ five URLs frozen in jump_lite_site_index.parquet
 site-major uint16 array in <image-codec>.zarr/<site-key>
     ↓ model-specific channel selection, preprocessing, and tiling
-per-site embedding Parquet in <model>-<image-codec>/2026_jump_lite_v1.0/
+per-site embedding Parquet in <model>-<image-codec>/jump_lite/v1.0/
 ```
 
 The JUMP-Lite plate list was filtered against the JUMP redlist and graylist,

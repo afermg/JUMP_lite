@@ -2,7 +2,7 @@
 
 **JUMP-Lite** is a compact, analysis-ready subset of the [JUMP Cell Painting dataset](https://registry.opendata.aws/cellpainting-gallery/). It combines compressed five-channel microscopy images with per-site deep-learning embeddings, Cellpose cell and nuclei instance masks, exact links to the original TIFFs, perturbation metadata, curated RefChemDB annotations, and publication artifacts for the four-plate Target-2 compression analysis.
 
-> **Release status:** JUMP-Lite v1.0 has been deposited in the Cell Painting Gallery (CPG) and is awaiting gallery promotion. The public paths below will be available by mid-September 2026 at the latest.
+> **Release status (2026-10-19):** JUMP-Lite v1.0 is publicly accessible in the Cell Painting Gallery without credentials. All 119 previously missing MQ image chunks have been repaired and hash-verified. The mask manifest reports empty MQ masks at 113 affected sites, and the input provenance of affected embeddings remains unresolved; see the [release audit](cpg_upload/PUBLIC_RELEASE_AUDIT.md) and [affected-site inventory](cpg_upload/mq_repaired_sites_20261001.csv).
 
 ## Dataset at a glance
 
@@ -12,7 +12,7 @@
 | Batches                     |                                30 |
 | Plates                      |                               551 |
 | Wells                       |                           163,776 |
-| Benchmark perturbations     |                            24,356 |
+| Modality identities, including controls |                 24,356 |
 | Image sites                 |                           655,101 |
 | Mask-covered sites          |                           632,672 |
 | Cell/nuclei mask arrays     |                         2,530,688 |
@@ -26,9 +26,11 @@
 | Per-site embedding Parquets |                        10,481,616 |
 | Curated annotation rows     | 29,142 across 1,526 perturbations |
 
-The release covers `source_2`, `source_4`, `source_6`, `source_7`, `source_8`, and `source_13`, with at most four sites per well. Benchmark perturbations are defined by modality and biological entity, so ORF overexpression and CRISPR knockout of the same gene count separately.
+The release covers `source_2`, `source_4`, `source_6`, `source_7`, `source_8`, and `source_13`, with at most four sites per well. It contains **24,347 treatments and nine control identities**. ORF overexpression and CRISPR knockout of the same gene count separately. Reagent identifiers and overlapping compound groups produce different totals; the [data card](DATA_CARD.md#counts-and-coverage) explains them.
 
 ## Access
+
+Start with the [public site index](https://cellpainting-gallery.s3.amazonaws.com/cpg0016-jump/source_all/workspace/publication_data/2026_jump_lite/metadata/v1.0/jump_lite_site_index.parquet) or the [access guide](cpg_upload/PUBLIC_PATHS.md). The index identifies all 655,101 sites and their five source TIFF URLs.
 
 Public root:
 
@@ -38,11 +40,11 @@ s3://cellpainting-gallery/cpg0016-jump/source_all/
 
 | Component | Path below the public root |
 |---|---|
-| Compressed images | `images/2026_jump_lite_v1.0/images_compressed/<codec>.zarr/` |
+| Compressed images | `images/jump_lite_v1.0/images_compressed/<codec>.zarr/` |
 | Metadata and annotations | `workspace/publication_data/2026_jump_lite/metadata/v1.0/` |
 | Cell and nuclei instance masks | `workspace/publication_data/2026_jump_lite/segmentation/2026_jump_lite_v1.0/{cell_masks,nuclei_masks}/{zstd,jpegxl_lossy_mq}.zarr/` |
 | Target-2 masks, object features, and compact profiles | `workspace/publication_data/2026_jump_lite/target_2/v1.0/` |
-| Per-site embeddings | `workspace_dl/embeddings/<model>-<codec>/2026_jump_lite_v1.0/` |
+| Per-site embeddings | `workspace_dl/embeddings/<model>-<codec>/jump_lite/v1.0/` |
 
 Start by downloading the small metadata bundle; AWS credentials are not required:
 
@@ -51,6 +53,8 @@ aws s3 cp --no-sign-request --recursive \
   s3://cellpainting-gallery/cpg0016-jump/source_all/workspace/publication_data/2026_jump_lite/metadata/v1.0/ \
   jump_lite_metadata/
 ```
+
+The [Croissant 1.0 metadata](croissant.json) describe the five public release tables and metadata manifest, including exact URLs, sizes, and hashes. The [data card and responsible-use documentation](DATA_CARD.md) cover provenance, intended use, limitations, licensing, and maintenance. The [complete specification](cpg_upload/JUMP_LITE_README.md) documents image, embedding, and mask layouts.
 
 ## What is included
 
@@ -71,7 +75,7 @@ The original TIFFs remain in their source-specific `cpg0016-jump/source_<n>/` lo
 
 ## Provenance
 
-The exact 655,101-site paper benchmark cohort is frozen across all four image variants. It contains 163,773 wells with four available sites and three wells with three available sites. The embedding collections share this same site set for the lossy image variants they cover.
+The exact 655,101-site paper benchmark cohort is frozen across all four image variants. It contains 163,773 wells with four available sites and three wells with three available sites. The embedding collections share this same site set for the lossy image variants they cover. Masks cover a separate frozen subset of 632,672 sites in 158,168 wells; 22,429 released image sites have no masks. Object coverage does not by itself prove that every derived output used the intended pixels; the release audit records the remaining checks for the repaired MQ sites.
 
 ## How JUMP-Lite was generated
 

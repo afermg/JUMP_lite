@@ -7,6 +7,12 @@ No script stores AWS credentials in the repository. The long-lived CPG grant
 keys remain in `~/.cpg_key_id` and `~/.cpg_access_key`; temporary credentials
 are requested through S3 Access Grants.
 
+## Published release and historical tooling
+
+JUMP-lite v1.0 is public. Use the corrected access paths in [the dataset specification](JUMP_LITE_README.md), the [Croissant metadata](../croissant.json), and the [data card](../DATA_CARD.md). The [public audit](PUBLIC_RELEASE_AUDIT.md) records the 119 completed MQ image repairs and unresolved derivative-provenance checks.
+
+The uploader commands below document the original staging workflow. Some scripts and saved checkpoints retain historical staging destinations; they are not authoritative public-path references. Do not rerun them to correct documentation or change their destination prefixes without an explicit migration and maintainer review. No further CPG uploads are planned for this documentation update. Existing public manifests and their provenance hashes remain unchanged; [the public path map](PUBLIC_PATHS.md) supplies the corrected access locations.
+
 ## Safety invariant
 
 All compressed image datasets and every corresponding per-site Parquet variant
@@ -149,8 +155,7 @@ writes wide and tidy image indices, perturbation metadata, release-filtered
 annotations, a plate manifest, and a metadata manifest. It also copies
 `cpg_upload/JUMP_LITE_README.md` to
 `/work/datasets/jump_lite/cpg_release/README.md` and records its byte size.
-Therefore rerun this command after every dataset-facing README change and before
-the final metadata sync.
+For a new, unpublished release, rerun this command after dataset-facing README changes and before its final metadata sync. For the already published v1.0 release, do not regenerate canonical metadata in place merely to update prose. Update repository documentation and the public path map instead; the deposited files and hashes remain unchanged.
 
 ## 3. Validate
 
@@ -174,15 +179,15 @@ path exists.
 
 ## 4. CPG object layout
 
-The release uses the following agreed `source_all` namespace:
+The published release uses the following `source_all` namespace. Historical uploader/checkpoint prefixes may differ:
 
 ```text
 cpg0016-jump/source_all/
-├── images/2026_jump_lite_v1.0/images_compressed/<codec>.zarr/
+├── images/jump_lite_v1.0/images_compressed/<codec>.zarr/
 ├── workspace/publication_data/2026_jump_lite/metadata/v1.0/
 │   └── <release metadata files>
 └── workspace_dl/embeddings/
-    └── <model>-<codec>/2026_jump_lite_v1.0/
+    └── <model>-<codec>/jump_lite/v1.0/
         └── <source>/<batch>/<plate>/<well>-<site>/embedding.parquet
 ```
 
@@ -424,9 +429,10 @@ cpg_upload/zstd_upload_status.sh
 ```
 
 State is stored at
-`/work/datasets/jump_lite/cpg_upload_state/v1.0/zstd/checkpoint.json`. The final
-destination is
+`/work/datasets/jump_lite/cpg_upload_state/v1.0/zstd/checkpoint.json`. Historical staging used
 `cpg0016-jump/source_all/images/2026_jump_lite_v1.0/images_compressed/zstd.zarr/`.
+The actual public destination is
+`cpg0016-jump/source_all/images/jump_lite_v1.0/images_compressed/zstd.zarr/`.
 
 A builder restart scans the manifest from its beginning and skips existing
 complete arrays. Its displayed `processed_manifest_sites` may therefore fall
@@ -530,9 +536,11 @@ completed prefix, so a restart skips already verified prefixes. Recursive S3
 listing covers roughly 21 million objects and can take well over 30 minutes.
 Do not substitute upload checkpoint counts for this remote verification.
 
-## 11. Finalize and hand off a release
+## 11. Historical release handoff
 
-Use this checklist after all bulk transfers stop changing:
+This checklist records the original deposit procedure. Do not execute it for the current documentation update; no further CPG uploads or metadata replacements are planned.
+
+For a separately authorized new release, use this checklist after all bulk transfers stop changing:
 
 1. Confirm the three terminal states listed above. For Zstd, 100% of site
    objects is not enough: wait for root metadata publication and the built-in
