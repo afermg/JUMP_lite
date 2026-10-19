@@ -6,6 +6,7 @@ import base64
 from concurrent.futures import ThreadPoolExecutor
 import fcntl
 import hashlib
+from fractions import Fraction
 from itertools import islice
 import json
 import logging
@@ -895,7 +896,7 @@ def _load_record(config: ProductionConfig, tranche: int) -> dict[str, Any]:
             for k in ("created", "skipped", "excluded_missing")
         )
         or value.get("excluded_missing", 0)
-        > config.max_missing_fraction * value.get("site_count", 0)
+        > Fraction(str(config.max_missing_fraction)) * value.get("site_count", 0)
     ):
         raise RuntimeError(
             f"tranche record digest/field/missing-limit drift: {tranche}"
@@ -2556,7 +2557,9 @@ def _run_with_snapshot(
                                 for outcome in results + outcomes
                             )
                             missing_limit = None
-                            if missing_count > config.max_missing_fraction * len(rows):
+                            if missing_count > Fraction(
+                                str(config.max_missing_fraction)
+                            ) * len(rows):
                                 missing_limit = {
                                     "excluded_sites": missing_count,
                                     "tranche_sites": len(rows),

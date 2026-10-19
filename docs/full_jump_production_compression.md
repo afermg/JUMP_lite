@@ -65,7 +65,9 @@ allows at most 12 excluded sites in a full 256-site tranche; the 13th pauses the
 The final short tranche uses its actual size, with no grace rounding (e.g. one missing
 site in a 10-site final tranche exceeds 5%). The setting accepts finite values from
 0 to 1; 0 allows no exclusions, and 1 is an explicit decision to allow even an empty
-output tranche. Counts are sites, not channels, and include reused exclusion receipts.
+output tranche. Limits use the decimal setting exactly, so a limit of 0.29 admits
+29 excluded sites out of 100 without binary floating-point rounding. Counts are
+sites, not channels, and include reused exclusion receipts.
 
 A limit breach writes a blocking incident with reason `missing-source-rate-exceeded`
 and the observed count, tranche denominator, and configured limit. It stops before

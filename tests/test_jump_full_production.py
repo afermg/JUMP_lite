@@ -745,6 +745,39 @@ class ProductionRunnerTests(unittest.TestCase):
         self.assertEqual(result["next_index"], 20)
         self.assertEqual(load_incidents(config)["count"], 0)
 
+    def test_record_and_skip_decimal_boundary_is_exact(self):
+        # Binary float multiplication gives 0.29 * 100 == 28.999999999999996.
+        # The configured decimal boundary must still admit exactly 29 sites.
+        config = self._remote_config(
+            100, policy="record-and-skip", max_missing_fraction=0.29
+        )
+        self._bootstrap(config)
+        with self._identity_patch(), self._source_reads(missing_sites=set(range(29))):
+            result = run_production(config, 1, True)
+            final = finalize_validation(config)
+            status = production_status(config)
+        self.assertEqual(result["status"], "complete")
+        self.assertEqual(result["excluded_missing_sites"], 29)
+        self.assertEqual(final["available_sites"], 71)
+        self.assertEqual(status["counts"]["processed_manifest_sites"], 100)
+        self.assertEqual(load_incidents(config)["count"], 0)
+
+    def test_record_and_skip_decimal_limit_still_blocks_above_boundary(self):
+        config = self._remote_config(
+            100, policy="record-and-skip", max_missing_fraction=0.29
+        )
+        self._bootstrap(config)
+        before = (config.state_root / "checkpoint.json").read_bytes()
+        with (
+            self._identity_patch(),
+            self._source_reads(missing_sites=set(range(30))),
+            self.assertRaises(SourceIncidentError),
+        ):
+            run_production(config, 1, True)
+        self.assertEqual((config.state_root / "checkpoint.json").read_bytes(), before)
+        self.assertEqual(load_incidents(config)["unacknowledged_count"], 1)
+        self.assertFalse(list((config.output_root / "tranches").glob("*.json")))
+
     def test_record_and_skip_head_access_denied_blocks_exclusion(self):
         config = self._remote_config(policy="record-and-skip", max_missing_fraction=1.0)
         self._bootstrap(config)
