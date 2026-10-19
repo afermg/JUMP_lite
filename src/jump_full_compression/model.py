@@ -239,6 +239,8 @@ class ProductionConfig:
     tranche_size: int = PRODUCTION_TRANCHE_SIZE
     max_workers: int = MAX_WORKERS
     test_mode: bool = False
+    missing_source_policy: str = "record-and-skip"
+    max_missing_fraction: float = 0.05
 
     @property
     def candidate_id(self) -> str:
@@ -246,6 +248,13 @@ class ProductionConfig:
         return self.production_id
 
     def validate(self) -> None:
+        if self.missing_source_policy not in {"stop", "record-and-skip"}:
+            raise ValueError("unknown missing-source policy")
+        if (
+            type(self.max_missing_fraction) not in (int, float)
+            or not 0 <= self.max_missing_fraction <= 1
+        ):
+            raise ValueError("max-missing-fraction must be a finite value in [0, 1]")
         if self.production_id != (
             "test-production" if self.test_mode else PRODUCTION_ID
         ):

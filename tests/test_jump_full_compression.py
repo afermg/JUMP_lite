@@ -1109,6 +1109,19 @@ print(json.dumps({
         self.assertTrue(rejected["paused"])
         self.assertIn("compression idle terminal state incoherent", rejected["reasons"])
 
+    def test_governor_requires_source_incident_ack_independent_of_generic_errors(self):
+        for pending in (1, 2, -1, True, "0", None):
+            with self.subTest(pending=pending):
+                metrics = self._metrics(errors=0)
+                metrics["compression"]["unacknowledged_source_incidents"] = pending
+                decision = decide(metrics, self._governor_control(metrics))
+                self.assertTrue(decision["paused"])
+                self.assertTrue(
+                    any("source incident" in reason for reason in decision["reasons"])
+                )
+        metrics["compression"]["unacknowledged_source_incidents"] = 0
+        self.assertFalse(decide(metrics, self._governor_control(metrics))["paused"])
+
     def test_governor_multiwindow_independent_progress_and_error_ack(self):
         m1 = self._metrics()
         c1 = decide(m1, self._governor_control(m1))
