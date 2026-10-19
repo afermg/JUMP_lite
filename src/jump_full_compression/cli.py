@@ -16,6 +16,7 @@ from .pipeline import (
 )
 from .production import (
     acknowledge_production_errors,
+    acknowledge_production_source_incidents,
     authorize_continuous,
     bootstrap_production,
     finalize_validation,
@@ -70,6 +71,8 @@ def _production_config(args) -> ProductionConfig:
         args.qc_plates_sha256,
         args.site_count,
         test_mode=args.test_mode,
+        missing_source_policy=args.missing_source_policy,
+        max_missing_fraction=args.max_missing_fraction,
     )
 
 
@@ -100,6 +103,18 @@ def _add_production_arguments(command) -> None:
         command.add_argument(f"--{name}", required=True)
     command.add_argument("--manifest-size", type=int, required=True)
     command.add_argument("--site-count", type=int, required=True)
+    command.add_argument(
+        "--missing-source-policy",
+        choices=("stop", "record-and-skip"),
+        default="record-and-skip",
+        help="record and exclude whole sites only for confirmed missing S3 objects",
+    )
+    command.add_argument(
+        "--max-missing-fraction",
+        type=float,
+        default=0.05,
+        help="maximum excluded-site fraction per manifest tranche (default: 0.05)",
+    )
     command.add_argument("--test-mode", action="store_true", help=argparse.SUPPRESS)
 
 
@@ -216,6 +231,11 @@ def parser():
     _add_production_arguments(production_ack)
     production_ack.add_argument("--expected-count", type=int, required=True)
     production_ack.add_argument("--apply", action="store_true")
+    source_ack = commands.add_parser("production-acknowledge-source-incidents")
+    _add_production_arguments(source_ack)
+    source_ack.add_argument("--expected-count", type=int, required=True)
+    source_ack.add_argument("--expected-list-sha256", required=True)
+    source_ack.add_argument("--apply", action="store_true")
     production_verify = commands.add_parser("production-verify-tranche")
     _add_production_arguments(production_verify)
     production_verify.add_argument("--tranche", type=int, required=True)
@@ -352,6 +372,19 @@ def main(argv=None):
             json.dumps(
                 acknowledge_production_errors(
                     _production_config(args), args.expected_count, args.apply
+                ),
+                indent=2,
+            )
+        )
+        return 0
+    if args.command == "production-acknowledge-source-incidents":
+        print(
+            json.dumps(
+                acknowledge_production_source_incidents(
+                    _production_config(args),
+                    args.expected_count,
+                    args.expected_list_sha256,
+                    args.apply,
                 ),
                 indent=2,
             )

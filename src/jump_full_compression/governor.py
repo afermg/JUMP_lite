@@ -369,6 +369,11 @@ def decide(
             failures.append("compression identity drift")
         state = compression.get("state")
         errors = int(compression["cumulative_errors"])
+        pending_sources = compression.get("unacknowledged_source_incidents", 0)
+        if type(pending_sources) is not int or pending_sources < 0:
+            failures.append("source incident telemetry invalid")
+        elif pending_sources:
+            failures.append("source incident acknowledgement required")
         acknowledged = int(effective_previous.get("acknowledged_error_count", 0))
         idle = state in {"session-complete", "complete", "stopped", "paused"}
         coherent_idle = (
