@@ -2,7 +2,7 @@
 
 **JUMP-Lite** is a compact, analysis-ready subset of the [JUMP Cell Painting dataset](https://registry.opendata.aws/cellpainting-gallery/). It combines compressed five-channel microscopy images with per-site deep-learning embeddings, Cellpose cell and nuclei instance masks, exact links to the original TIFFs, perturbation metadata, curated RefChemDB annotations, and publication artifacts for the four-plate Target-2 compression analysis.
 
-> **Release status (2026-10-19):** JUMP-Lite v1.0 is publicly accessible in the Cell Painting Gallery without credentials. All 119 previously missing MQ image chunks have been repaired and hash-verified. The mask manifest reports empty MQ masks at 113 affected sites, and the input provenance of affected embeddings remains unresolved; see the [release audit](cpg_upload/PUBLIC_RELEASE_AUDIT.md) and [affected-site inventory](cpg_upload/mq_repaired_sites_20261001.csv).
+> **Release status (2026-10-19):** JUMP-Lite v1.0 is publicly accessible in the Cell Painting Gallery.
 
 ## Dataset at a glance
 
