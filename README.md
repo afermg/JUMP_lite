@@ -100,6 +100,19 @@ The generation and analysis resources remain part of this repository:
 
 ## Reproducibility
 
+Start with a small feature-normalization and retrieval example:
+
+```bash
+uv run examples/uv_profile_demo.py --output demo
+```
+
+- [Add a model](docs/uv_profile_demo.md#add-a-model): export well features and evaluate them.
+- [Change annotations](docs/uv_profile_demo.md#change-annotations): reevaluate the same features with different relationships.
+- [Extract image features](docs/uv_jump_lite.md): run OpenPhenom on public images or reuse cp_measure results.
+- [Replay normalization recipes](docs/uv_jump_benchmark.md): use v11-style or strict split-before-fit evaluation.
+
+See [example status](docs/uv_reproduction_progress.md) for validation and remaining work.
+
 Run `nix develop` followed by `just --list` to inspect the generation and
 reproduction recipes. The bounded source-stratified dataset check validates the
 complete 655,101-site release index and reproduces one five-channel site from
