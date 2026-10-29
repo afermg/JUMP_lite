@@ -100,6 +100,31 @@ The generation and analysis resources remain part of this repository:
 
 ## Reproducibility
 
+For a standalone **real-input software smoke test**, with only `uv` installed:
+
+```bash
+uv run examples/uv_jump_lite.py --output real-run
+```
+
+This downloads a bounded public image/annotation cohort, runs a pinned
+OpenPhenom model on CPU, and records diagnostic normalization/retrieval outputs.
+It is **not full production normalization or reproduction of published scores**.
+See the [real-input guide](docs/uv_jump_lite.md) for resource requirements,
+receipt-bound cp_measure reuse, and full-benchmark blockers. The lighter
+[synthetic example](docs/uv_profile_demo.md) remains available separately.
+
+For **separate v11-style and strict split-before-fit CPU replay** of checksum-bound
+raw well profiles and resolved OpenPhenom recipes:
+
+```bash
+uv run --locked examples/uv_jump_benchmark.py --manifest benchmark-inputs.json --target both --output replay
+```
+
+The [dual-protocol guide](docs/uv_jump_benchmark.md) describes input contracts,
+production PA/PC/NAP, Raw-only strict recipe selection, fitted-state audits and
+separate reference comparisons. Bounded real-data runs passed; complete published
+benchmark coverage, historical GPU parity and full MOTIVE remain unverified.
+
 Run `nix develop` followed by `just --list` to inspect the generation and
 reproduction recipes. The bounded source-stratified dataset check validates the
 complete 655,101-site release index and reproduces one five-channel site from

@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "status": "bounded_dual_protocol_validation_passed",
+  "published_score_parity": false,
+  "historical_gpu_numerical_parity_established": false,
+  "full_motive_executed": false,
+  "platform": "Linux x86_64",
+  "python": "3.12.12",
+  "script": "examples/uv_jump_benchmark.py",
+  "script_sha256": "03d128db323e950af9e0497fc0ac1138241fcd5084b399c4158279784bd9b7a6",
+  "lock_sha256": "e06c8a363cbdfe1c810c0fd36caae0c085e1722a14291f9e9c237c35e587f0f9",
+  "inputs": {
+    "kind": "actual historical OpenPhenom-labelled raw well profiles; not synthetic and not archived normalized profiles",
+    "cohort_scope": "bounded-validation",
+    "selection": "Previously frozen 328-compound group_high cohort plus plate controls; no new score-based selection",
+    "wells": 4564,
+    "treatment_identities": 328,
+    "controls": 2686,
+    "raw_features": 384,
+    "codecs": ["Raw", "HQ", "MQ", "D20"],
+    "recipes": [
+      "std_all__tvn_efaar_e1.0_c96__noprune",
+      "robustmad_ctrl__tvn_efaar_e0.5_c96__noprune"
+    ],
+    "manifest_sha256": "0d2a666baad611180a22cd21192e908864f05cf8cd0482f9c4ec91924ce01cb8",
+    "manifest_with_local_references_sha256": "0814fdd94d9db074145306bf89bb6060267e2a578f7f0623f3994cb1a82b08e4"
+  },
+  "protocols": {
+    "paper-v11": {
+      "semantics": "Full declared cohort fitting, except explicitly control-only steps; report each declared recipe and codec",
+      "recipe_codec_score_rows": 8,
+      "output_features": 96,
+      "reference_status": "local CPU replay matched; no independent published reference"
+    },
+    "strict": {
+      "semantics": "Metadata-first 20/80 identity split, selection/control-only fitting, Raw-only recipe selection, frozen recipe across codecs",
+      "seed": 20260811,
+      "selection_treatment_identities": 66,
+      "test_treatment_identities": 262,
+      "selection_and_control_wells": 3065,
+      "test_treatment_wells_excluded_from_fit": 1499,
+      "test_and_control_scoring_wells": 4185,
+      "raw_selection_candidate_score_rows": 2,
+      "heldout_codec_score_rows": 4,
+      "output_features": 96,
+      "selected_recipe": "robustmad_ctrl__tvn_efaar_e0.5_c96__noprune",
+      "selection_caveat": "Opposing PA/PC rankings among two candidates give tied zero min-max products; the specified lexical tiebreak selected the recipe. This is not a scientific optimality claim.",
+      "reference_status": "separately bound local CPU replay matched; no independent published reference"
+    }
+  },
+  "metrics": {
+    "implementation": "Unchanged hash-verified norm_3 metrics.py/io.py from bc4f74838cad1441bd3723b37e4ad78c5cceaa9b",
+    "null_size": 10000,
+    "seed": 0,
+    "min_compounds_per_target": 3,
+    "max_targets_per_compound": 50,
+    "distance": "cosine for all validated 96-feature outputs",
+    "substituted_diagnostic_metrics": false
+  },
+  "runtime": {
+    "copairs": "0.5.4",
+    "numba": "0.63.1",
+    "numpy": "1.26.4",
+    "pandas": "2.2.1",
+    "polars": "1.35.2",
+    "scikit-learn": "1.5.2",
+    "scipy": "1.16.3",
+    "backend": "CPU float64; sklearn full-SVD PCA, NumPy symmetric eigendecomposition",
+    "copairs_workers": 1,
+    "gpu_used": false
+  },
+  "repeatability": {
+    "complete_runs": 2,
+    "second_run": "Copied script and lock outside repository; empty inherited environment, isolated HOME, uv-downloaded Python; anonymous pinned metric-source download",
+    "target_specific_files_compared": 87,
+    "target_specific_files_byte_identical": true,
+    "target_output_hash_set_sha256": "c3c620c08c25d25445ab785f142e1b3ebe771c5ce3d4c190cd4e18755cd51d15",
+    "hash_set_encoding": "SHA256 of compact sorted-key JSON mapping target-relative output paths to file SHA256s",
+    "run1_provenance_sha256": "391b763363fa34d7181b383587a449efa589d38d0a84371f73a1893d34f7413b",
+    "run2_provenance_sha256": "1150a0c06e7cc488437aae240fca050a75381bc9e53f2286f8be8b22feb0cf15",
+    "both_target_local_references_matched": true,
+    "independent_reference": false
+  },
+  "real_data_leakage_sentinels": {
+    "mutation": "In memory only: held-out feature values * 1000 + 99",
+    "both_strict_recipe_states_unchanged": true,
+    "both_strict_selection_control_transforms_unchanged": true,
+    "no_heldout_ids_in_fit_audits": true,
+    "paper_all_row_standardization_state_changed": true,
+    "source_files_modified": false,
+    "report_sha256": "96032acdd26db951ed550274b35c69aecf6a8395e5ed49a4a4285cd6758a92fa"
+  },
+  "offline_tests": {
+    "new_protocol_tests_passed": 25,
+    "public_image_regression_tests_passed": 34,
+    "synthetic_demo_regression_tests_passed": 16,
+    "release_documentation_tests_passed": 2,
+    "total_passed": 77,
+    "ruff": "passed",
+    "git_diff_check": "passed",
+    "fixtures_are_not_biological_evidence": true
+  },
+  "retained_failures": [
+    "Two preparation attempts failed in Polars-native Parquet reading with invalid UTF-8/panic errors before metrics ran. PyArrow fully validated the original selected data. The reader changed, not the data, cohort or recipes. Partial preparation directories were retained."
+  ],
+  "artifact_directory": "/work/users/amunoz/artifacts/jump-lite-followups/uv-dual-20261029",
+  "limitations": [
+    "Two predeclared recipes are not the full 175-effective-recipe OpenPhenom inventory or the multi-model benchmark.",
+    "One strict split seed is not the full five-seed production workflow.",
+    "The annotation-enriched cohort is a bounded software-validation cohort, not the published evaluation population.",
+    "CPU repeatability is not CuPy/cuML parity; comparison tolerances are engineering checks only.",
+    "Historical raw-profile checkpoint/preprocessing/aggregation lineage remains unresolved.",
+    "No authoritative public full-benchmark manifest, frozen reference bundle, or full MOTIVE input bundle is bound.",
+    "macOS and Windows remain untested.",
+    "At the validation checkpoint, changes were local and uncommitted. Current delivery status is tracked in docs/uv_reproduction_progress.md and PR #11."
+  ]
+}

@@ -1,5 +1,9 @@
 # One-file feature → normalization → evaluation demo
 
+For public-image downloads and fresh pinned OpenPhenom inference, see the separate
+[real-input uv runner](uv_jump_lite.md). Neither example is a full reproduction
+of published benchmark scores.
+
 **The default data and relationships are entirely synthetic. The scores are a
 software smoke test, NOT scientific evidence or JUMP-lite benchmark results.**
 No images, models, private files, GPU, repository imports, services, shell tools,
