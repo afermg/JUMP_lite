@@ -100,30 +100,18 @@ The generation and analysis resources remain part of this repository:
 
 ## Reproducibility
 
-For a standalone **real-input software smoke test**, with only `uv` installed:
+Start with a small feature-normalization and retrieval example:
 
 ```bash
-uv run examples/uv_jump_lite.py --output real-run
+uv run examples/uv_profile_demo.py --output demo
 ```
 
-This downloads a bounded public image/annotation cohort, runs a pinned
-OpenPhenom model on CPU, and records diagnostic normalization/retrieval outputs.
-It is **not full production normalization or reproduction of published scores**.
-See the [real-input guide](docs/uv_jump_lite.md) for resource requirements,
-receipt-bound cp_measure reuse, and full-benchmark blockers. The lighter
-[synthetic example](docs/uv_profile_demo.md) remains available separately.
+- [Add a model](docs/uv_profile_demo.md#add-a-model): export well features and evaluate them.
+- [Change annotations](docs/uv_profile_demo.md#change-annotations): reevaluate the same features with different relationships.
+- [Extract image features](docs/uv_jump_lite.md): run OpenPhenom on public images or reuse cp_measure results.
+- [Replay normalization recipes](docs/uv_jump_benchmark.md): use v11-style or strict split-before-fit evaluation.
 
-For **separate v11-style and strict split-before-fit CPU replay** of checksum-bound
-raw well profiles and resolved OpenPhenom recipes:
-
-```bash
-uv run --locked examples/uv_jump_benchmark.py --manifest benchmark-inputs.json --target both --output replay
-```
-
-The [dual-protocol guide](docs/uv_jump_benchmark.md) describes input contracts,
-production PA/PC/NAP, Raw-only strict recipe selection, fitted-state audits and
-separate reference comparisons. Bounded real-data runs passed; complete published
-benchmark coverage, historical GPU parity and full MOTIVE remain unverified.
+See [example status](docs/uv_reproduction_progress.md) for validation and remaining work.
 
 Run `nix develop` followed by `just --list` to inspect the generation and
 reproduction recipes. The bounded source-stratified dataset check validates the
