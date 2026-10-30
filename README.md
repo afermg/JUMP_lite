@@ -111,8 +111,6 @@ uv run examples/uv_profile_demo.py --output demo
 - [Extract image features](docs/uv_jump_lite.md): run OpenPhenom on public images or reuse cp_measure results.
 - [Replay normalization recipes](docs/uv_jump_benchmark.md): use v11-style or strict split-before-fit evaluation.
 
-See [example status](docs/uv_reproduction_progress.md) for validation and remaining work.
-
 Run `nix develop` followed by `just --list` to inspect the generation and
 reproduction recipes. The bounded source-stratified dataset check validates the
 complete 655,101-site release index and reproduces one five-channel site from

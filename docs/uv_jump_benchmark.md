@@ -68,6 +68,6 @@ Comparisons use `rtol=1e-5`, `atol=1e-6`. Exit codes: 0 completed, 2 invalid inp
 
 Validation covered 4,564 real wells, four codecs and two recipes: 87 output files
 matched across two runs, and held-out perturbation checks passed. Full-grid,
-GPU-parity and published-reference validation remain [follow-up work](uv_reproduction_progress.md).
+GPU-parity and published-reference validation remain follow-up work.
 
 Tests: `uv run tests/test_uv_examples.py -v`.
