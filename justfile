@@ -1167,7 +1167,7 @@ download-raw n_jobs="16":
 aliby-featurize:
     pixi run python prep/aliby_featurize.py
 
-# Fetch the upstream annotation bundle (Zenodo 18197517 + cpg0042 duckdb) into
+# Fetch the upstream annotation bundle (Zenodo 18197517 + cpg0016-jump duckdb) into
 # {{ annotations_dir }}. md5-verified; idempotent.
 fetch-annotations:
     uv run python prep/fetch_annotations.py --output-dir {{ annotations_dir }}

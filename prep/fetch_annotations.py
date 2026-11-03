@@ -5,7 +5,7 @@ versions used by this project):
 
   - 4 parquets from Zenodo record 18197517 (MOTIVE drug-target annotations,
     Arevalo / Su / et al. — DOI 10.5281/zenodo.18197517)
-  - jump_metadata.duckdb from cellpainting-gallery (cpg0042-chandrasekaran-jump v0.13)
+  - jump_metadata.duckdb from cellpainting-gallery (cpg0016-jump v0.13)
 
 Each download is md5-verified against the known hash. Existing files with the
 correct hash are skipped.
@@ -47,7 +47,7 @@ SOURCES: list[tuple[str, str, str]] = [
     ),
     (
         "jump_metadata.duckdb",
-        "https://cellpainting-gallery.s3.amazonaws.com/cpg0042-chandrasekaran-jump/source_all/workspace/publication_data/datasets/v0.13/jump_metadata.duckdb",
+        "https://cellpainting-gallery.s3.amazonaws.com/cpg0016-jump/source_all/workspace/publication_data/2025_Chandrasekaran/datasets/v0.13/jump_metadata.duckdb",
         "e56186987126683d5bafa9cc18b3657d",
     ),
 ]
